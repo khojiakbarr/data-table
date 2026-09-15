@@ -21,12 +21,14 @@ import {
   type RowData,
   type Updater,
 } from "@tanstack/react-table"
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { noLayoutStorage } from "./core/persistence"
-import { buildQuery, queriesEqual, type TableQuery } from "./core/query"
+import type { TableQuery } from "./core/query"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { apply, useArrangement } from "./core/useArrangement"
-import { usePagination } from "./core/usePagination"
+import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
+import { usePagination, type PaginationApi } from "./core/usePagination"
+import { useTableQuery } from "./core/useTableQuery"
 import type { DataTableFeatureFlags, LayoutStorage, TableLayout } from "./types"
 
 /**
@@ -315,16 +317,38 @@ export function useDataTable<TData extends RowData>({
     autoResetExpanded: false,
     manualSorting: isServer,
     manualPagination: isServer || paginationOptions === null,
-    ...(isServer && rowCount !== undefined ? { rowCount } : {}),
+    /*
+     * Both keys are written on every server render rather than omitted when
+     * unknown. The React adapter merges options into the previous object
+     * (`{ ...prev, ...next }`), so a key left out silently keeps its old value —
+     * a total that returned to "unknown" would go on reporting the stale one.
+     *
+     * `pageCount: -1` is TanStack's own word for "unknown". Without it it
+     * counts the rows it can see — one page — concludes there is nothing after
+     * them, and kills the Next button until the total arrives.
+     */
+    ...(isServer
+      ? { rowCount: rowCount ?? data.length, pageCount: pageState.pageCount ?? -1 }
+      : {}),
     /*
      * Same reasoning as `autoResetExpanded`: TanStack would send the user back
      * to page one whenever `data` changes identity, which in server mode is
      * every response to the query that asked for page four.
      */
     autoResetPageIndex: false,
+    /*
+     * Two page moves in one tick are last-write-wins: both read the same
+     * `pageState`, so the second overwrites the first. Every footer control is
+     * its own tick, so this costs nothing in practice.
+     */
     onPaginationChange: (updater: Updater<PaginationState>) => {
       const next = apply(updater, { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize })
-      if (next.pageSize !== pageState.pageSize) pageState.setPageSize(next.pageSize)
+      if (next.pageSize !== pageState.pageSize) {
+        // setPageSize already recomputes the index from the top row; a second
+        // setPageIndex here would clamp it against the old page size's count.
+        pageState.setPageSize(next.pageSize)
+        return
+      }
       if (next.pageIndex !== pageState.pageIndex) pageState.setPageIndex(next.pageIndex)
     },
     onExpandedChange: (updater) =>
@@ -363,51 +387,48 @@ export function useDataTable<TData extends RowData>({
   // action is clamped against last render's count, which is current by the
   // time they act; the one case that is not is the count falling below the
   // current page (data replaced, rows removed) — fix that before paint.
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     if (isServer || clientRowCount === undefined) return
     const last = Math.max(1, Math.ceil(clientRowCount / pageState.pageSize)) - 1
     if (pageState.pageIndex > last) pageState.setPageIndex(last)
   })
 
-  const paginationApi = useMemo(
+  const paginationApi: PaginationApi = useMemo(
     () => ({
       ...pageState,
       rowCount: isServer ? rowCount : clientRowCount,
       pageCount: isServer
         ? pageState.pageCount
         : clientRowCount === undefined
-          ? 1
+          ? // Client mode with paging off, or the very first render before the
+            // table has been built. One page is the honest answer: every row
+            // there is to show is on screen.
+            1
           : Math.max(1, Math.ceil(clientRowCount / pageState.pageSize)),
     }),
     [pageState, isServer, rowCount, clientRowCount],
   )
 
-  /*
-   * Read and written during render on purpose. The query is the host's fetch
-   * key: a fresh object every render would refetch on every render, and an
-   * effect that rebuilt it would hand out a stale query for one commit first.
-   * Comparing structurally and keeping the previous object gives the host an
-   * identity that changes exactly when the request would.
-   */
-  const queryInputs = {
+  const query = useTableQuery({
     sorting: layout.sorting,
     pageIndex: pageState.pageIndex,
     pageSize: pageState.pageSize,
-  }
-  const queryRef = useRef<TableQuery>(buildQuery(queryInputs))
-  const candidate = buildQuery(queryInputs)
-  if (!queriesEqual(candidate, queryRef.current)) queryRef.current = candidate
-  const query = queryRef.current
+    onQueryChange,
+  })
 
-  // Kept in a ref so an inline `onQueryChange={(q) => …}` does not refire the
-  // effect on every render; the query's own identity is the trigger.
-  const onQueryChangeRef = useRef(onQueryChange)
-  onQueryChangeRef.current = onQueryChange
-  useEffect(() => {
-    onQueryChangeRef.current?.(query)
-  }, [query])
-
-  if (import.meta.env.DEV && isServer && !getRowId) {
+  /*
+   * `process.env.NODE_ENV` and not `import.meta.env.DEV`: this library is built
+   * in Vite's library mode, which replaces `import.meta.env.DEV` with our own
+   * build's value and so would strip the warning from the shipped bundle
+   * entirely. `process.env` is deliberately left alone for the consumer's
+   * bundler to substitute, which is what puts the warning in their dev build.
+   */
+  if (
+    typeof process !== "undefined" &&
+    process.env.NODE_ENV !== "production" &&
+    isServer &&
+    !getRowId
+  ) {
     warnOnce(
       `useDataTable("${id}"): mode "server" without getRowId keys rows by position; ` +
         `expansion will not follow records across pages.`,

@@ -1,5 +1,6 @@
 import type { Column, RowData } from "@tanstack/react-table"
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 
@@ -201,7 +202,7 @@ function useClampedPlacement(
 ): HeaderMenuPosition {
   const [placement, setPlacement] = useState(requested)
 
-  useLayoutEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     const element = ref.current
     if (!element) return
     const { width, height } = element.getBoundingClientRect()

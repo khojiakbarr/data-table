@@ -47,6 +47,15 @@ describe("usePagination", () => {
     expect(result.current.pageIndex).toBe(2)
   })
 
+  it("keeps the options stable when an equal array is passed again", () => {
+    // A caller writing `pageSizeOptions={[20, 50, 100]}` inline hands over a
+    // new array every render; the same contents must not look like a change.
+    const { result, rerender, props } = setup()
+    const first = result.current.pageSizeOptions
+    rerender({ ...props, pageSizeOptions: [20, 50, 100] })
+    expect(result.current.pageSizeOptions).toBe(first)
+  })
+
   it("adds a page size that is not among the options", () => {
     const { result } = setup({ pageSize: 30 })
     expect(result.current.pageSizeOptions).toEqual([20, 30, 50, 100])

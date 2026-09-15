@@ -40,9 +40,10 @@ export interface PaginationApi {
  * The returned `pageIndex` is clamped to `pageCount - 1` during render
  * rather than in an effect, so there is no extra commit and no frame where
  * the footer reads "Page 6 of 1" or a query goes out for a page that no
- * longer exists. The raw index behind it is left unclamped, so a row count
- * that dips and then recovers restores the user's original position instead
- * of losing it.
+ * longer exists. In server mode the raw index behind it survives a row count
+ * that dips and recovers, restoring the user's original position; in client
+ * mode the shell commits the clamp instead, because the count only exists
+ * once the table is built (see `useDataTable`).
  */
 export function usePagination({
   enabled,
@@ -94,13 +95,17 @@ export function usePagination({
 
   const resetPage = useCallback(() => setRawIndex(0), [])
 
-  const options = useMemo(
-    () =>
-      pageSizeOptions.includes(pageSize)
-        ? pageSizeOptions
-        : [...pageSizeOptions, pageSize].sort((a, b) => a - b),
-    [pageSizeOptions, pageSize],
-  )
+  /*
+   * Keyed on contents rather than array identity. A caller writing
+   * `pageSizeOptions={[20, 50]}` inline passes a new array every render, and
+   * keying on it would make this hook's whole result new every render — which
+   * defeats the memo below and every memo a consumer builds on it.
+   */
+  const optionsKey = pageSizeOptions.join(",")
+  const options = useMemo(() => {
+    const listed = optionsKey === "" ? [] : optionsKey.split(",").map(Number)
+    return listed.includes(pageSize) ? listed : [...listed, pageSize].sort((a, b) => a - b)
+  }, [optionsKey, pageSize])
 
   // Memoised so the object itself is stable between renders that changed
   // nothing. Callers spread it into their own memos; a fresh literal here would

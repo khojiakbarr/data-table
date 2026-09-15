@@ -9,8 +9,12 @@ export { useDataTable } from "./useDataTable"
 export type {
   DataTableFeatures,
   DataTableInstance,
+  PaginationOptions,
+  TableMode,
   UseDataTableOptions,
 } from "./useDataTable"
+export type { TableQuery } from "./core/query"
+export type { PaginationApi } from "./core/usePagination"
 
 /*
  * The shell's own parts. Exported so a different layout can reuse the pieces

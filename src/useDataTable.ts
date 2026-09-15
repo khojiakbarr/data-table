@@ -21,7 +21,7 @@ import {
   type RowData,
   type Updater,
 } from "@tanstack/react-table"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { noLayoutStorage } from "./core/persistence"
 import { buildQuery, queriesEqual, type TableQuery } from "./core/query"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
@@ -237,12 +237,27 @@ export function useDataTable<TData extends RowData>({
     columnIds,
   })
 
+  /*
+   * Last render's client row count. The table has to be built before the count
+   * exists, and `usePagination` runs before that, so a client-mode table can
+   * only be clamped against what the previous render measured — which is
+   * current by the time a user clicks anything. The shrink case that this
+   * misses is corrected below, before paint.
+   */
+  const clientRowCountRef = useRef<number | undefined>(undefined)
+
+  // Stable, so the memoised `pageState` below really is stable.
+  const persistPageSize = useCallback(
+    (size: number) => updateSlice("pageSize", size),
+    [updateSlice],
+  )
+
   const pageState = usePagination({
     enabled: paginationOptions !== null,
     pageSize: layout.pageSize ?? paginationOptions?.pageSize ?? DEFAULT_PAGE_SIZE,
     pageSizeOptions: paginationOptions?.pageSizeOptions ?? DEFAULT_PAGE_SIZE_OPTIONS,
-    rowCount: isServer ? rowCount : undefined,
-    onPageSizeChange: (size) => updateSlice("pageSize", size),
+    rowCount: isServer ? rowCount : clientRowCountRef.current,
+    onPageSizeChange: persistPageSize,
   })
 
   /*
@@ -342,6 +357,18 @@ export function useDataTable<TData extends RowData>({
     paginationOptions !== null && !isServer
       ? table.getPrePaginatedRowModel().rows.length
       : undefined
+  clientRowCountRef.current = clientRowCount
+
+  // Client mode learns its row count only once the table is built. A user
+  // action is clamped against last render's count, which is current by the
+  // time they act; the one case that is not is the count falling below the
+  // current page (data replaced, rows removed) — fix that before paint.
+  useLayoutEffect(() => {
+    if (isServer || clientRowCount === undefined) return
+    const last = Math.max(1, Math.ceil(clientRowCount / pageState.pageSize)) - 1
+    if (pageState.pageIndex > last) pageState.setPageIndex(last)
+  })
+
   const paginationApi = useMemo(
     () => ({
       ...pageState,

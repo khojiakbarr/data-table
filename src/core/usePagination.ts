@@ -102,15 +102,31 @@ export function usePagination({
     [pageSizeOptions, pageSize],
   )
 
-  return {
-    enabled,
-    pageIndex,
-    pageSize,
-    pageSizeOptions: options,
-    pageCount,
-    rowCount,
-    setPageIndex,
-    setPageSize,
-    resetPage,
-  }
+  // Memoised so the object itself is stable between renders that changed
+  // nothing. Callers spread it into their own memos; a fresh literal here would
+  // make every one of those a no-op.
+  return useMemo(
+    () => ({
+      enabled,
+      pageIndex,
+      pageSize,
+      pageSizeOptions: options,
+      pageCount,
+      rowCount,
+      setPageIndex,
+      setPageSize,
+      resetPage,
+    }),
+    [
+      enabled,
+      pageIndex,
+      pageSize,
+      options,
+      pageCount,
+      rowCount,
+      setPageIndex,
+      setPageSize,
+      resetPage,
+    ],
+  )
 }

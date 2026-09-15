@@ -115,4 +115,20 @@ describe("client mode pagination", () => {
     act(() => on.result.current.pagination.setPageIndex(2))
     expect(on.result.current.table.getRowModel().rows).toHaveLength(20)
   })
+
+  it("clamps a client-side page to the real last page", () => {
+    const { result, rerender } = renderHook(
+      ({ data }: { data: Row[] }) =>
+        useDataTable<Row>({ id: "c3", columns, data, pagination: { pageSize: 50 } }),
+      { initialProps: { data: page(0, 120) } },
+    )
+
+    act(() => result.current.pagination.setPageIndex(99))
+    expect(result.current.pagination.pageIndex).toBe(2)
+    expect(result.current.table.getRowModel().rows).toHaveLength(20)
+
+    rerender({ data: page(0, 60) }) // rows removed under the user's feet
+    expect(result.current.pagination.pageIndex).toBe(1)
+    expect(result.current.table.getRowModel().rows).toHaveLength(10)
+  })
 })

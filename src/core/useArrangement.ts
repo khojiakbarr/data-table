@@ -4,6 +4,7 @@ import { pruneLayout } from "./persistence"
 import { useDebouncedSave } from "./useDebouncedSave"
 import type { LayoutStorage, TableLayout } from "../types"
 
+/** A layout with nothing arranged: every slice at TanStack's "natural" value. */
 export const EMPTY_LAYOUT: TableLayout = {
   columnOrder: [],
   columnVisibility: {},
@@ -24,6 +25,7 @@ interface Arrangement {
   hasUnsavedChanges: boolean
 }
 
+/** What {@link useArrangement} needs to load, prune and persist a layout. */
 export interface UseArrangementOptions {
   id: string
   store: LayoutStorage
@@ -89,6 +91,7 @@ export function useArrangement({ id, store, initialLayout, columnIds }: UseArran
   return { layout: arrangement.layout, isCustomised: arrangement.isCustomised, updateSlice, resetLayout }
 }
 
+/** What {@link useArrangement} returns: the layout, its provenance flag, and the two ways to change it. */
 export type UseArrangementResult = ReturnType<typeof useArrangement>
 
 /**

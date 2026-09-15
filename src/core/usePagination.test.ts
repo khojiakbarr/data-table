@@ -37,11 +37,13 @@ describe("usePagination", () => {
   })
 
   it("keeps the first visible row when the page size changes", () => {
-    const { result, onPageSizeChange } = setup()
+    const { result, rerender, props, onPageSizeChange } = setup()
     act(() => result.current.setPageIndex(4)) // rows 200–249
     act(() => result.current.setPageSize(100))
     expect(onPageSizeChange).toHaveBeenCalledWith(100)
     // The parent re-renders with the new size; the index was recomputed to 2 (rows 200–299).
+    expect(result.current.pageIndex).toBe(2)
+    rerender({ ...props, pageSize: 100 })
     expect(result.current.pageIndex).toBe(2)
   })
 
@@ -69,5 +71,21 @@ describe("usePagination", () => {
     expect(result.current.pageCount).toBe(1)
     act(() => result.current.setPageIndex(5))
     expect(result.current.pageIndex).toBe(0)
+  })
+
+  it("falls back to the first page when it is disabled after use", () => {
+    const { result, rerender, props } = setup()
+    act(() => result.current.setPageIndex(5))
+    rerender({ ...props, enabled: false })
+    expect(result.current.pageIndex).toBe(0)
+    expect(result.current.pageCount).toBe(1)
+  })
+
+  it("ignores a page size that is not a number", () => {
+    const { result, onPageSizeChange } = setup()
+    act(() => result.current.setPageIndex(4))
+    act(() => result.current.setPageSize(Number.NaN))
+    expect(onPageSizeChange).not.toHaveBeenCalled()
+    expect(result.current.pageIndex).toBe(4)
   })
 })

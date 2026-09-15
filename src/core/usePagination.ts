@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useState } from "react"
 
 /** Inputs to {@link usePagination}. */
 export interface UsePaginationOptions {
@@ -36,6 +36,13 @@ export interface PaginationApi {
  * `data` array, and resetting would send the user back to page one on
  * every response. Callers reset explicitly when the query's other inputs
  * change.
+ *
+ * The returned `pageIndex` is clamped to `pageCount - 1` during render
+ * rather than in an effect, so there is no extra commit and no frame where
+ * the footer reads "Page 6 of 1" or a query goes out for a page that no
+ * longer exists. The raw index behind it is left unclamped, so a row count
+ * that dips and then recovers restores the user's original position instead
+ * of losing it.
  */
 export function usePagination({
   enabled,
@@ -44,13 +51,19 @@ export function usePagination({
   rowCount,
   onPageSizeChange,
 }: UsePaginationOptions): PaginationApi {
-  const [pageIndex, setPageIndexState] = useState(0)
+  const [rawIndex, setRawIndex] = useState(0)
 
   const pageCount = useMemo(() => {
     if (!enabled) return 1
-    if (rowCount === undefined) return undefined
+    if (rowCount === undefined || !Number.isFinite(rowCount)) return undefined
     return Math.max(1, Math.ceil(rowCount / pageSize))
   }, [enabled, rowCount, pageSize])
+
+  // Clamped during render, not in an effect: no extra commit, no frame where
+  // the footer shows "Page 6 of 1", and a server never sees a query for a
+  // page that no longer exists. The raw index is left alone so a row count
+  // that dips and recovers does not lose the user's place until they act.
+  const pageIndex = pageCount === undefined ? rawIndex : Math.min(rawIndex, pageCount - 1)
 
   const clamp = useCallback(
     (index: number) => {
@@ -63,27 +76,23 @@ export function usePagination({
   const setPageIndex = useCallback(
     (index: number) => {
       if (!enabled) return
-      setPageIndexState(clamp(index))
+      setRawIndex(clamp(index))
     },
     [enabled, clamp],
   )
 
   const setPageSize = useCallback(
     (next: number) => {
+      if (!Number.isFinite(next)) return
       const size = Math.max(1, Math.floor(next))
       // Keep the row at the top of the page in view under the new size.
-      setPageIndexState((index) => Math.floor((index * pageSize) / size))
+      setRawIndex(Math.floor((pageIndex * pageSize) / size))
       onPageSizeChange(size)
     },
-    [pageSize, onPageSizeChange],
+    [pageIndex, pageSize, onPageSizeChange],
   )
 
-  const resetPage = useCallback(() => setPageIndexState(0), [])
-
-  // A server that now reports fewer rows can leave the page past the end.
-  useEffect(() => {
-    if (pageCount !== undefined && pageIndex > pageCount - 1) setPageIndexState(pageCount - 1)
-  }, [pageCount, pageIndex])
+  const resetPage = useCallback(() => setRawIndex(0), [])
 
   const options = useMemo(
     () =>

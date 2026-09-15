@@ -34,6 +34,16 @@
   /* Printed on --dt-accent by the pin badge at 10px, so it is normal-size
      text: white would be 3.7:1, short of the 4.5:1 WCAG AA needs. */
   --dt-accent-fg: #18181b;
+  /*
+   * --dt-accent printed AS TEXT on --dt-bg (.dt-link, the active sort
+   * direction in the header menu) — a different pairing from --dt-accent-fg
+   * above, which is tuned for text on an --dt-accent background and is fixed
+   * at #18181b in every theme (identical to this theme's own --dt-bg, so it
+   * would be invisible printed on the page instead of on the badge). #3b82f6
+   * itself is only 3.68:1 on white, short of 4.5:1; darkened here to clear
+   * it (6.70:1). Dark theme below lightens it instead (6.97:1 on #18181b).
+   */
+  --dt-accent-text: #1d4ed8;
   --dt-resize-handle: #d4d4d8;
   --dt-resize-handle-active: var(--dt-accent);
   --dt-drop-indicator: var(--dt-accent);
@@ -79,8 +89,14 @@
   font-size: var(--dt-font-size);
 }
 
-/* Lift the table above whatever follows it while its panel hangs open. */
-.dt-root:has(> .dt-panel) {
+/*
+ * Lift the table above whatever follows it while its panel or header menu
+ * hangs open. Both render as a direct child of `.dt-root` (see DataTable.tsx)
+ * and can extend past the table's own box — the menu is `position: fixed`
+ * and clamped only to the viewport, not to this table.
+ */
+.dt-root:has(> .dt-panel),
+.dt-root:has(> .dt-menu) {
   z-index: 1;
 }
 
@@ -136,6 +152,8 @@
     --dt-detail-bg: #1c1c20;
     --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
     --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
+    /* Lightened, not the light theme's darkened value: 6.97:1 on #18181b. */
+    --dt-accent-text: #60a5fa;
   }
 }
 
@@ -152,6 +170,7 @@
   --dt-detail-bg: #1c1c20;
   --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
   --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
+  --dt-accent-text: #60a5fa;
 }
 
 .dt-table {
@@ -224,20 +243,36 @@
   border-radius: 3px;
 }
 
+/*
+ * A solid colour, not an opacity fraction: WCAG 1.4.11 requires 3:1 for a
+ * graphical affordance (this chevron signals "sortable"), and dimming the
+ * inherited --dt-header-fg with opacity dropped it under that floor in both
+ * themes. --dt-muted-fg already clears 3:1 (and 4.5:1) against --dt-header-bg
+ * in both themes on its own — see themes.test.ts "base palette" — so this
+ * reuses it instead of adding a token, and stays correct if a host overrides
+ * --dt-header-bg, unlike a percentage of it.
+ */
 .dt-sort-icon {
   flex: none;
-  opacity: 0.45;
-  transition: opacity 120ms ease;
+  color: var(--dt-muted-fg);
+  transition: color 120ms ease;
 }
 
 .dt-th[aria-sort]:not([aria-sort="none"]) .dt-sort-icon {
-  opacity: 1;
+  color: var(--dt-header-fg);
 }
 
+/*
+ * No opacity dimming: it is the only visual way a sighted user learns a
+ * column's multi-sort priority (aria-sort only conveys per-column
+ * direction), and dimming --dt-header-fg below full opacity dropped it under
+ * the 4.5:1 WCAG AA text minimum in both themes. Full --dt-header-fg clears
+ * 4.5:1 with room to spare (~7.4:1 light, ~6.4:1 dark — see
+ * themes.test.ts "base palette").
+ */
 .dt-sort-index {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  opacity: 0.7;
 }
 
 /* ---------- body ---------- */
@@ -482,6 +517,14 @@
   position: relative;
 }
 
+/*
+ * --dt-muted-fg at full opacity, not dimmed further: this grip is the sole
+ * visual affordance for column reordering (drag-and-drop only, no keyboard
+ * equivalent), so WCAG 1.4.11's 3:1 non-text minimum applies squarely, and
+ * the extra opacity pushed it under that floor in both themes. --dt-muted-fg
+ * already clears 3:1 (and 4.5:1) against --dt-bg on its own — see
+ * themes.test.ts "base palette".
+ */
 .dt-drag-handle {
   flex: none;
   display: inline-flex;
@@ -491,11 +534,10 @@
   height: 20px;
   color: var(--dt-muted-fg);
   cursor: grab;
-  opacity: 0.55;
 }
 
 .dt-panel-item:hover .dt-drag-handle {
-  opacity: 1;
+  color: var(--dt-fg);
 }
 
 .dt-panel-dragging {
@@ -534,7 +576,10 @@
 .dt-link {
   border: 0;
   background: none;
-  color: var(--dt-accent);
+  /* --dt-accent-text, not --dt-accent: this is accent-as-text on --dt-bg,
+     a different contrast pairing from accent-as-background (see the token's
+     own comment in the :root block above). */
+  color: var(--dt-accent-text);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -643,7 +688,17 @@
   display: inline-block;
 }
 
-.dt-tr-expanded .dt-td {
+/*
+ * The plain rule covers the unstriped case at (0,2,0). Striping's own rule
+ * (`.dt-striped .dt-tr[data-parity="odd"] .dt-td`, above) is (0,4,0) and
+ * would otherwise beat this one whenever an odd-positioned row is expanded
+ * — BodyRow.tsx puts both `data-parity="odd"` and `dt-tr-expanded` on the
+ * same <tr>. The second selector ties that specificity (four simple
+ * selectors: .dt-striped, .dt-tr, .dt-tr-expanded, .dt-td) and wins the tie
+ * by staying after the striping rule in source order.
+ */
+.dt-tr-expanded .dt-td,
+.dt-striped .dt-tr.dt-tr-expanded .dt-td {
   background: var(--dt-row-hover);
 }
 
@@ -738,7 +793,8 @@
 }
 
 .dt-menu-item[aria-current="true"] {
-  color: var(--dt-accent);
+  /* --dt-accent-text: same accent-as-text pairing as .dt-link above. */
+  color: var(--dt-accent-text);
   font-weight: 500;
 }
 

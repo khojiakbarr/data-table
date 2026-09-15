@@ -49,6 +49,10 @@
 
   --dt-accent: var(--primary);
   --dt-accent-fg: var(--primary-foreground);
+  /* Accent printed as text (.dt-link, the active sort direction) has no
+     dedicated shadcn variable; --primary is shadcn's own recommended
+     text-on-background accent, same as a plain link colour would use. */
+  --dt-accent-text: var(--primary);
   --dt-resize-handle: var(--border);
   --dt-resize-handle-active: var(--primary);
   --dt-drop-indicator: var(--primary);

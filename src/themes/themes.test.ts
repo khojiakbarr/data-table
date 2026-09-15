@@ -63,6 +63,18 @@ const baseTokenValue = (token: string): string => {
 }
 
 /**
+ * The value the base sheet gives a token in its pinned `[data-dt-theme="dark"]`
+ * block. Scoped to that one block (rather than a file-wide search, which
+ * `baseTokenValue` deliberately is not) so a token this suite does not check
+ * in the dark theme can't be silently matched against its light value instead.
+ */
+const darkTokenValue = (token: string): string => {
+  const block = read("../styles.css").match(/\.dt-root\[data-dt-theme="dark"\]\s*\{([^}]*)\}/)?.[1] ?? ""
+  const match = block.match(new RegExp(`${token}\\s*:\\s*([^;]+);`))
+  return (match?.[1] ?? "").trim()
+}
+
+/**
  * Approximates CSS specificity for the simple selectors these theme files
  * use (classes and attribute selectors only — no ids or type selectors), by
  * counting `.class` and `[attr=value]` components, including ones nested
@@ -105,7 +117,7 @@ describe("base stylesheet token extraction", () => {
   // preset tests below passing vacuously with an empty token list.
   it("finds the base tokens", () => {
     expect(baseTokens.length).toBeGreaterThan(0)
-    expect(new Set(baseTokens).size).toBe(24)
+    expect(new Set(baseTokens).size).toBe(25)
   })
 
   it("matches digit-suffixed token names", () => {
@@ -295,5 +307,55 @@ describe("base palette", () => {
     // allowance cannot apply at that size.
     const ratio = contrastRatio(baseTokenValue("--dt-accent"), baseTokenValue("--dt-accent-fg"))
     expect(ratio).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it("prints .dt-link and the active sort direction at WCAG AA in light", () => {
+    // --dt-accent-text is --dt-accent printed AS TEXT on --dt-bg (.dt-link's
+    // "Show all"/"Reset" buttons, the active sort direction in the header
+    // menu) — normal-size text (12px/13px), so 4.5:1. --dt-accent itself is
+    // only 3.68:1 here, which is why this is a separate, darker token.
+    const ratio = contrastRatio(baseTokenValue("--dt-accent-text"), baseTokenValue("--dt-bg"))
+    expect(ratio).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it("prints .dt-link and the active sort direction at WCAG AA in dark", () => {
+    const ratio = contrastRatio(darkTokenValue("--dt-accent-text"), darkTokenValue("--dt-bg"))
+    expect(ratio).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it("prints the multi-sort priority digit at WCAG AA in both themes", () => {
+    // .dt-sort-index (the multi-sort priority number) is normal-size text
+    // (10px) at full --dt-header-fg on --dt-header-bg — no opacity dimming,
+    // which is what previously pulled it under 4.5:1 in both themes. This
+    // pair also covers the active sort chevron (an aria-hidden icon, whose
+    // own WCAG 1.4.11 floor is a lower 3:1), which uses the same colours.
+    expect(contrastRatio(baseTokenValue("--dt-header-fg"), baseTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(
+      4.5,
+    )
+    expect(contrastRatio(darkTokenValue("--dt-header-fg"), darkTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(
+      4.5,
+    )
+  })
+
+  it("prints the inactive sort chevron at the WCAG 1.4.11 non-text minimum in both themes", () => {
+    // .dt-sort-icon at rest is a graphical UI component (an aria-hidden SVG
+    // signalling "sortable"), not text — WCAG 1.4.11 sets its floor at 3:1,
+    // not 4.5:1. Full --dt-muted-fg on --dt-header-bg replaced an opacity
+    // fraction of --dt-header-fg that fell under 3:1 in both themes.
+    expect(contrastRatio(baseTokenValue("--dt-muted-fg"), baseTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(
+      3,
+    )
+    expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(
+      3,
+    )
+  })
+
+  it("prints the column-panel drag handle at the WCAG 1.4.11 non-text minimum in both themes", () => {
+    // .dt-drag-handle is the sole visual affordance for column reordering
+    // (pointer drag-and-drop only, no keyboard equivalent), so its 3:1 floor
+    // is load-bearing. Full --dt-muted-fg on --dt-bg replaced an opacity
+    // fraction that fell under 3:1 in both themes.
+    expect(contrastRatio(baseTokenValue("--dt-muted-fg"), baseTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
   })
 })

@@ -142,6 +142,19 @@ describe("usePagination", () => {
     expect(result.current.pageIndex).toBe(0)
   })
 
+  it("guards only the raw index in setPagination while disabled, still persisting the size", () => {
+    const { result, rerender, props, onPageSizeChange } = setup({ enabled: false, rowCount: 1000 })
+    act(() => result.current.setPagination({ pageIndex: 5, pageSize: 100 }))
+    expect(result.current.pageIndex).toBe(0)
+    expect(onPageSizeChange).toHaveBeenCalledWith(100)
+
+    // A disabled table forces pageCount to 1, so "pageIndex is 0 while
+    // disabled" alone would also be true of a raw index that leaked to 5
+    // without yet being revealed. Re-enabling is what makes a leak visible.
+    rerender({ ...props, enabled: true, pageSize: 100 })
+    expect(result.current.pageIndex).toBe(0)
+  })
+
   it("falls back to the first page when it is disabled after use", () => {
     const { result, rerender, props } = setup()
     act(() => result.current.setPageIndex(5))

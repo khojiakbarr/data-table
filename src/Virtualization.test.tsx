@@ -92,6 +92,15 @@ const spacers = (container: HTMLElement) => {
   }
   return result
 }
+/**
+ * The height the table claims the whole list has: both spacers plus the rows
+ * in the DOM. It is the scrollbar, in other words — the only place an
+ * off-screen row's height is observable.
+ */
+const totalHeight = (container: HTMLElement) => {
+  const { top, bottom } = spacers(container)
+  return renderedRows().reduce((sum, r) => sum + Number.parseFloat(r.style.height), top + bottom)
+}
 const scrollTo = (viewport: HTMLElement, top: number) => {
   Object.defineProperty(viewport, "scrollTop", { value: top, writable: true, configurable: true })
   fireEvent.scroll(viewport)
@@ -216,30 +225,39 @@ describe("row virtualisation", () => {
      * every one of the 1000 rows is re-keyed and re-estimated for a render
      * that changed nothing about the rows.
      */
-    const data = rows(1000)
-    const measure = vi.fn((row: Row) => (Number(row.id.slice(1)) % 2 ? 20 : 60))
-    function Host({ tick }: { tick: number }) {
-      const instance = useDataTable<Row>({
-        id: "churn",
-        columns,
-        data,
-        getRowId: (r) => r.id,
-        rowHeight: ROW_PX,
-        getRowHeight: (row) => measure(row),
-      })
-      return (
-        <>
-          <span data-testid="tick">{tick}</span>
-          <DataTable instance={instance} height={VIEWPORT_PX} />
-        </>
-      )
+    const asked = (count: number) => {
+      const data = rows(count)
+      const measure = vi.fn((row: Row) => (Number(row.id.slice(1)) % 2 ? 20 : 60))
+      function Host({ tick }: { tick: number }) {
+        const instance = useDataTable<Row>({
+          id: `churn${count}`,
+          columns,
+          data,
+          getRowId: (r) => r.id,
+          rowHeight: ROW_PX,
+          getRowHeight: (row) => measure(row),
+        })
+        return (
+          <>
+            <span data-testid="tick">{tick}</span>
+            <DataTable instance={instance} height={VIEWPORT_PX} />
+          </>
+        )
+      }
+      const { rerender } = render(<Host tick={0} />)
+      measure.mockClear()
+      rerender(<Host tick={1} />)
+      rerender(<Host tick={2} />)
+      return measure.mock.calls.length
     }
-    const { rerender } = render(<Host tick={0} />)
-    measure.mockClear()
-    rerender(<Host tick={1} />)
-    rerender(<Host tick={2} />)
     // Only the rendered window may be consulted; a sweep would be 1000 a render.
-    expect(measure.mock.calls.length).toBeLessThan(100)
+    expect(asked(1000)).toBeLessThan(100)
+    /*
+     * The window plus the bounded sample, and nothing else: twenty times the
+     * rows must cost exactly the same, which is the property a sweep breaks
+     * and an absolute bound can only hint at.
+     */
+    expect(asked(20_000)).toBe(asked(1000))
   })
 
   it("re-estimates when the row-height function starts answering differently", () => {
@@ -260,14 +278,72 @@ describe("row virtualisation", () => {
       return <DataTable instance={instance} height={VIEWPORT_PX} />
     }
     const { container, rerender } = render(<Density compact={false} />)
-    const total = () => {
-      const { top, bottom } = spacers(container)
-      const rendered = renderedRows().reduce((sum, r) => sum + Number.parseFloat(r.style.height), 0)
-      return top + bottom + rendered
-    }
-    expect(total()).toBe(100 * 60)
+    expect(totalHeight(container)).toBe(100 * 60)
     rerender(<Density compact />)
-    expect(total()).toBe(100 * 20)
+    expect(totalHeight(container)).toBe(100 * 20)
+  })
+
+  it("notices a height change that only affects rows off screen", () => {
+    /*
+     * The regression this pins: a 300px viewport shows rows 0..15, and the
+     * policy below leaves every one of them at 40px. Only rows 50+ grow, so
+     * the rendered window agrees with itself and the drift check that reads
+     * only that window sees nothing — the scrollbar stayed at 4000px while
+     * the truth was 6000px until the user scrolled into the changed region.
+     *
+     * Written inline, which is the form the README shows and the hard case:
+     * a new arrow every render, so the height function's identity carries no
+     * information and the bounded sample is the only thing that can notice.
+     */
+    const data = rows(100)
+    function Region({ tall }: { tall: boolean }) {
+      const instance = useDataTable<Row>({
+        id: "offscreen",
+        columns,
+        data,
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        getRowHeight: (row) => (tall && Number(row.id.slice(1)) >= 50 ? 80 : ROW_PX),
+      })
+      return <DataTable instance={instance} height={VIEWPORT_PX} />
+    }
+    const { container, rerender } = render(<Region tall={false} />)
+    expect(totalHeight(container)).toBe(100 * ROW_PX)
+    // Nothing on screen changed; the last 50 rows doubled.
+    rerender(<Region tall />)
+    expect(renderedRows().every((r) => Number.parseFloat(r.style.height) === ROW_PX)).toBe(true)
+    expect(totalHeight(container)).toBe(50 * ROW_PX + 50 * 80)
+  })
+
+  it("leaves a change too narrow for the sample to the host's heightVersion", () => {
+    /*
+     * The documented edge of the sample, pinned so it cannot quietly become a
+     * sweep: one row, off screen, between probes. Row 70 is neither among the
+     * 16 evenly spaced probes over 100 items nor anywhere near the ~15 rows a
+     * 300px viewport shows, so nothing the table does by itself can see it
+     * grow — which is the whole reason `heightVersion` exists.
+     */
+    const data = rows(100)
+    function Outlier({ big, version }: { big: boolean; version: number }) {
+      const instance = useDataTable<Row>({
+        id: "outlier",
+        columns,
+        data,
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        getRowHeight: (row) => (big && row.id === "r70" ? 200 : ROW_PX),
+        heightVersion: version,
+      })
+      return <DataTable instance={instance} height={VIEWPORT_PX} />
+    }
+    const { container, rerender } = render(<Outlier big={false} version={0} />)
+    expect(totalHeight(container)).toBe(100 * ROW_PX)
+
+    rerender(<Outlier big version={0} />)
+    expect(totalHeight(container)).toBe(100 * ROW_PX)
+
+    rerender(<Outlier big version={1} />)
+    expect(totalHeight(container)).toBe(99 * ROW_PX + 200)
   })
 
   it("re-estimates when the row height changes", () => {
@@ -300,6 +376,31 @@ describe("before the viewport is measured", () => {
     expect(visible.length).toBeLessThanOrEqual(40)
     expect(visible[0]).toHaveTextContent("Row 0")
     expect(spacers(container).bottom).toBe((1000 - visible.length) * ROW_PX)
+  })
+
+  it("notices a height change with no rendered window to compare", () => {
+    /*
+     * The other half of the same blind spot. With no size there is no range,
+     * so the check that read only the rendered items had nothing at all to
+     * read: a table under a `display: none` ancestor, or a server render,
+     * reported the old total for ever. The sample does not need a window.
+     */
+    const data = rows(100)
+    function Region({ tall }: { tall: boolean }) {
+      const instance = useDataTable<Row>({
+        id: "hidden",
+        columns,
+        data,
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        getRowHeight: (row) => (tall && Number(row.id.slice(1)) >= 50 ? 80 : ROW_PX),
+      })
+      return <DataTable instance={instance} height={VIEWPORT_PX} />
+    }
+    const { container, rerender } = render(<Region tall={false} />)
+    expect(totalHeight(container)).toBe(100 * ROW_PX)
+    rerender(<Region tall />)
+    expect(totalHeight(container)).toBe(50 * ROW_PX + 50 * 80)
   })
 
   it("covers the whole page when the page is larger than the default window", () => {

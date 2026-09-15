@@ -8,6 +8,19 @@ const DETAIL_ESTIMATE_PX = 160
 const DEFAULT_OVERSCAN = 8
 /** Rows rendered from the top while the viewport has no size yet. */
 const UNMEASURED_WINDOW = 40
+/**
+ * How many evenly spaced rows the drift check looks at beyond the rendered
+ * window — see {@link useHeightDrift}.
+ *
+ * Bounded on purpose. This is per-render work, and the whole point of the
+ * check is that it must not grow with the row count: 16 probes cost 16 calls
+ * to a function that answers from a row the caller already holds, whatever
+ * the list is — nothing beside the React rows rendered next to them. What the
+ * number buys is reach: with both ends of the list included, any run of
+ * `ceil(count / 16)` adjacent items contains a probe, so a height change over
+ * a region that size is seen at once wherever in the list it sits.
+ */
+const HEIGHT_PROBE_COUNT = 16
 /** Stable no-op for the disabled path, so `measureElement` does not re-attach its ref every render. */
 const NOOP_MEASURE = () => undefined
 /** Stable empty window for the disabled path, so the drift check has nothing to look at. */
@@ -22,6 +35,15 @@ export interface RowVirtualizerOptions<TRow extends { id: string; original: unkn
   headRef: RefObject<HTMLElement | null>
   rowHeight: number
   getRowHeight?: ((row: TRow["original"]) => number) | undefined
+  /**
+   * Any value that changes when `getRowHeight` starts answering differently.
+   *
+   * The escape hatch from {@link useHeightDrift}'s sample: a new value
+   * re-estimates every row at once, however few of them changed and wherever
+   * they are. Only needed when a policy change can miss the sample — see the
+   * preconditions on {@link useRowVirtualizer}.
+   */
+  heightVersion?: string | number | undefined
   isDetailOpen: (row: TRow) => boolean
   /** False renders everything, with no spacers. */
   enabled: boolean
@@ -80,7 +102,11 @@ export interface RowVirtualizerResult<TRow> {
  * - `getRowHeight` needs no such stability — an inline arrow is fine — but it
  *   must be a pure function of its row. Its identity is deliberately not a
  *   measurement input (see {@link useHeightDrift}); a policy that starts
- *   answering differently is noticed from the rows on screen instead.
+ *   answering differently is noticed by asking it again instead — for every
+ *   row on screen and for a bounded sample of the rest, so a change over any
+ *   run of `ceil(count / 16)` adjacent items is caught wherever it is. A change
+ *   narrower than that, touching no rendered row, is the one case the sample
+ *   can miss until the rows are scrolled to: pass `heightVersion` with it.
  * - `rowHeight` / `getRowHeight` must equal the rendered row's border-box
  *   height exactly. Data rows are never measured, so even a 1px discrepancy
  *   accumulates across rows into a wrong scrollbar height.
@@ -97,6 +123,7 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
   headRef,
   rowHeight,
   getRowHeight,
+  heightVersion,
   isDetailOpen,
   enabled,
   overscan = DEFAULT_OVERSCAN,
@@ -106,12 +133,12 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
   const scrollMargin = useElementHeight(headRef)
   useViewportLookup(enabled)
   /*
-   * Bumped when the rows on screen show that the height function has started
-   * answering differently. `getItemKey` depends on it, and a new key function
-   * is what makes virtual-core measure again — see {@link useHeightDrift}.
+   * Bumped when the height function has been caught answering differently.
+   * `getItemKey` depends on it, and a new key function is what makes
+   * virtual-core measure again — see {@link useHeightDrift}.
    */
-  const [heightVersion, setHeightVersion] = useState(0)
-  const onHeightDrift = useCallback(() => setHeightVersion((version) => version + 1), [])
+  const [noticedVersion, setNoticedVersion] = useState(0)
+  const remeasure = useCallback(() => setNoticedVersion((version) => version + 1), [])
 
   /** The height an item is supposed to have, shared by the estimate and the drift check. */
   const heightOf = useCallback(
@@ -134,14 +161,15 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
   // `estimateSize` does (see its getMeasurementOptions memo deps) — so the
   // height inputs belong in this callback's deps too, or a `rowHeight` change
   // with the same `rows` would keep stale sizes. `getRowHeight` is represented
-  // by `heightVersion` rather than by its own identity, which would re-measure
-  // every item on every host render; {@link useHeightDrift} is what moves the
-  // version. A key change keeps measured detail heights, since the cache is
-  // keyed by item key; `virtualizer.measure()` would throw them away instead.
+  // by the two versions rather than by its own identity, which would re-measure
+  // every item on every host render: `noticedVersion` for what
+  // {@link useHeightDrift} catches by itself, `heightVersion` for what the host
+  // says outright. A key change keeps measured detail heights, since the cache
+  // is keyed by item key; `virtualizer.measure()` would throw them away instead.
   const getItemKey = useCallback(
     (index: number) => displayItemKey(items[index]!),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
-    [items, rowHeight, heightVersion],
+    [items, rowHeight, noticedVersion, heightVersion],
   )
 
   const virtualizer = useVirtualizer({
@@ -157,7 +185,15 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
   // Reading the window is the virtualiser's own work, and there is none to do
   // while it is off; the drift check then has nothing to look at either.
   const virtualItems = enabled ? virtualizer.getVirtualItems() : NO_VIRTUAL_ITEMS
-  useHeightDrift(items, virtualItems, heightOf, onHeightDrift)
+  /*
+   * Every item's geometry, not only the rendered window's: the call above has
+   * just filled it, and virtual-core hands out one entry at a time, so a row
+   * far off screen — or every row, while the viewport has no size and the
+   * window is empty — can be checked against its recorded size at O(1) each
+   * instead of by sweeping the list.
+   */
+  const measurements = enabled ? virtualizer.measurementsCache : NO_VIRTUAL_ITEMS
+  useHeightDrift(items, virtualItems, measurements, heightOf, remeasure)
 
   if (!enabled) {
     return {
@@ -218,11 +254,30 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
  * the wrong question anyway. It says a function was rebuilt, not that it
  * answers differently.
  *
- * The rows on screen answer the right question. A data row is never measured,
- * so its item size IS what the height function returned during the last
- * measurement pass; when the two disagree, the heights have changed under the
- * virtualiser and every offset past them is stale. The correction is made in a
- * layout effect, so it costs a render but no visible frame.
+ * Asking the function again answers the right question. A data row is never
+ * measured, so its recorded size IS what the height function returned during
+ * the last measurement pass; when the two disagree, the heights have changed
+ * under the virtualiser and every offset past them is stale. The correction is
+ * made in a layout effect, so it costs a render but no visible frame.
+ *
+ * Which rows to ask about is the whole design. Every row on screen, because a
+ * row whose own height is wrong is the visible defect. And
+ * {@link HEIGHT_PROBE_COUNT} more, evenly spaced over the whole list, because
+ * a height policy answering differently for rows nobody has scrolled to yet is
+ * just as stale — `getTotalSize()` is the scrollbar, and it sums every row,
+ * not the rendered ones. The sample is what keeps that second check from
+ * costing a sweep: a fixed number of O(1) lookups whatever the row count, and
+ * the only per-render work here that is not already bounded by the viewport.
+ * Its blind spot is honest and documented — a change touching fewer adjacent
+ * rows than the probe spacing, none of them on screen, waits until one is
+ * rendered — and a host that can hit it says so with `heightVersion`.
+ *
+ * Identity would be the exact answer and cannot be used: a host's function
+ * holds its identity across this hook's own re-renders (a viewport lookup, a
+ * header resize, a correction), so "it has held still, therefore it is
+ * memoised" is a conclusion the renders cannot support. There is no way to
+ * tell a memoised function from an inline one from the inside, which is why
+ * the explicit option exists.
  *
  * One correction per clean render. A height function that is not a pure
  * function of its row — one reading the clock, say — would otherwise disagree
@@ -231,22 +286,22 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
  *
  * @param items - The display list, indexed by the rendered items' `index`.
  * @param rendered - The window virtual-core is showing, with its item sizes.
+ * @param measurements - Recorded geometry for every item, rendered or not.
  * @param heightOf - The height an item is supposed to have right now.
  * @param onDrift - Called once when the two disagree.
  */
 function useHeightDrift<TRow>(
   items: readonly DisplayItem<TRow>[],
   rendered: readonly VirtualItem[],
+  measurements: readonly VirtualItem[],
   heightOf: (item: DisplayItem<TRow>) => number,
   onDrift: () => void,
 ): void {
   const corrected = useRef(false)
   useIsomorphicLayoutEffect(() => {
-    const drifted = rendered.some((virtualItem) => {
-      const item = items[virtualItem.index]
-      // Detail panels are measured, so their size is meant to differ from the estimate.
-      return item !== undefined && item.kind === "row" && heightOf(item) !== virtualItem.size
-    })
+    const drifted =
+      rendered.some((virtualItem) => hasDrifted(items[virtualItem.index], virtualItem.size, heightOf)) ||
+      sampleDrifted(items, measurements, heightOf)
     if (!drifted) {
       corrected.current = false
       return
@@ -255,6 +310,51 @@ function useHeightDrift<TRow>(
     corrected.current = true
     onDrift()
   })
+}
+
+/**
+ * Whether an item's height policy disagrees with the size it was recorded at.
+ *
+ * @param item - The display item, or undefined when the index is past the list.
+ * @param size - The size recorded for it, or undefined when it has none yet.
+ * @param heightOf - The height the item is supposed to have right now.
+ * @returns True only for a data row whose policy has moved; detail panels are
+ *   measured from the DOM, so their size is meant to differ from the estimate.
+ */
+function hasDrifted<TRow>(
+  item: DisplayItem<TRow> | undefined,
+  size: number | undefined,
+  heightOf: (item: DisplayItem<TRow>) => number,
+): boolean {
+  if (item === undefined || size === undefined || item.kind !== "row") return false
+  return heightOf(item) !== size
+}
+
+/**
+ * Whether a bounded, evenly spaced sample of the whole list has drifted.
+ *
+ * Both ends are included, so a policy that only changes the first or the last
+ * rows is sampled rather than fallen between probes. A list no longer than
+ * {@link HEIGHT_PROBE_COUNT} is checked in full, which makes the answer exact
+ * for a small table.
+ *
+ * @param items - The display list.
+ * @param measurements - Recorded geometry for every item, rendered or not.
+ * @param heightOf - The height an item is supposed to have right now.
+ * @returns True as soon as one probe disagrees.
+ */
+function sampleDrifted<TRow>(
+  items: readonly DisplayItem<TRow>[],
+  measurements: readonly VirtualItem[],
+  heightOf: (item: DisplayItem<TRow>) => number,
+): boolean {
+  const count = items.length
+  const probes = Math.min(count, HEIGHT_PROBE_COUNT)
+  for (let probe = 0; probe < probes; probe++) {
+    const index = probes === 1 ? 0 : Math.round((probe * (count - 1)) / (probes - 1))
+    if (hasDrifted(items[index], measurements[index]?.size, heightOf)) return true
+  }
+  return false
 }
 
 /**

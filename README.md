@@ -137,9 +137,35 @@ useDataTable({ id: "receipts", data, columns, getRowHeight: (row) => rowHeightFo
 
 `getRowHeight` may be written inline like that: its identity is not a
 measurement input, so a new arrow on every render costs nothing. It does have
-to be a pure function of its row. Change what it answers for the same row —
-a density toggle, say — and the table notices from the rows on screen and
-measures again on the next frame.
+to be a pure function of its row.
+
+**Changing what it answers.** A density toggle, or any other swap of the
+height policy for rows the table already holds, is noticed by asking the
+function again — for every row on screen, and for 16 rows spread evenly over
+the whole list. That second sample is what catches a change below the fold,
+and it is deliberately a fixed 16 rather than every row: this runs on each
+render, and a 100 000-row table has to stay cheap. So the promise is exact
+and bounded rather than unconditional:
+
+- a change over **any run of about `rowCount / 16` neighbouring rows** — every
+  row, every row of a kind, a whole region — is seen at once, wherever it is
+  and whether or not any of those rows are on screen;
+- a **narrower** change with **no row on screen** in it (one outlier row
+  10 000 places down) is the one the sample can step over. Nothing is wrong on
+  screen, but the scrollbar is short by the difference until those rows are
+  scrolled to.
+
+Pass **`heightVersion`** when your policy can change that narrowly — any value
+that changes with the policy. It re-estimates every row at once:
+
+```tsx
+useDataTable({ id: "receipts", data, columns, getRowHeight, heightVersion: density })
+```
+
+It costs one pass over the rows each time the value changes, which is why it
+is opt-in rather than the default. A change to `data` or to `rowHeight`
+already re-estimates everything on its own — `heightVersion` is only for a
+policy that moves while both of those stand still.
 
 **Virtualisation needs something to scroll.** The table's root has no height
 of its own, so a table given neither `height` nor an ancestor with a height
@@ -489,6 +515,7 @@ const { items, top, bottom, measureElement } = useRowVirtualizer({
   headRef,
   rowHeight: instance.rowHeight,
   getRowHeight: instance.getRowHeight,
+  heightVersion: instance.heightVersion,
   isDetailOpen,
   enabled: true,
 })
@@ -541,8 +568,9 @@ than rebuilding the same four-state contract against undocumented class names.
 | `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
 | `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
+| `heightVersion` | `string \| number` | — | Changes when `getRowHeight` starts answering differently, for a change too narrow for the table to sample. See [Large data](#large-data). |
 
-Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, rowHeight, getRowHeight }`.
+Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, rowHeight, getRowHeight, heightVersion }`.
 
 ### `<DataTable />`
 

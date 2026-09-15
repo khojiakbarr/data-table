@@ -52,7 +52,7 @@ export function TableBody<TData extends RowData>({
   renderDetail,
   onRowClick,
 }: TableBodyProps<TData>) {
-  const { rowHeight, getRowHeight, expanded, pagination } = instance
+  const { rowHeight, getRowHeight, heightVersion, expanded, pagination } = instance
   const hasDetail = renderDetail !== undefined
   // `row.getIsExpanded()` reads the expansion state; `expanded` is in the deps
   // so the display list is rebuilt when a panel opens, whatever TanStack does
@@ -69,6 +69,7 @@ export function TableBody<TData extends RowData>({
     headRef,
     rowHeight,
     getRowHeight,
+    heightVersion,
     isDetailOpen,
     enabled: virtualize,
     /*

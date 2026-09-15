@@ -179,8 +179,10 @@ export interface UseDataTableOptions<TData extends RowData> {
    * A pure function of its row. The identity may change freely — an inline
    * arrow is fine, and costs nothing — but what it answers for a given row
    * must not depend on anything the table cannot see. A policy that starts
-   * answering differently (a density toggle, say) is noticed from the rows on
-   * screen and corrected on the next frame.
+   * answering differently (a density toggle, say) is noticed by asking it
+   * again: for every row on screen, and for a bounded sample spread across
+   * the rest. See {@link UseDataTableOptions.heightVersion} for the one
+   * change that sample can miss.
    *
    * Explicitly `| undefined` under `exactOptionalPropertyTypes`: whether rows
    * vary in height is usually a condition at the call site
@@ -188,6 +190,20 @@ export interface UseDataTableOptions<TData extends RowData> {
    * property alone would reject that.
    */
   getRowHeight?: ((row: TData) => number) | undefined
+  /**
+   * Any value that changes when `getRowHeight` starts answering differently.
+   *
+   * Only needed for a change the table cannot see coming: one that leaves
+   * every rendered row's height alone and moves too few off-screen rows for
+   * the sample to land on. The scrollbar is what goes stale, until the
+   * changed rows are scrolled to. A new value here re-estimates every row at
+   * once instead.
+   *
+   * ```tsx
+   * useDataTable({ id: "receipts", data, columns, getRowHeight, heightVersion: density })
+   * ```
+   */
+  heightVersion?: string | number | undefined
 }
 
 /**
@@ -229,6 +245,7 @@ export function useDataTable<TData extends RowData>({
   onQueryChange,
   rowHeight = 40,
   getRowHeight,
+  heightVersion,
 }: UseDataTableOptions<TData>) {
   const flags: Required<DataTableFeatureFlags> = useMemo(
     () => ({
@@ -563,6 +580,7 @@ export function useDataTable<TData extends RowData>({
     pagination: paginationApi,
     rowHeight,
     getRowHeight,
+    heightVersion,
   }
 }
 

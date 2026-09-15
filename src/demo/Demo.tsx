@@ -3,6 +3,7 @@ import { useMemo } from "react"
 import { DataTable } from "../components/DataTable"
 import { localStorageLayout } from "../core/persistence"
 import { useDataTable, type DataTableFeatures } from "../useDataTable"
+import { ServerDemo } from "./ServerDemo"
 
 /**
  * Development playground.
@@ -61,6 +62,12 @@ const products: Product[] = Array.from({ length: 25 }, (_, index) => ({
   uom: index % 3 === 0 ? "tonna" : "dona",
   stock: ((index * 53) % 900) + 4,
   cost: ((index * 12_345) % 900_000) + 15_000,
+}))
+
+/** Same shape as `receipts`, cycled out to 100 000 rows for the virtualization demo. */
+const hugeReceipts: Receipt[] = Array.from({ length: 100_000 }, (_, index) => ({
+  ...receipts[index % receipts.length]!,
+  code: `KR-${100_000 + index}`,
 }))
 
 const money = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2 })
@@ -250,6 +257,8 @@ export function Demo() {
     initialLayout: { columnPinning: { start: ["code"], end: ["status"] } },
   })
 
+  const hugeTable = useDataTable({ id: "demo-huge", data: hugeReceipts, columns: receiptColumns, storage })
+
   const productTable2 = useDataTable({
     id: "demo-detail",
     data: detailProducts,
@@ -297,6 +306,14 @@ export function Demo() {
       <h2>Tovarlar — second instance, same page</h2>
       <DataTable instance={productTable} height={280} />
       <p className="hint">Independent layout, stored under its own key.</p>
+
+      <h2>Server-side — 10 000 qator, 300 ms kechikish</h2>
+      <ServerDemo />
+      <p className="hint">Sort yoki sahifa o'zgarganda so'rov ketadi; javob kelguncha eski qatorlar xira turadi.</p>
+
+      <h2>100 000 qator — client mode, virtualizatsiya</h2>
+      <DataTable instance={hugeTable} height={400} striped />
+      <p className="hint">DOM'da faqat ko'ringan qatorlar; scroll bar aniq.</p>
 
       <h2>Akkordeon — detail panel, nested inside</h2>
       <DataTable

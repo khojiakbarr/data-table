@@ -1,5 +1,6 @@
 import { act, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { renderToStaticMarkup } from "react-dom/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { ServerDemo } from "./ServerDemo"
 import type { ServerPage, ServerReceipt } from "./fakeServer"
@@ -124,5 +125,27 @@ describe("ServerDemo fail-next checkbox", () => {
     vi.mocked(fetchReceiptsMock).mockReturnValueOnce(next.promise)
     await user.click(screen.getByRole("button", { name: /next page/i }))
     expect(fetchReceiptsMock).toHaveBeenLastCalledWith(expect.anything(), { fail: true })
+  })
+})
+
+describe("ServerDemo first commit", () => {
+  beforeEach(() => {
+    vi.mocked(fetchReceiptsMock).mockReset()
+  })
+
+  /**
+   * `useTableQuery` only announces its initial query from a passive effect —
+   * one commit after mount — so the fetch effect in {@link ServerDemo} has
+   * not run yet on the very first paint. RTL's `render()` flushes effects
+   * inside `act()`, which collapses that first commit into the settled one
+   * and would let a regression here pass silently; `renderToStaticMarkup`
+   * renders once with no effects at all, which is exactly the pre-effect
+   * state a real first paint commits.
+   */
+  it("shows the skeleton, never the empty state, on the very first paint", () => {
+    const markup = renderToStaticMarkup(<ServerDemo />)
+    expect(markup).not.toContain("dt-empty")
+    expect(markup).not.toContain("No rows")
+    expect(markup).toContain("dt-skeleton-row")
   })
 })

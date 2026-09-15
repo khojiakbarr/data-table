@@ -29,7 +29,17 @@ const EMPTY: ServerReceipt[] = []
 export function ServerDemo() {
   const [query, setQuery] = useState<TableQuery>()
   const [page, setPage] = useState<ServerPage>()
-  const [loading, setLoading] = useState(false)
+  /*
+   * Starts `true`, not `false`: `useTableQuery` only announces its initial
+   * query from a passive effect, one commit after mount, so the first paint
+   * happens with `query` still `undefined` and the fetch-effect below still
+   * unrun. Starting `false` would make that first commit render with
+   * loading=false, rows=[], error=null — DataTable's `showEmpty` reads that
+   * as "no rows", and the table flashes "No rows" before the skeleton. This
+   * cannot leave a stuck spinner: `useDataTable` guarantees a query lands on
+   * mount, so the fetch effect always runs and clears `loading`.
+   */
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
   const [failNext, setFailNext] = useState(false)
   const [attempt, setAttempt] = useState(0)

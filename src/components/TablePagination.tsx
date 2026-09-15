@@ -106,5 +106,5 @@ function PageInput({
 /** "1 000" with a narrow no-break space (U+202F); "…" while unknown. */
 function formatCount(count: number | undefined): string {
   if (count === undefined) return "…"
-  return count.toLocaleString("en-US").replace(/,/g, " ")
+  return count.toLocaleString("en-US").replace(/,/g, "\u202f")
 }

@@ -25,7 +25,7 @@ describe("pagination footer", () => {
 
   it("shows the range, the page and the total", () => {
     render(<Table />)
-    expect(screen.getByText(/^Rows:/).textContent).toBe("Rows: 1 000")
+    expect(screen.getByText(/^Rows:/).textContent).toBe("Rows: 1\u202f000")
     expect(screen.getByText("1–50 of 1000")).toBeInTheDocument()
     expect(screen.getByText("Page 1 of 20")).toBeInTheDocument()
   })

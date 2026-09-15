@@ -274,7 +274,13 @@
   border: 0;
   padding: 0;
   display: flex;
-  justify-content: center;
+  /*
+   * The line sits on the cell's edge, where a group header draws its border,
+   * so the two coincide instead of running side by side 4px apart. The hit
+   * area stays inside the cell: the next header is sticky and would cover
+   * anything hanging past the edge.
+   */
+  justify-content: flex-end;
 }
 
 .dt-resizer::after {
@@ -522,6 +528,12 @@
   font-size: 0.92em;
   letter-spacing: 0.02em;
   opacity: 0.85;
+}
+
+/* The handle is placed against the padding box, which stops short of the
+   group's border; nudge it out so its line lands on the border itself. */
+.dt-th-group .dt-resizer {
+  inset-inline-end: -1px;
 }
 
 /* Each header row sticks below the one above it; `top` is set inline from the

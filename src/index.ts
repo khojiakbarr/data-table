@@ -40,6 +40,10 @@ export type { AutosizeActions } from "./core/useAutosize"
 export { clampColumnWidth, columnBounds } from "./core/sizing"
 export type { ColumnBounds } from "./core/sizing"
 export { localStorageLayout, noLayoutStorage, pruneLayout } from "./core/persistence"
+export { useRowVirtualizer } from "./core/useRowVirtualizer"
+export type { RowVirtualizerOptions, RowVirtualizerResult, RenderedItem } from "./core/useRowVirtualizer"
+export { buildDisplayList, displayItemKey, spacerSizes } from "./core/virtualRows"
+export type { DisplayItem, SpacerSizes } from "./core/virtualRows"
 
 export type {
   DataTableFeatureFlags,

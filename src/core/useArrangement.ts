@@ -19,8 +19,10 @@ interface Arrangement {
   /** Differs from the declared layout, so a Reset control makes sense. */
   isCustomised: boolean
   /**
-   * Changed by the user since mount, so worth writing. A layout read from
-   * storage is customised but has nothing new to save.
+   * Changed by the user since mount, so worth writing. Distinct from
+   * `isCustomised`: a layout read from storage is customised but has nothing
+   * new to save, and re-saving it on mount is a pointless write — or a network
+   * request, for a server-backed adapter.
    */
   hasUnsavedChanges: boolean
 }
@@ -48,6 +50,13 @@ export function apply<T>(updater: T | ((old: T) => T), current: T): T {
  * the table as customised or trigger a write.
  */
 export function useArrangement({ id, store, initialLayout, columnIds }: UseArrangementOptions) {
+  // Read storage once per table id. Re-reading on every render would fight the
+  // user: a change is saved, then immediately re-applied from disk.
+  //
+  // `columnOrder` starts empty rather than pre-seeded. TanStack reads it as
+  // "natural order" when empty, and seeding it is how grouped tables break:
+  // the ordering feature matches leaf ids, so a seeded list containing group
+  // ids silently reorders every column that is not in it.
   const [arrangement, setArrangement] = useState<Arrangement>(() => {
     const stored = store.load(id)
     return {
@@ -60,6 +69,13 @@ export function useArrangement({ id, store, initialLayout, columnIds }: UseArran
 
   useDebouncedSave(store, id, arrangement.layout, arrangement.hasUnsavedChanges)
 
+  /**
+   * Record a change to one slice of the layout.
+   *
+   * A change that leaves the slice as it was is dropped: TanStack commits a
+   * width on every mouseup, so a press-and-release on a resize handle would
+   * otherwise mark the table as customised and write an identical layout.
+   */
   const updateSlice = useCallback(
     <TKey extends keyof TableLayout>(
       key: TKey,

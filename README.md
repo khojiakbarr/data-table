@@ -373,9 +373,21 @@ nothing left to depend on which stylesheet happens to load last:
   --dt-header-bg: var(--table-header-bg);
   --dt-row-hover: var(--table-row-hover);
   --dt-accent: var(--primary);
+  --dt-accent-text: var(--primary);
   --dt-radius: 6px;
 }
 ```
+
+**`--dt-accent` and `--dt-accent-text` are two different pairings of your brand colour, and
+setting one does not set the other.** `--dt-accent` is a *fill* — the focus ring, resize
+handle, drop indicator and pin badge are all painted in it, against whatever sits next to
+them, so WCAG only asks it to clear 3:1. `--dt-accent-text` is that same colour printed AS
+TEXT directly on `--dt-bg` (`.dt-link`'s "Show all" / "Reset" buttons, the active sort
+direction), which needs the stricter 4.5:1 body-text minimum — a brand blue that clears 3:1
+as a fill can still fail 4.5:1 as text, which is why the base sheet keeps these as two
+tokens instead of deriving one from the other. Set both when you override the accent; if
+your brand colour does not itself clear 4.5:1 on `--dt-bg`, give `--dt-accent-text` a
+darkened (light mode) or lightened (dark mode) variant of it instead of the same value.
 
 <details>
 <summary>All tokens</summary>
@@ -386,7 +398,10 @@ nothing left to depend on which stylesheet happens to load last:
 | `--dt-border` `--dt-radius` | Edges |
 | `--dt-header-bg` `--dt-header-fg` `--dt-header-height` | Header row |
 | `--dt-row-hover` `--dt-row-stripe` `--dt-row-height` | Body rows |
-| `--dt-accent` `--dt-accent-fg` `--dt-accent-text` `--dt-focus-ring` | Interactive accents |
+| `--dt-accent` | Fill: focus ring, resize handle, drop indicator, pin badge (needs 3:1) |
+| `--dt-accent-fg` | Text printed ON `--dt-accent` (the pin badge; needs 4.5:1 there) |
+| `--dt-accent-text` | `--dt-accent`'s colour printed AS text on `--dt-bg` (`.dt-link`, active sort direction; needs 4.5:1 there) — set alongside `--dt-accent`, see above |
+| `--dt-focus-ring` | Focus outline |
 | `--dt-resize-handle` `--dt-resize-handle-active` | Resize handle |
 | `--dt-drop-indicator` | Reorder caret |
 | `--dt-pin-shadow-start` `--dt-pin-shadow-end` | Pinned column seams |
@@ -433,8 +448,14 @@ more to win outright, with nothing left to depend on:
 ```css
 .dt-root.dt-root.dt-root {
   --dt-accent: var(--chart-2);
+  --dt-accent-text: var(--chart-2);
 }
 ```
+
+Same pairing as in [Styling](#styling) above: `--dt-accent` recolours the fill (focus ring,
+resize handle, drop indicator, pin badge) and `--dt-accent-text` recolours the accent
+printed as text (`.dt-link`, the active sort direction) — set both, since a design-system
+token like `--chart-2` is not guaranteed to clear the stricter 4.5:1 text needs as-is.
 
 `theme="light"` or `theme="dark"` opts that table out of the preset and back
 onto the built-in palette, so the prop still means what it says while other

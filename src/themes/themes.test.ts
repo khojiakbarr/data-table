@@ -380,9 +380,7 @@ describe("base palette", () => {
   it("prints the multi-sort priority digit at WCAG AA in both themes", () => {
     // .dt-sort-index (the multi-sort priority number) is normal-size text
     // (10px) at full --dt-header-fg on --dt-header-bg — no opacity dimming,
-    // which is what previously pulled it under 4.5:1 in both themes. This
-    // pair also covers the active sort chevron (an aria-hidden icon, whose
-    // own WCAG 1.4.11 floor is a lower 3:1), which uses the same colours.
+    // which is what previously pulled it under 4.5:1 in both themes.
     expect(contrastRatio(baseTokenValue("--dt-header-fg"), baseTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(
       4.5,
     )
@@ -402,6 +400,27 @@ describe("base palette", () => {
     expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(
       3,
     )
+  })
+
+  it("prints the active sort chevron at the WCAG 1.4.11 non-text minimum in both themes", () => {
+    // The active chevron is --dt-fg on --dt-header-bg, not --dt-header-fg —
+    // see "keeps the active sort chevron visibly distinct..." below for why
+    // it needs its own token rather than reusing the digit's. Still only a
+    // graphical affordance (aria-hidden), so 3:1 is the floor, not 4.5:1.
+    expect(contrastRatio(baseTokenValue("--dt-fg"), baseTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(3)
+    expect(contrastRatio(darkTokenValue("--dt-fg"), darkTokenValue("--dt-header-bg"))).toBeGreaterThanOrEqual(3)
+  })
+
+  it("keeps the active sort chevron visibly distinct from the inactive one in both themes", () => {
+    // Regression guard: the active chevron used to be --dt-header-fg, which
+    // happens to equal --dt-muted-fg (the inactive colour) in the dark
+    // palette — #a1a1aa on #a1a1aa, a no-op "transition" between two
+    // identical greys, even though both individually clear 3:1 against
+    // --dt-header-bg on their own. Asserting a real contrast ratio *between*
+    // the two tokens — not just that each clears 3:1 against the background —
+    // is what a per-token check above cannot catch and this one can.
+    expect(contrastRatio(baseTokenValue("--dt-muted-fg"), baseTokenValue("--dt-fg"))).toBeGreaterThan(1.5)
+    expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-fg"))).toBeGreaterThan(1.5)
   })
 
   it("prints the column-panel drag handle at the WCAG 1.4.11 non-text minimum in both themes", () => {

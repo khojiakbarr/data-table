@@ -176,6 +176,39 @@ describe("server mode", () => {
     warn.mockRestore()
   })
 
+  it("warns when a server table has no way to ever answer its first page", () => {
+    // The exact shape of `ServerFirstPaint.test.tsx`'s "Silent" host: no
+    // rowCount, no onQueryChange, and (as a result) never any rows either.
+    // Structurally permanent, not merely slow — see the warning's own comment
+    // in useDataTable.ts for why that is what makes it safe to report on the
+    // very first render, with no timer and no second commit to wait for.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    renderHook(() =>
+      useDataTable<Row>({
+        id: "srv-stuck", columns, data: [], mode: "server", getRowId: (r) => r.id,
+      }),
+    )
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("no onQueryChange and no rowCount"),
+    )
+    warn.mockRestore()
+  })
+
+  it("stays silent about a server table that can still be answered", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    // Same "nothing yet" state as the broken host above — no rowCount, no
+    // rows — but wired with onQueryChange, so the host has a way to learn
+    // what page was requested and, eventually, to answer it.
+    renderHook(() =>
+      useDataTable<Row>({
+        id: "srv-pending", columns, data: [], mode: "server", getRowId: (r) => r.id,
+        onQueryChange: vi.fn(),
+      }),
+    )
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("no onQueryChange"))
+    warn.mockRestore()
+  })
+
   it("accepts the README's async options verbatim under exactOptionalPropertyTypes", () => {
     /*
      * Compile-level regression test for finding #28: `rowCount`,

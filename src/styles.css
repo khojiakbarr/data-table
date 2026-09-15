@@ -46,6 +46,13 @@
    * would be invisible printed on the page instead of on the badge). #3b82f6
    * itself is only 3.68:1 on white, short of 4.5:1; darkened here to clear
    * it (6.70:1). Dark theme below lightens it instead (6.97:1 on #18181b).
+   *
+   * A host overriding --dt-accent for its own brand colour has to set THIS
+   * token too: they answer different contrast requirements (3:1 as a fill,
+   * 4.5:1 as text) against different backgrounds, so one cannot be derived
+   * from the other in general, and CSS custom properties do not cascade a
+   * default from a sibling. See README's Styling section for the override
+   * recipe this pairing requires.
    */
   --dt-accent-text: #1d4ed8;
   --dt-resize-handle: #d4d4d8;
@@ -248,13 +255,24 @@
 }
 
 /*
- * A solid colour, not an opacity fraction: WCAG 1.4.11 requires 3:1 for a
- * graphical affordance (this chevron signals "sortable"), and dimming the
+ * Two solid colours, not one dimmed by opacity: WCAG 1.4.11 requires 3:1 for
+ * a graphical affordance (this chevron signals "sortable"), and dimming the
  * inherited --dt-header-fg with opacity dropped it under that floor in both
  * themes. --dt-muted-fg already clears 3:1 (and 4.5:1) against --dt-header-bg
- * in both themes on its own — see themes.test.ts "base palette" — so this
- * reuses it instead of adding a token, and stays correct if a host overrides
- * --dt-header-bg, unlike a percentage of it.
+ * in both themes on its own — see themes.test.ts "base palette" — so the
+ * inactive state reuses it instead of adding a token, and stays correct if a
+ * host overrides --dt-header-bg, unlike a percentage of it.
+ *
+ * The active state used --dt-header-fg for the same reason, but that is a
+ * second, *independent* token that only coincidentally differs from
+ * --dt-muted-fg in the light palette (#52525b vs #71717a) — the dark palette
+ * gives both the identical #a1a1aa, which made the active/inactive colour
+ * change, and the transition animating it, a no-op there. --dt-fg (the
+ * table's full-strength foreground, not the header's own muted text colour)
+ * is used for "active" instead: it clears 3:1 against --dt-header-bg with
+ * room to spare in both themes — see themes.test.ts "base palette" — and,
+ * being a different token from --dt-muted-fg rather than a same-themed value
+ * that merely happens to differ, cannot coincide with it again by accident.
  */
 .dt-sort-icon {
   flex: none;
@@ -263,7 +281,7 @@
 }
 
 .dt-th[aria-sort]:not([aria-sort="none"]) .dt-sort-icon {
-  color: var(--dt-header-fg);
+  color: var(--dt-fg);
 }
 
 /*

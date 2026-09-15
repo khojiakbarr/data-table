@@ -1,6 +1,6 @@
 {
   "name": "@khojiakbarr/data-table",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Headless-first React data table: nested column groups, expandable rows, column pinning, resizing, reordering, sorting and per-table persisted layout.",
   "keywords": [
     "accordion",
@@ -12,10 +12,14 @@
     "datatable",
     "expandable-rows",
     "nested-columns",
+    "pagination",
     "react",
+    "server-side",
+    "shadcn",
     "table",
     "tanstack-table",
-    "tree-table"
+    "tree-table",
+    "virtualization"
   ],
   "license": "MIT",
   "author": "Khojiakbar Chinozbekov",
@@ -42,7 +46,9 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": "./dist/styles.css",
+    "./themes/shadcn.css": "./dist/themes/shadcn.css",
+    "./themes/shadcn-hsl.css": "./dist/themes/shadcn-hsl.css"
   },
   "publishConfig": {
     "access": "public"
@@ -57,11 +63,13 @@
   },
   "peerDependencies": {
     "@tanstack/react-table": "^9.0.0",
+    "@tanstack/react-virtual": "^3.14.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@tanstack/react-table": "^9.2.4",
+    "@tanstack/react-virtual": "^3.14.13",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.1",

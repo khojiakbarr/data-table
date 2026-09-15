@@ -95,4 +95,10 @@ describe("pruneLayout", () => {
     const pruned = pruneLayout(layout, ["a", "c"])
     expect(pruned.sorting).toEqual([])
   })
+
+  it("keeps a positive page size and drops anything else", () => {
+    expect(pruneLayout({ pageSize: 100 }, ["a"]).pageSize).toBe(100)
+    expect(pruneLayout({ pageSize: 0 }, ["a"]).pageSize).toBeUndefined()
+    expect(pruneLayout({ pageSize: "x" as unknown as number }, ["a"]).pageSize).toBeUndefined()
+  })
 })

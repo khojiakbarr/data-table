@@ -132,5 +132,9 @@ export function pruneLayout(
     pruned.sorting = stored.sorting.filter((entry) => known.has(entry.id))
   }
 
+  if (Number.isFinite(stored.pageSize) && (stored.pageSize as number) > 0) {
+    pruned.pageSize = stored.pageSize as number
+  }
+
   return pruned
 }

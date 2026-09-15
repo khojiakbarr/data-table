@@ -15,12 +15,11 @@ import {
   type ColumnDef,
   type ColumnSizingState,
   type RowData,
-  type Updater,
 } from "@tanstack/react-table"
-import { useCallback, useMemo, useRef, useState } from "react"
-import { noLayoutStorage, pruneLayout } from "./core/persistence"
+import { useMemo, useState } from "react"
+import { noLayoutStorage } from "./core/persistence"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
-import { useDebouncedSave } from "./core/useDebouncedSave"
+import { apply, useArrangement } from "./core/useArrangement"
 import type { DataTableFeatureFlags, LayoutStorage, TableLayout } from "./types"
 
 /**
@@ -46,14 +45,6 @@ const FEATURES = tableFeatures({
 })
 
 export type DataTableFeatures = typeof FEATURES
-
-const EMPTY_LAYOUT: TableLayout = {
-  columnOrder: [],
-  columnVisibility: {},
-  columnPinning: { start: [], end: [] },
-  columnSizing: {},
-  sorting: [],
-}
 
 export interface UseDataTableOptions<TData extends RowData> {
   /**
@@ -113,20 +104,6 @@ export interface UseDataTableOptions<TData extends RowData> {
   canExpand?: (row: TData) => boolean
 }
 
-/** The layout plus what the table knows about where it came from. */
-interface Arrangement {
-  layout: TableLayout
-  /** Differs from the declared layout, so a Reset control makes sense. */
-  isCustomised: boolean
-  /**
-   * Changed by the user since mount, so worth writing. Distinct from
-   * `isCustomised`: a layout read from storage is customised but has nothing
-   * new to save, and re-saving it on mount is a pointless write — or a network
-   * request, for a server-backed adapter.
-   */
-  hasUnsavedChanges: boolean
-}
-
 /**
  * Build a table with column pinning, resizing, reordering, sorting and
  * visibility, and remember how the user arranged it.
@@ -180,61 +157,12 @@ export function useDataTable<TData extends RowData>({
     [minColumnWidth, maxColumnWidth],
   )
 
-  // Read storage once per table id. Re-reading on every render would fight the
-  // user: a change is saved, then immediately re-applied from disk.
-  //
-  // `columnOrder` starts empty rather than pre-seeded. TanStack reads it as
-  // "natural order" when empty, and seeding it is how grouped tables break:
-  // the ordering feature matches leaf ids, so a seeded list containing group
-  // ids silently reorders every column that is not in it.
-  const [arrangement, setArrangement] = useState<Arrangement>(() => {
-    const stored = store.load(id)
-    return {
-      layout: { ...EMPTY_LAYOUT, ...initialLayout, ...pruneLayout(stored ?? {}, columnIds) },
-      isCustomised: stored !== null,
-      hasUnsavedChanges: false,
-    }
+  const { layout, isCustomised, updateSlice, resetLayout } = useArrangement({
+    id,
+    store,
+    initialLayout,
+    columnIds,
   })
-  const { layout, isCustomised, hasUnsavedChanges } = arrangement
-
-  const initialRef = useRef(initialLayout)
-
-  useDebouncedSave(store, id, layout, hasUnsavedChanges)
-
-  /**
-   * Record a change to one slice of the layout.
-   *
-   * A change that leaves the slice as it was is dropped: TanStack commits a
-   * width on every mouseup, so a press-and-release on a resize handle would
-   * otherwise mark the table as customised and write an identical layout.
-   */
-  const updateSlice = useCallback(
-    <TKey extends keyof TableLayout>(
-      key: TKey,
-      updater: Updater<TableLayout[TKey]>,
-      normalise: (slice: TableLayout[TKey]) => TableLayout[TKey] = (slice) => slice,
-    ) => {
-      setArrangement((previous) => {
-        const next = normalise(apply(updater, previous.layout[key]))
-        if (layoutSliceEqual(next, previous.layout[key])) return previous
-        return {
-          layout: { ...previous.layout, [key]: next },
-          isCustomised: true,
-          hasUnsavedChanges: true,
-        }
-      })
-    },
-    [],
-  )
-
-  const resetLayout = useCallback(() => {
-    store.clear(id)
-    setArrangement({
-      layout: { ...EMPTY_LAYOUT, ...initialRef.current },
-      isCustomised: false,
-      hasUnsavedChanges: false,
-    })
-  }, [store, id])
 
   /*
    * Which rows are open is deliberately NOT part of the layout: it is a
@@ -296,11 +224,6 @@ export type DataTableInstance<TData extends RowData> = ReturnType<
   typeof useDataTable<TData>
 >
 
-/** TanStack state setters accept a value or an updater function. */
-function apply<T>(updater: T | ((old: T) => T), current: T): T {
-  return typeof updater === "function" ? (updater as (old: T) => T)(current) : updater
-}
-
 /**
  * Widths as they will be rendered.
  *
@@ -327,32 +250,6 @@ function normaliseSizing(
     next[columnId] = clamped
   }
   return next
-}
-
-/**
- * Structural equality for a layout slice.
- *
- * Slices are JSON-shaped — arrays of ids, maps of primitives, `{ id, desc }`
- * pairs — so a plain recursive comparison is exact, and it is what tells a
- * genuine change from TanStack rebuilding an identical array.
- */
-function layoutSliceEqual(a: unknown, b: unknown): boolean {
-  if (Object.is(a, b)) return true
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((item, index) => layoutSliceEqual(item, b[index]))
-  }
-  if (isRecord(a) && isRecord(b)) {
-    const keys = Object.keys(a)
-    return (
-      keys.length === Object.keys(b).length &&
-      keys.every((key) => key in b && layoutSliceEqual(a[key], b[key]))
-    )
-  }
-  return false
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
 interface ColumnDefShape {

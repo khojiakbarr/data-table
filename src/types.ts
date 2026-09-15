@@ -18,6 +18,8 @@ export interface TableLayout {
   columnPinning: ColumnPinningState
   columnSizing: ColumnSizingState
   sorting: SortingState
+  /** Rows per page the user chose. Absent until they change it. */
+  pageSize?: number
 }
 
 /**

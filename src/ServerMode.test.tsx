@@ -131,6 +131,20 @@ describe("server mode", () => {
     expect(onQueryChange).toHaveBeenCalledTimes(1)
   })
 
+  it("honours an explicit page index set alongside a new page size", () => {
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "srv8", columns, data: page(0, 50), mode: "server", rowCount: 500,
+        getRowId: (r) => r.id,
+      }),
+    )
+
+    // Both halves arrive in one update; clamping the index against the old
+    // size's page count would drop it on page 0.
+    act(() => result.current.table.setPagination({ pageIndex: 7, pageSize: 20 }))
+    expect(result.current.query.pagination).toEqual({ pageIndex: 7, pageSize: 20 })
+  })
+
   it("uses the row id for expansion state", () => {
     const { result, rerender } = renderHook(
       ({ data }: { data: Row[] }) =>

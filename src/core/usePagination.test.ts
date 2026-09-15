@@ -61,6 +61,20 @@ describe("usePagination", () => {
     expect(result.current.pageSizeOptions).toEqual([20, 30, 50, 100])
   })
 
+  it("sets page and size together, clamping against the new size", () => {
+    const { result, onPageSizeChange } = setup()
+
+    // 1000 rows at 20 a page is 50 pages, so page 7 is in range and must be
+    // honoured rather than clamped against the old size's 20 pages.
+    act(() => result.current.setPagination({ pageIndex: 7, pageSize: 20 }))
+    expect(result.current.pageIndex).toBe(7)
+    expect(onPageSizeChange).toHaveBeenCalledWith(20)
+
+    // 10 pages at 100 a page, so an out-of-range index lands on the last one.
+    act(() => result.current.setPagination({ pageIndex: 99, pageSize: 100 }))
+    expect(result.current.pageIndex).toBe(9)
+  })
+
   it("goes back to the first page on resetPage", () => {
     const { result } = setup()
     act(() => result.current.setPageIndex(3))

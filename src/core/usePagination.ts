@@ -23,6 +23,8 @@ export interface PaginationApi {
   rowCount: number | undefined
   setPageIndex: (pageIndex: number) => void
   setPageSize: (pageSize: number) => void
+  /** Set both at once; the index is clamped against the page count of the NEW size. */
+  setPagination: (next: { pageIndex: number; pageSize: number }) => void
   /** Back to the first page — called when sorting, filters or grouping change. */
   resetPage: () => void
 }
@@ -93,19 +95,45 @@ export function usePagination({
     [pageIndex, pageSize, onPageSizeChange],
   )
 
+  /*
+   * A size change that carries its own index. Clamping against `pageCount`
+   * would use the OLD size's page count and throw the caller's index away —
+   * `setPagination({ pageIndex: 7, pageSize: 20 })` would land on page 0 — so
+   * the last page is recomputed here from the size being set.
+   */
+  const setPagination = useCallback(
+    (next: { pageIndex: number; pageSize: number }) => {
+      if (!Number.isFinite(next.pageSize)) return
+      const size = Math.max(1, Math.floor(next.pageSize))
+      const last =
+        rowCount === undefined || !Number.isFinite(rowCount)
+          ? Number.MAX_SAFE_INTEGER
+          : Math.max(1, Math.ceil(rowCount / size)) - 1
+      // A disabled table has one page, but the size is still a preference
+      // worth persisting for when paging is turned back on.
+      if (enabled) setRawIndex(Math.max(0, Math.min(next.pageIndex, last)))
+      if (size !== pageSize) onPageSizeChange(size)
+    },
+    [enabled, rowCount, pageSize, onPageSizeChange],
+  )
+
   const resetPage = useCallback(() => setRawIndex(0), [])
 
-  /*
-   * Keyed on contents rather than array identity. A caller writing
-   * `pageSizeOptions={[20, 50]}` inline passes a new array every render, and
-   * keying on it would make this hook's whole result new every render — which
-   * defeats the memo below and every memo a consumer builds on it.
-   */
   const optionsKey = pageSizeOptions.join(",")
-  const options = useMemo(() => {
-    const listed = optionsKey === "" ? [] : optionsKey.split(",").map(Number)
-    return listed.includes(pageSize) ? listed : [...listed, pageSize].sort((a, b) => a - b)
-  }, [optionsKey, pageSize])
+  const options = useMemo(
+    () =>
+      pageSizeOptions.includes(pageSize)
+        ? pageSizeOptions
+        : [...pageSizeOptions, pageSize].sort((a, b) => a - b),
+    /*
+     * `optionsKey` stands in for the array's contents. A caller writing
+     * `pageSizeOptions={[20, 50]}` inline passes a new array every render, and
+     * keying on its identity would make this hook's whole result new every
+     * render — which defeats the memo below and every memo built on it.
+     */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [optionsKey, pageSize],
+  )
 
   // Memoised so the object itself is stable between renders that changed
   // nothing. Callers spread it into their own memos; a fresh literal here would
@@ -120,6 +148,7 @@ export function usePagination({
       rowCount,
       setPageIndex,
       setPageSize,
+      setPagination,
       resetPage,
     }),
     [
@@ -131,6 +160,7 @@ export function usePagination({
       rowCount,
       setPageIndex,
       setPageSize,
+      setPagination,
       resetPage,
     ],
   )

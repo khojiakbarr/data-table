@@ -29,6 +29,11 @@ export interface UseTableQueryOptions {
  * a host that echoes the query back into its own state does not either: the
  * resulting render produces the same query object.
  *
+ * In client mode, a row count that shrinks below the current page is corrected
+ * before paint, but the query for the transient page is still announced once;
+ * hosts that mirror the query into a URL should treat consecutive
+ * announcements as replaceable.
+ *
  * @param options - See {@link UseTableQueryOptions}.
  * @returns The current query, stable between renders that did not change it.
  *

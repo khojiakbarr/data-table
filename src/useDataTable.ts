@@ -344,9 +344,14 @@ export function useDataTable<TData extends RowData>({
     onPaginationChange: (updater: Updater<PaginationState>) => {
       const next = apply(updater, { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize })
       if (next.pageSize !== pageState.pageSize) {
-        // setPageSize already recomputes the index from the top row; a second
-        // setPageIndex here would clamp it against the old page size's count.
-        pageState.setPageSize(next.pageSize)
+        /*
+         * A size change always arrives with an index: `setPageSize` computes
+         * one from the top row, `setPagination` states one outright. Applying
+         * them separately would clamp that index against the old size's page
+         * count — dropping `setPagination({ pageIndex: 7, pageSize: 20 })` onto
+         * page 0 — so both go in together.
+         */
+        pageState.setPagination(next)
         return
       }
       if (next.pageIndex !== pageState.pageIndex) pageState.setPageIndex(next.pageIndex)
@@ -418,17 +423,17 @@ export function useDataTable<TData extends RowData>({
 
   /*
    * `process.env.NODE_ENV` and not `import.meta.env.DEV`: this library is built
-   * in Vite's library mode, which replaces `import.meta.env.DEV` with our own
-   * build's value and so would strip the warning from the shipped bundle
+   * in Vite's library mode, which substitutes `import.meta.env.DEV` with our
+   * own build's value and so would strip the warning from the shipped bundle
    * entirely. `process.env` is deliberately left alone for the consumer's
    * bundler to substitute, which is what puts the warning in their dev build.
+   *
+   * Bare, with no `typeof process` guard: esbuild folds `typeof process` to
+   * "undefined" for browser targets, which would make the warning unreachable
+   * for everyone. `@tanstack/table-core` — a required peer, so it is in every
+   * consumer's graph — reads `process.env.NODE_ENV` bare for the same reason.
    */
-  if (
-    typeof process !== "undefined" &&
-    process.env.NODE_ENV !== "production" &&
-    isServer &&
-    !getRowId
-  ) {
+  if (process.env.NODE_ENV !== "production" && isServer && !getRowId) {
     warnOnce(
       `useDataTable("${id}"): mode "server" without getRowId keys rows by position; ` +
         `expansion will not follow records across pages.`,

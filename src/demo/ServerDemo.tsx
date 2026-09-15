@@ -39,11 +39,16 @@ export function ServerDemo() {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetchReceipts(query, { fail: failNext })
+    // One-shot: capture and disarm as the request goes out, not when it
+    // resolves. Disarming on success only would leave the flag `true` after a
+    // failure, so a retry read it again and failed forever; disarming here
+    // instead also stops the flag being cleared out from under a checkbox the
+    // user ticked *during* an in-flight (about-to-succeed) request.
+    const shouldFail = failNext
+    if (shouldFail) setFailNext(false)
+    fetchReceipts(query, { fail: shouldFail })
       .then((result) => {
-        if (cancelled) return
-        setPage(result)
-        setFailNext(false)
+        if (!cancelled) setPage(result)
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(reason)
@@ -56,11 +61,10 @@ export function ServerDemo() {
     }
     /*
      * `failNext` is intentionally left out of the dependency array: it is
-     * read once when the request starts (so toggling the checkbox affects
-     * only the *next* request, not the one in flight), and re-running the
-     * effect whenever it changes would refetch the current page for no
-     * reason. `attempt` is the deliberate re-run trigger, bumped by `retry`.
-     * This repository has no eslint installed, so there is no
+     * read once when the request starts (captured into `shouldFail`), and
+     * re-running the effect whenever it changes would refetch the current
+     * page for no reason. `attempt` is the deliberate re-run trigger, bumped
+     * by `retry`. This repository has no eslint installed, so there is no
      * react-hooks/exhaustive-deps rule to satisfy here.
      */
   }, [query, attempt])

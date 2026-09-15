@@ -197,9 +197,9 @@ for printing, tiny tables and tests that assert on the whole body.
 
 ### Headless
 
-`useRowVirtualizer(instance, viewportRef, { rowHeight, getRowHeight, expanded, renderDetail })`
-returns `{ items, topSpacer, bottomSpacer, measureElement }` and is
-exported, mirroring `useAutosize`.
+`useRowVirtualizer({ rows, viewportRef, headRef, rowHeight, getRowHeight, isDetailOpen, enabled })`
+returns `{ items, top, bottom, measureElement }` and is exported, mirroring
+`useAutosize`.
 
 ## Footer and loading states
 

@@ -6,6 +6,8 @@ import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 /** A guess for a detail panel until it is measured. */
 const DETAIL_ESTIMATE_PX = 160
 const DEFAULT_OVERSCAN = 8
+/** Stable no-op for the disabled path, so `measureElement` does not re-attach its ref every render. */
+const NOOP_MEASURE = () => undefined
 
 /** Options for {@link useRowVirtualizer}. */
 export interface RowVirtualizerOptions<TRow extends { id: string; original: unknown }> {
@@ -45,6 +47,17 @@ export interface RowVirtualizerResult<TRow> {
  * `getRowHeight(row)`, so the scrollbar is exact by construction. Detail
  * panels are the exception and are measured on mount and on resize.
  *
+ * Preconditions:
+ * - `isDetailOpen` must be referentially stable (e.g. wrapped in
+ *   `useCallback`). An inline arrow is a new function every render, which
+ *   rebuilds the display list and forces an O(n) measurement pass each time.
+ * - `rowHeight` / `getRowHeight` must equal the rendered row's border-box
+ *   height exactly. Data rows are never measured, so even a 1px discrepancy
+ *   accumulates across rows into a wrong scrollbar height.
+ * - `headRef` must point at an element that mounts in the same commit as the
+ *   body. The effect that reads its height runs once per ref identity, not
+ *   on every render, so a header appearing later keeps a stale `scrollMargin`.
+ *
  * @example
  * const { items, top, bottom, measureElement } = useRowVirtualizer({ ... })
  */
@@ -61,9 +74,12 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
   const items = useMemo(() => buildDisplayList(rows, isDetailOpen), [rows, isDetailOpen])
   const scrollMargin = useElementHeight(headRef)
 
+  // The virtualiser only ever asks for indices within [0, items.length) — the
+  // `count` it was given — so `items[index]` below is always in range. The
+  // guard in `estimateSize` stays because it must return a number
+  // unconditionally; the other two accesses rely on the same guarantee via `!`.
   const estimateSize = useCallback(
     (index: number) => {
-      // index comes from the virtualiser iterating this same list, so it is always in range.
       const item = items[index]
       if (!item) return rowHeight
       if (item.kind === "detail") return DETAIL_ESTIMATE_PX
@@ -71,8 +87,17 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
     },
     [items, rowHeight, getRowHeight],
   )
-  // index comes from the virtualiser iterating this same list, so it is always in range.
-  const getItemKey = useCallback((index: number) => displayItemKey(items[index]!), [items])
+  // virtual-core re-measures only when `getItemKey` changes identity — not when
+  // `estimateSize` does (see its getMeasurementOptions memo deps) — so the
+  // height inputs belong in this callback's deps too, or a `rowHeight` /
+  // `getRowHeight` change with the same `rows` would keep stale sizes. A key
+  // change keeps measured detail heights, since the cache is keyed by item
+  // key; `virtualizer.measure()` would throw them away instead.
+  const getItemKey = useCallback(
+    (index: number) => displayItemKey(items[index]!),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
+    [items, rowHeight, getRowHeight],
+  )
 
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -89,7 +114,7 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
       items: items.map((item, index) => ({ item, index })),
       top: 0,
       bottom: 0,
-      measureElement: () => undefined,
+      measureElement: NOOP_MEASURE,
     }
   }
 
@@ -101,7 +126,7 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
     scrollMargin,
   )
   return {
-    // index comes from the virtualiser iterating this same list, so it is always in range.
+    // in range — see the note above `estimateSize`
     items: virtualItems.map((virtualItem) => ({ item: items[virtualItem.index]!, index: virtualItem.index })),
     top,
     bottom,

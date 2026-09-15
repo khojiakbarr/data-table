@@ -83,4 +83,7 @@ export interface DataTableLabels {
   autosize: string
   autosizeAll: string
   resetWidth: string
+  /** Badge on an already-pinned column, as a state and not an action. */
+  pinnedStartBadge: string
+  pinnedEndBadge: string
 }

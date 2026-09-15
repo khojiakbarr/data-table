@@ -39,25 +39,31 @@ export function pinnedStyle<TData extends RowData>(
 /**
  * Visible leaf columns in the order they are rendered.
  *
- * `table.getVisibleLeafColumns()` groups pinned columns first, which is not the
- * order the cells appear in — pinned cells keep their natural DOM position and
- * are stuck with `position: sticky`. Feeding that order to a `<colgroup>` hands
- * each column somebody else's width.
+ * Built from the three pinning buckets, which is the only source that matches
+ * the DOM. The obvious alternatives are both wrong:
  *
- * The first header group covers every column in visual order, so flattening it
- * gives the order the DOM actually uses, and it works with zero rows.
+ * - `getVisibleLeafColumns()` returns declaration order, so it disagrees the
+ *   moment anything is pinned.
+ * - Flattening `getHeaderGroups()[0]` looks right until a column is pinned out
+ *   of a group: the column then appears both in its pinned position and still
+ *   under its original group header, so it is counted twice. That produced more
+ *   `<col>` elements than there are cells, and every width after the duplicate
+ *   landed on the wrong column — which reads as "I dragged this column's edge
+ *   and a different one resized".
  *
  * @param table - The table instance.
  * @returns Visible leaf columns, left to right.
  */
 export function renderedLeafColumns<TData extends RowData>(
   table: {
-    getHeaderGroups: () => { headers: { column: Column<DataTableFeatures, TData, unknown> }[] }[]
+    getStartVisibleLeafColumns: () => Column<DataTableFeatures, TData, unknown>[]
+    getCenterVisibleLeafColumns: () => Column<DataTableFeatures, TData, unknown>[]
+    getEndVisibleLeafColumns: () => Column<DataTableFeatures, TData, unknown>[]
   },
 ): Column<DataTableFeatures, TData, unknown>[] {
-  const first = table.getHeaderGroups()[0]
-  if (!first) return []
-  return first.headers
-    .flatMap((header) => header.column.getLeafColumns())
-    .filter((column) => column.getIsVisible())
+  return [
+    ...table.getStartVisibleLeafColumns(),
+    ...table.getCenterVisibleLeafColumns(),
+    ...table.getEndVisibleLeafColumns(),
+  ]
 }

@@ -151,8 +151,10 @@ export function ColumnPanel<TData extends RowData>({
               </label>
 
               {column.getIsPinned() ? (
-                <span className="dt-pin-badge" title={labels.unpin}>
-                  {column.getIsPinned() === "start" ? labels.pinStart : labels.pinEnd}
+                <span className="dt-pin-badge">
+                  {column.getIsPinned() === "start"
+                    ? labels.pinnedStartBadge
+                    : labels.pinnedEndBadge}
                 </span>
               ) : null}
             </li>

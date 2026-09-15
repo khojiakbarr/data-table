@@ -32,6 +32,8 @@ export const defaultLabels: DataTableLabels = {
   autosize: "Fit this column",
   autosizeAll: "Fit all columns",
   resetWidth: "Reset width",
+  pinnedStartBadge: "Start",
+  pinnedEndBadge: "End",
 }
 
 export interface DataTableProps<TData extends RowData> {

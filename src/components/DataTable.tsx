@@ -35,6 +35,18 @@ export const defaultLabels: DataTableLabels = {
   resetWidth: "Reset width",
   pinnedStartBadge: "Start",
   pinnedEndBadge: "End",
+  rows: "Rows",
+  rowsPerPage: "Rows per page",
+  range: (from, to, total) => `${from}–${to} of ${total ?? "…"}`,
+  page: (page, count) => `Page ${page} of ${count ?? "…"}`,
+  pageNumber: "Page number",
+  firstPage: "First page",
+  previousPage: "Previous page",
+  nextPage: "Next page",
+  lastPage: "Last page",
+  loading: "Loading",
+  loadFailed: "Could not load rows",
+  retry: "Retry",
 }
 
 export interface DataTableProps<TData extends RowData> {

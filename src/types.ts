@@ -88,4 +88,19 @@ export interface DataTableLabels {
   /** Badge on an already-pinned column, as a state and not an action. */
   pinnedStartBadge: string
   pinnedEndBadge: string
+  /** Footer: total rows. */
+  rows: string
+  rowsPerPage: string
+  /** "1–50 of 1 000"; `total` is undefined while a server has not answered. */
+  range: (from: number, to: number, total: number | undefined) => string
+  /** "Page 3 of 20"; `count` is undefined while unknown. */
+  page: (page: number, count: number | undefined) => string
+  pageNumber: string
+  firstPage: string
+  previousPage: string
+  nextPage: string
+  lastPage: string
+  loading: string
+  loadFailed: string
+  retry: string
 }

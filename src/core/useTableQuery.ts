@@ -1,6 +1,6 @@
 import type { SortingState } from "@tanstack/react-table"
-import { useEffect, useMemo, useRef } from "react"
-import { buildQuery, type TableQuery } from "./query"
+import { useEffect, useRef } from "react"
+import { buildQuery, queriesEqual, type TableQuery } from "./query"
 
 /** Inputs to {@link useTableQuery}. */
 export interface UseTableQueryOptions {
@@ -29,6 +29,15 @@ export interface UseTableQueryOptions {
  * a host that echoes the query back into its own state does not either: the
  * resulting render produces the same query object.
  *
+ * A fresh query is built every render — cheap, at this shape — and compared
+ * against the previous one with {@link queriesEqual} rather than trusted to a
+ * `useMemo` cache: React is explicit that a memo may be discarded and
+ * recomputed for a render that changed none of its inputs, and a discarded
+ * cache here would hand back a structurally identical but referentially new
+ * object, which the effect below would read as a real change and re-announce.
+ * A plain `useRef` has no such discard, so holding the last query there is
+ * what actually keeps the identity — and the announcements — stable.
+ *
  * In client mode, a row count that shrinks below the current page is corrected
  * before paint, but the query for the transient page is still announced once;
  * hosts that mirror the query into a URL should treat consecutive
@@ -47,10 +56,12 @@ export function useTableQuery({
   pageSize,
   onQueryChange,
 }: UseTableQueryOptions): TableQuery {
-  const query = useMemo(
-    () => buildQuery({ sorting, pageIndex, pageSize }),
-    [sorting, pageIndex, pageSize],
-  )
+  const candidate = buildQuery({ sorting, pageIndex, pageSize })
+  const queryRef = useRef<TableQuery | undefined>(undefined)
+  if (queryRef.current === undefined || !queriesEqual(queryRef.current, candidate)) {
+    queryRef.current = candidate
+  }
+  const query = queryRef.current
 
   /*
    * Updated in an effect rather than during render: a render can be thrown

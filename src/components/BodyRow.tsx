@@ -14,6 +14,11 @@ interface BodyRowProps<TData extends RowData> {
   height?: number | undefined
   /** Header rows above the body, so `aria-rowindex` can count past them. */
   headerRowCount: number
+  /**
+   * Rows already on earlier pages, so `aria-rowindex` counts from the table
+   * rather than restarting at the top of every page. Zero with pagination off.
+   */
+  rowIndexOffset: number
   /** Where the filler cell goes among the visible cells; see `fillerIndex`. */
   fillerAt: number
   labels: DataTableLabels
@@ -44,6 +49,7 @@ export function BodyRow<TData extends RowData>({
   position,
   height,
   headerRowCount,
+  rowIndexOffset,
   fillerAt,
   labels,
   hasDetail,
@@ -92,7 +98,7 @@ export function BodyRow<TData extends RowData>({
       className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
       data-depth={row.depth}
       data-parity={position % 2 === 0 ? "even" : "odd"}
-      aria-rowindex={position + headerRowCount + 1}
+      aria-rowindex={position + rowIndexOffset + headerRowCount + 1}
       style={
         height === undefined
           ? undefined

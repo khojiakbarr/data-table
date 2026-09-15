@@ -2,10 +2,14 @@
  * Token contract.
  *
  * Every value is a CSS custom property with a working default, so the table
- * looks finished with no configuration. Override any of them on an ancestor —
- * or map your own design system onto them — to restyle the whole table:
+ * looks finished with no configuration. Override any of them — or map your
+ * own design system onto them — to restyle the whole table. Every token below
+ * is declared directly on `.dt-root`, so an override has to match that same
+ * selector: a rule on an ancestor never reaches it, an own declaration always
+ * wins over an inherited one. Doubling the class beats this file's plain
+ * `.dt-root {}` outright, with no dependency on load order:
  *
- *   .my-app { --dt-header-bg: var(--table-header-bg); }
+ *   .dt-root.dt-root { --dt-header-bg: var(--table-header-bg); }
  *
  * Nothing here reads a colour from outside this contract, which is what makes
  * the table themeable without touching its source.

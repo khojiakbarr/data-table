@@ -11,6 +11,10 @@ interface TableStatusProps {
  * What sits at the top of the viewport while rows are on their way or failed.
  *
  * Error beats loading, loading beats empty — the same precedence AG Grid uses.
+ * Rendered by `<DataTable>` above its viewport; exported so a shell of your
+ * own can reuse it instead of rebuilding the same three states. `.dt-error`,
+ * `.dt-progress` and the `.dt-menu-button` retry are the class names its own
+ * stylesheet targets — restyle through them rather than duplicating the markup.
  */
 export function TableStatus({ loading, error, onRetry, labels }: TableStatusProps) {
   if (error !== undefined && error !== null) {
@@ -41,7 +45,16 @@ interface SkeletonRowsProps {
   count: number
 }
 
-/** Placeholder rows while the first page loads. */
+/**
+ * Placeholder rows while the first page loads.
+ *
+ * `<DataTable>` renders it in place of `<TableBody>` for as long as
+ * `awaitingFirstPage` holds. Exported for a shell of your own: give it the
+ * same `<tbody>` slot, the visible columns' widths in render order (0 for a
+ * filler column, to keep it blank), and a row count — `Math.min(pageSize, 8)`
+ * is what the built-in shell caps it at, so a page size in the thousands
+ * does not render thousands of skeleton rows.
+ */
 export function SkeletonRows({ widths, count }: SkeletonRowsProps) {
   return (
     <tbody>

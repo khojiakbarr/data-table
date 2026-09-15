@@ -144,8 +144,12 @@ export interface UseDataTableOptions<TData extends RowData> {
    * It is also how `<DataTable>` knows a page has been counted: with no rows,
    * no error and nothing loading, a `rowCount` of 0 is what makes the empty
    * state honest rather than a guess about a query nobody has answered.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`: the natural
+   * call site is `rowCount: data?.total`, itself `number | undefined` before
+   * the response arrives, and an optional property alone would reject that.
    */
-  rowCount?: number
+  rowCount?: number | undefined
   /**
    * Page the rows. Off by default in client mode, on in server mode. Pass
    * `true` for the defaults or an object to set the page size and choices.
@@ -158,8 +162,15 @@ export interface UseDataTableOptions<TData extends RowData> {
    * state belongs to positions instead of records.
    */
   getRowId?: (row: TData, index: number, parent?: Row<DataTableFeatures, TData>) => string
-  /** Called with the initial query on mount and after every change to it. */
-  onQueryChange?: (query: TableQuery) => void
+  /**
+   * Called with the initial query on mount and after every change to it.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`: a host
+   * usually forwards its own optional handler at the call site
+   * (`onQueryChange={props.onQueryChange}`), and an optional property alone
+   * would reject that.
+   */
+  onQueryChange?: ((query: TableQuery) => void) | undefined
   /** Pixel height of a data row. Default 40; also sets `--dt-row-height`. */
   rowHeight?: number
   /**
@@ -170,8 +181,13 @@ export interface UseDataTableOptions<TData extends RowData> {
    * must not depend on anything the table cannot see. A policy that starts
    * answering differently (a density toggle, say) is noticed from the rows on
    * screen and corrected on the next frame.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`: whether rows
+   * vary in height is usually a condition at the call site
+   * (`getRowHeight={varies ? measure : undefined}`), and an optional
+   * property alone would reject that.
    */
-  getRowHeight?: (row: TData) => number
+  getRowHeight?: ((row: TData) => number) | undefined
 }
 
 /**

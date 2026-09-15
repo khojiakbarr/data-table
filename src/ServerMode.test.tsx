@@ -176,6 +176,44 @@ describe("server mode", () => {
     warn.mockRestore()
   })
 
+  it("accepts the README's async options verbatim under exactOptionalPropertyTypes", () => {
+    /*
+     * Compile-level regression test for finding #28: `rowCount`,
+     * `onQueryChange` and `getRowHeight` used to reject their natural call
+     * sites under `exactOptionalPropertyTypes` (the project's own tsconfig)
+     * because the option types omitted `| undefined`. There is no runtime
+     * behaviour to assert beyond "this renders" — the test's job is done by
+     * `tsc -b` refusing to compile the file if any of the three regress; the
+     * assertions below just confirm the accepted `undefined` actually took.
+     */
+    interface Page {
+      rows: Row[]
+      total: number
+    }
+    const varies = true
+    const measure = (row: Row) => (row.id.endsWith("0") ? 60 : 40)
+    const onExternalQueryChange = undefined as ((query: TableQuery) => void) | undefined
+
+    const { result, rerender } = renderHook(
+      ({ data }: { data: Page | undefined }) =>
+        useDataTable<Row>({
+          id: "srv-exact-optional",
+          columns,
+          data: data?.rows ?? [],
+          mode: "server",
+          rowCount: data?.total, // number | undefined, no spread workaround needed
+          getRowHeight: varies ? measure : undefined,
+          onQueryChange: onExternalQueryChange, // a host's own optional prop, forwarded as-is
+          getRowId: (r) => r.id,
+        }),
+      { initialProps: { data: undefined as Page | undefined } },
+    )
+    expect(result.current.pagination.rowCount).toBeUndefined()
+
+    rerender({ data: { rows: page(0, 10), total: 200 } })
+    expect(result.current.pagination.rowCount).toBe(200)
+  })
+
   it("uses the row id for expansion state", () => {
     const { result, rerender } = renderHook(
       ({ data }: { data: Row[] }) =>

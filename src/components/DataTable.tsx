@@ -100,7 +100,7 @@ export interface DataTableProps<TData extends RowData> {
   onRowClick?: (row: TData) => void
   /** Show the pagination footer when paging is on. Default true. */
   footer?: boolean
-  /** Render every row instead of only the visible window. Default true. */
+  /** Render only the visible window of rows; `false` renders every row (printing, very small tables). Default true. */
   virtualize?: boolean
   /**
    * Rows are on their way. With no rows yet, skeleton rows show; with rows,
@@ -221,6 +221,27 @@ export function DataTable<TData extends RowData>({
     table.getEndHeaderGroups(),
   ] as const
   const headerRowCount = table.getHeaderGroups().length
+  /*
+   * `rows` is one page once pagination is on — client mode slices it via
+   * TanStack's own paginated row model, server mode is handed one page to
+   * begin with — so a row's position within `rows` restarts at 0 on every
+   * page. `aria-rowindex` has to count from the table's start, not the
+   * page's, so every row below adds this offset back on top of its position.
+   * Zero with pagination off, where `rows` already is the whole table.
+   */
+  const rowIndexOffset = instance.pagination.enabled
+    ? instance.pagination.pageIndex * instance.pagination.pageSize
+    : 0
+  /*
+   * The real row total, across every page — what `aria-rowcount` reports,
+   * offset by `headerRowCount` below. `rows.length` is only that total with
+   * paging off; with it on, the true total is `instance.pagination.rowCount`,
+   * which is `undefined` for a server table whose first page has not
+   * answered yet. ARIA's own -1 ("unknown") is what a screen reader is told
+   * to expect for exactly that case, standing for the whole attribute rather
+   * than added to a header count.
+   */
+  const totalRowCount = instance.pagination.enabled ? instance.pagination.rowCount : rows.length
   const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
   const hasError = error !== undefined && error !== null
   /*
@@ -325,12 +346,15 @@ export function DataTable<TData extends RowData>({
           className={classNames("dt-table", striped && "dt-striped")}
           style={{ width: "100%", minWidth: table.getTotalSize() }}
           /*
-           * Only a window of rows is in the DOM, so the count a screen reader
-           * would infer from it is wrong. `aria-rowcount` states the real
-           * total — header rows included, since `aria-rowindex` counts them —
-           * and every row carries its own index.
+           * Only a window of rows is in the DOM — from virtualisation, and
+           * from pagination once it is on, where `rows` is one page — so the
+           * count a screen reader would infer from the DOM is wrong either
+           * way. `aria-rowcount` states the real total across every page —
+           * `totalRowCount`, header rows included, since `aria-rowindex`
+           * counts them — or ARIA's own -1 ("unknown") outright while that
+           * total has not arrived yet.
            */
-          aria-rowcount={rows.length + headerRowCount}
+          aria-rowcount={totalRowCount === undefined ? -1 : totalRowCount + headerRowCount}
         >
           {/*
             Under `table-layout: fixed` the browser takes column widths from the
@@ -417,6 +441,7 @@ export function DataTable<TData extends RowData>({
               fillerAt={fillerAt}
               columnCount={leafColumns.length + 1}
               headerRowCount={headerRowCount}
+              rowIndexOffset={rowIndexOffset}
               labels={labels}
               virtualize={virtualize}
               renderDetail={renderDetail}

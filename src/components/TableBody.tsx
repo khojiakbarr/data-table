@@ -17,6 +17,11 @@ interface TableBodyProps<TData extends RowData> {
   columnCount: number
   /** Header rows above the body, so `aria-rowindex` can count past them. */
   headerRowCount: number
+  /**
+   * Rows already on earlier pages, so `aria-rowindex` counts from the table
+   * rather than restarting at the top of every page. Zero with pagination off.
+   */
+  rowIndexOffset: number
   labels: DataTableLabels
   virtualize: boolean
   renderDetail?: ((row: TData) => ReactNode) | undefined
@@ -41,6 +46,7 @@ export function TableBody<TData extends RowData>({
   fillerAt,
   columnCount,
   headerRowCount,
+  rowIndexOffset,
   labels,
   virtualize,
   renderDetail,
@@ -86,6 +92,7 @@ export function TableBody<TData extends RowData>({
             position={item.position}
             height={getRowHeight?.(item.row.original)}
             headerRowCount={headerRowCount}
+            rowIndexOffset={rowIndexOffset}
             fillerAt={fillerAt}
             labels={labels}
             hasDetail={hasDetail}
@@ -98,7 +105,7 @@ export function TableBody<TData extends RowData>({
             data-depth={item.row.depth}
             data-index={index}
             /* A panel is part of the row it belongs to, not a row of its own. */
-            aria-rowindex={item.position + headerRowCount + 1}
+            aria-rowindex={item.position + rowIndexOffset + headerRowCount + 1}
             ref={measureElement}
           >
             <td className="dt-detail-cell" colSpan={columnCount}>

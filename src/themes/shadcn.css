@@ -23,10 +23,15 @@
  * which is what lets this single rule beat the base sheet's default `.dt-root
  * {}` in every OS mode without a duplicated `@media` block. The trade-off: a
  * plain host override loaded after this file, `.dt-root { --dt-accent: red }`,
- * is only (0,1,0) and no longer wins. Repeat the class instead:
- * `.dt-root.dt-root { --dt-accent: red }` is also (0,2,0) and, unlike
- * `.dt-root:not([data-dt-theme])`, keeps matching a table that pins its
- * theme — so one host rule covers every table on the page.
+ * is only (0,1,0) and no longer wins. Repeating the class once,
+ * `.dt-root.dt-root { --dt-accent: red }`, only TIES this rule's own (0,2,0)
+ * rather than beating it — and a tie is broken by whichever stylesheet loads
+ * last, so that override wins only if the host's CSS happens to come after
+ * this file's. Repeat it once more, `.dt-root.dt-root.dt-root { --dt-accent:
+ * red }` (0,3,0), to beat this rule outright regardless of load order; it
+ * also keeps matching a table that pins its theme, unlike
+ * `.dt-root:not([data-dt-theme])` — so one host rule covers every table on
+ * the page.
  *
  * Only tokens shadcn has an equivalent for are mapped. The sizing tokens are
  * deliberately left to the base sheet: re-declaring its own values here would

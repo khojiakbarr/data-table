@@ -42,8 +42,11 @@ export function buildQuery({ sorting, pageIndex, pageSize }: QueryInputs): Table
  * Structural equality for queries.
  *
  * Queries are JSON-shaped, so a stringify comparison is exact and cheap at
- * this size; it is what keeps `instance.query` referentially stable between
- * renders that changed nothing.
+ * this size. {@link useTableQuery} calls this every render to decide whether
+ * to keep its previous query object or replace it — which is what actually
+ * keeps `instance.query` referentially stable between renders that changed
+ * nothing, and, unlike a `useMemo` cache, does not depend on React choosing
+ * not to discard one.
  */
 export function queriesEqual(a: TableQuery, b: TableQuery): boolean {
   return JSON.stringify(a) === JSON.stringify(b)

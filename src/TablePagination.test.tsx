@@ -1,6 +1,7 @@
 import { createColumnHelper } from "@tanstack/react-table"
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { useState } from "react"
 import { beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
 import { useDataTable, type DataTableFeatures, type DataTableInstance } from "./useDataTable"
@@ -141,5 +142,76 @@ describe("pagination footer", () => {
     }
     const { container } = render(<NoFooter />)
     expect(container.querySelector(".dt-footer")).toBeNull()
+  })
+})
+
+/**
+ * `aria-rowcount` / `aria-rowindex` describe the whole table to a screen
+ * reader, not the page in the DOM — the same contract virtualisation already
+ * had to honour. See DataTable.tsx's `totalRowCount` / `rowIndexOffset`.
+ */
+describe("pagination and row-count accessibility", () => {
+  beforeEach(() => localStorage.clear())
+
+  const dataRows = () => screen.getAllByRole("row").filter((r) => r.classList.contains("dt-tr"))
+
+  it("reports the true total, not the page size, and keeps it across pages", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<Table count={1000} pageSize={50} />)
+    const table = container.querySelector("table.dt-table") as HTMLElement
+    // 1000 rows plus the one header row.
+    expect(table.getAttribute("aria-rowcount")).toBe("1001")
+
+    await user.click(screen.getByRole("button", { name: /next page/i }))
+    // The total does not shrink to the page size on page 2.
+    expect(table.getAttribute("aria-rowcount")).toBe("1001")
+  })
+
+  it("continues aria-rowindex from the page offset instead of restarting at 1", async () => {
+    const user = userEvent.setup()
+    render(<Table count={1000} pageSize={50} />)
+    expect(dataRows()[0]?.getAttribute("aria-rowindex")).toBe("2") // header + row 0
+
+    await user.click(screen.getByRole("button", { name: /next page/i })) // page 2: rows 50-99
+    // Row "Row 50" is the 51st data row: 50 (offset) + 1 (header) + 1 = 52.
+    expect(dataRows()[0]?.getAttribute("aria-rowindex")).toBe("52")
+    expect(dataRows()[0]).toHaveTextContent("Row 50")
+  })
+
+  it("reports -1 (unknown) in server mode before the row count has arrived", () => {
+    function ServerTable() {
+      const instance = useDataTable<Row>({
+        id: "pg-server-unknown", columns, data: rows(50), mode: "server", getRowId: (r) => r.id,
+      })
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    const { container } = render(<ServerTable />)
+    const table = container.querySelector("table.dt-table") as HTMLElement
+    expect(table.getAttribute("aria-rowcount")).toBe("-1")
+  })
+
+  it("offsets aria-rowindex by the page in server mode once the total is known", async () => {
+    const user = userEvent.setup()
+    const all = rows(500)
+    // A minimal stand-in for the README's TanStack Query recipe: `data`
+    // follows the announced query's page, the way a real fetch would.
+    function ServerTable() {
+      const [page, setPage] = useState(0)
+      const instance = useDataTable<Row>({
+        id: "pg-server-known", columns, data: all.slice(page * 50, page * 50 + 50),
+        mode: "server", rowCount: 500, getRowId: (r) => r.id,
+        onQueryChange: (query) => setPage(query.pagination.pageIndex),
+      })
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    const { container } = render(<ServerTable />)
+    const table = container.querySelector("table.dt-table") as HTMLElement
+    expect(table.getAttribute("aria-rowcount")).toBe("501")
+
+    await user.click(screen.getByRole("button", { name: /next page/i }))
+    await user.click(screen.getByRole("button", { name: /next page/i })) // page index 2
+    // Page index 2, page size 50: offset 100, plus header, plus 1-based index.
+    expect(dataRows()[0]?.getAttribute("aria-rowindex")).toBe("102")
+    expect(dataRows()[0]).toHaveTextContent("Row 100")
   })
 })

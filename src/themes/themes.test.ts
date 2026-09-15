@@ -291,6 +291,60 @@ describe("shadcn presets — cascade resolution", () => {
   }
 })
 
+/**
+ * The shadcn override recipe (finding #18): the preset's own selector is
+ * `(0,2,0)`, so a host rule at the same specificity only TIES it — and a tie
+ * is broken by whichever stylesheet connects to the document last, not by
+ * which rule "looks like an override". `.dt-root.dt-root.dt-root` is `(0,3,0)`
+ * and wins outright, with no load-order dependency left to document.
+ */
+describe("shadcn presets — host override specificity", () => {
+  const base = read("../styles.css")
+
+  for (const file of ["shadcn.css", "shadcn-hsl.css"]) {
+    describe(file, () => {
+      const preset = read(file)
+
+      /**
+       * Base, preset and a host rule, connected in the given order and
+       * nothing reordered afterwards — jsdom's tie-break follows connection
+       * order, not final DOM position, so reusing an already-connected sheet
+       * would not actually exercise "loads before/after".
+       */
+      const resolvedAccent = (hostRule: string, hostLoadsFirst: boolean): string => {
+        const sheets = hostLoadsFirst ? [hostRule, base, preset] : [base, preset, hostRule]
+        const elements = sheets.map((text) => {
+          const el = document.createElement("style")
+          el.textContent = text
+          document.head.appendChild(el)
+          return el
+        })
+        const root = document.createElement("div")
+        root.className = "dt-root"
+        document.body.appendChild(root)
+        const value = getComputedStyle(root).getPropertyValue("--dt-accent").trim()
+        root.remove()
+        elements.forEach((el) => el.remove())
+        return value
+      }
+
+      it("a doubled-class host rule only ties the preset, and can lose to it", () => {
+        const hostRule = ".dt-root.dt-root { --dt-accent: red; }"
+        // Host loads first, preset last: the preset — later in the tie — wins.
+        expect(resolvedAccent(hostRule, true)).not.toBe("red")
+        // Host loads last: now the host is later in the tie, and wins.
+        expect(resolvedAccent(hostRule, false)).toBe("red")
+      })
+
+      it("a tripled-class host rule beats the preset regardless of load order", () => {
+        const hostRule = ".dt-root.dt-root.dt-root { --dt-accent: red; }"
+        expect(resolvedAccent(hostRule, true)).toBe("red")
+        expect(resolvedAccent(hostRule, false)).toBe("red")
+      })
+    })
+  }
+})
+
 describe("pin badge contrast", () => {
   it("uses a token for its foreground colour, not a hardcoded white", () => {
     const styles = read("../styles.css")

@@ -27,6 +27,7 @@ export type { HeaderMenuPosition } from "./components/HeaderMenu"
 export { ColumnPanel } from "./components/ColumnPanel"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
 export { TablePagination } from "./components/TablePagination"
+export { SkeletonRows, TableStatus } from "./components/TableStatus"
 
 /* Helpers worth borrowing rather than rewriting. */
 export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"

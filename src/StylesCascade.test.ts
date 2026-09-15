@@ -134,3 +134,74 @@ describe("striping vs. row-state cascade", () => {
     table.remove()
   })
 })
+
+/**
+ * The README's headline "Styling" recipe (finding #19): every token is
+ * declared directly on `.dt-root`, so an override has to match that element,
+ * not an ancestor — and, unlike the shadcn preset's `(0,2,0)` selector, the
+ * base sheet's own `.dt-root {}` is only `(0,1,0)`, so `.dt-root.dt-root`
+ * beats it outright with no load-order dependency to document.
+ */
+describe("README override recipes", () => {
+  let styleEl: HTMLStyleElement
+
+  beforeEach(() => {
+    styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+    document.head.appendChild(styleEl)
+  })
+
+  afterEach(() => styleEl.remove())
+
+  it("is not reached by a rule on an ancestor (the recipe this replaced)", () => {
+    const ancestorRule = document.createElement("style")
+    ancestorRule.textContent = ".my-app { --dt-header-bg: red; }"
+    document.head.appendChild(ancestorRule)
+
+    const wrapper = document.createElement("div")
+    wrapper.className = "my-app"
+    const root = document.createElement("div")
+    root.className = "dt-root"
+    wrapper.appendChild(root)
+    document.body.appendChild(wrapper)
+
+    // `.dt-root`'s own declaration wins over anything inherited, regardless
+    // of the ancestor rule's specificity — this is why the old recipe did
+    // nothing, silently, for every host who copied it.
+    expect(getComputedStyle(root).getPropertyValue("--dt-header-bg").trim()).toBe("#fafafa")
+
+    wrapper.remove()
+    ancestorRule.remove()
+  })
+
+  it("overrides the base sheet on the element itself, regardless of load order", () => {
+    // Two fresh `<style>` elements per iteration, connected in the stated
+    // order and nothing reordered afterwards — jsdom's cascade resolves a tie
+    // by connection order, so reusing (or `insertBefore`-ing ahead of) an
+    // already-connected sheet would not actually exercise "loads first".
+    for (const overrideFirst of [true, false]) {
+      const base = document.createElement("style")
+      base.textContent = baseStylesheet
+      const override = document.createElement("style")
+      override.textContent = ".dt-root.dt-root { --dt-header-bg: red; }"
+
+      if (overrideFirst) {
+        document.head.appendChild(override)
+        document.head.appendChild(base)
+      } else {
+        document.head.appendChild(base)
+        document.head.appendChild(override)
+      }
+
+      const root = document.createElement("div")
+      root.className = "dt-root"
+      document.body.appendChild(root)
+
+      expect(getComputedStyle(root).getPropertyValue("--dt-header-bg").trim()).toBe("red")
+
+      root.remove()
+      base.remove()
+      override.remove()
+    }
+  })
+})

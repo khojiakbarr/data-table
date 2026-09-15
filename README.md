@@ -189,9 +189,7 @@ const table = useDataTable({
   columns,
   mode: "server",
   data: data?.rows ?? EMPTY,
-  // `exactOptionalPropertyTypes` rejects `rowCount: undefined` — spread the
-  // key in only once it is known, rather than writing it with `| undefined`.
-  ...(data ? { rowCount: data.total } : {}),
+  rowCount: data?.total, // undefined until the response arrives; rowCount accepts that
   getRowId: (row) => row.id,
   onQueryChange: setQuery,
 })
@@ -337,10 +335,15 @@ an old layout never leaves a user with a phantom column or a missing one.
 ## Styling
 
 Every colour and dimension is a CSS custom property with a working default, so the table
-looks finished out of the box and restyles without touching its source:
+looks finished out of the box and restyles without touching its source. The base sheet
+declares every token directly on `.dt-root`, so an override has to match that same
+element — a rule on an ancestor never reaches it, because `.dt-root` already carries its
+own value for the property, and an own declaration always beats one inherited from further
+out. Doubling the class raises an override's specificity above the base sheet's, with
+nothing left to depend on which stylesheet happens to load last:
 
 ```css
-.my-app {
+.dt-root.dt-root {
   --dt-header-bg: var(--table-header-bg);
   --dt-row-hover: var(--table-row-hover);
   --dt-accent: var(--primary);
@@ -389,13 +392,20 @@ Pick by how your shadcn variables are written. A complete colour such as
 warning, so check one variable before deciding.
 
 Only tokens shadcn has an equivalent for are mapped. Sizes stay with the base
-sheet, so `--dt-header-height`, `--dt-row-height`, `--dt-indent` and
-`--dt-font-size` are still yours to set on `.dt-root`. A mapped token needs a
-rule that matches the preset's specificity, which the repeated class gives
-without excluding anything:
+sheet, so `--dt-header-height`, `--dt-indent` and `--dt-font-size` are still
+yours to set on `.dt-root`. `--dt-row-height` is the one exception: it is
+written inline on `.dt-root` every render (see [Large data](#large-data)), so
+no stylesheet rule reaches it either way — set it via `rowHeight` /
+`getRowHeight` instead.
+
+A mapped token needs a rule that *beats* the preset's specificity, not merely
+matches it: `.dt-root.dt-root` ties the preset's own `(0,2,0)` selector, and a
+tie is broken by whichever stylesheet loads last — so a host rule written
+that way can lose silently depending on import order. Repeat the class once
+more to win outright, with nothing left to depend on:
 
 ```css
-.dt-root.dt-root {
+.dt-root.dt-root.dt-root {
   --dt-accent: var(--chart-2);
 }
 ```
@@ -462,13 +472,24 @@ window rendered before anything is measured — every server render — covers t
 whole page:
 
 ```tsx
+import type { Row } from "@tanstack/react-table"
+import type { DataTableFeatures } from "@khojiakbarr/data-table"
+
+// `useCallback`'s own type parameter is inferred from the arrow, not from
+// `isDetailOpen`'s contextual type, so `row` needs an explicit annotation —
+// left off, it infers as `never` and the object literal fails to type-check.
+const isDetailOpen = useCallback(
+  (row: Row<DataTableFeatures, Receipt>) => row.getIsExpanded(),
+  [],
+)
+
 const { items, top, bottom, measureElement } = useRowVirtualizer({
   rows: table.getRowModel().rows,
   viewportRef,
   headRef,
   rowHeight: instance.rowHeight,
   getRowHeight: instance.getRowHeight,
-  isDetailOpen: useCallback((row) => row.getIsExpanded(), []),
+  isDetailOpen,
   enabled: true,
 })
 ```
@@ -479,9 +500,19 @@ whether the scroller it was given has a height of its own; render
 `data-dt-unbounded` on the viewport when it says no, and the stylesheet does
 the rest.
 
-`<TablePagination instance={instance} labels={labels} />` — the footer
-`<DataTable>` renders when `footer` is on, exported so a shell of your own can
-reuse it rather than rebuild the range math and page-size select.
+`<TablePagination instance={instance} labels={{ ...defaultLabels, ...myLabels }} />` — the
+footer `<DataTable>` renders when `footer` is on, exported so a shell of your own can reuse
+it rather than rebuild the range math and page-size select. Its `labels` is the full
+`DataTableLabels`, not the `Partial` `<DataTable>` accepts — there is no default shell
+underneath it to fall back on for a key you left out — so spread `defaultLabels`, exported
+alongside it, over your own overrides.
+
+`<TableStatus loading={…} error={…} onRetry={…} labels={…} />` and `<SkeletonRows
+widths={…} count={…} />` — the loading, error and skeleton states `<DataTable>` renders
+above and in place of its rows (the **States** paragraph under [Server-side
+data](#server-side-data) describes the precedence between them). Exported for the same
+reason as the footer: a shell that reuses `TablePagination` usually wants these too, rather
+than rebuilding the same four-state contract against undocumented class names.
 
 ---
 

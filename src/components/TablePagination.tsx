@@ -26,7 +26,9 @@ export function TablePagination<TData extends RowData>({ instance, labels }: Tab
   const to = rowCount === undefined ? (pageIndex + 1) * pageSize : Math.min(rowCount, (pageIndex + 1) * pageSize)
   const canPrevious = pageIndex > 0
   const canNext = pageCount === undefined || pageIndex < pageCount - 1
-  const lastIndex = pageCount === undefined ? pageIndex : pageCount - 1
+  const lastIndex = pageCount === undefined ? pageIndex : pageCount - 1 // Last button target
+  // The typed page has no ceiling while the total is unknown.
+  const inputMax = pageCount === undefined ? Number.MAX_SAFE_INTEGER : lastIndex
 
   return (
     <div className="dt-footer">
@@ -49,10 +51,10 @@ export function TablePagination<TData extends RowData>({ instance, labels }: Tab
         </select>
       </label>
       <span className="dt-footer-range">{labels.range(from, to, rowCount)}</span>
-      <nav className="dt-footer-nav" aria-label={labels.page(pageIndex + 1, pageCount)}>
+      <nav className="dt-footer-nav" aria-label={labels.pagination}>
         <NavButton label={labels.firstPage} disabled={!canPrevious} onClick={() => setPageIndex(0)} glyph="«" />
         <NavButton label={labels.previousPage} disabled={!canPrevious} onClick={() => setPageIndex(pageIndex - 1)} glyph="‹" />
-        <PageInput pageIndex={pageIndex} lastIndex={lastIndex} label={labels.pageNumber} onCommit={setPageIndex} />
+        <PageInput pageIndex={pageIndex} lastIndex={inputMax} label={labels.pageNumber} onCommit={setPageIndex} />
         <span className="dt-footer-page">{labels.page(pageIndex + 1, pageCount)}</span>
         <NavButton label={labels.nextPage} disabled={!canNext} onClick={() => setPageIndex(pageIndex + 1)} glyph="›" />
         <NavButton label={labels.lastPage} disabled={!canNext || pageCount === undefined} onClick={() => setPageIndex(lastIndex)} glyph="»" />
@@ -78,8 +80,9 @@ function PageInput({
 
   const commit = () => {
     const page = Number.parseInt(draft, 10)
-    if (Number.isFinite(page)) onCommit(Math.max(0, Math.min(page - 1, lastIndex)))
-    else setDraft(String(pageIndex + 1))
+    const next = Number.isFinite(page) ? Math.max(0, Math.min(page - 1, lastIndex)) : pageIndex
+    onCommit(next)
+    setDraft(String(next + 1))
   }
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -94,7 +97,7 @@ function PageInput({
       className="dt-page-input"
       aria-label={label}
       min={1}
-      max={lastIndex + 1}
+      max={lastIndex === Number.MAX_SAFE_INTEGER ? undefined : lastIndex + 1}
       value={draft}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}

@@ -41,6 +41,7 @@ export const defaultLabels: DataTableLabels = {
   range: (from, to, total) => `${from}–${to} of ${total ?? "…"}`,
   page: (page, count) => `Page ${page} of ${count ?? "…"}`,
   pageNumber: "Page number",
+  pagination: "Pagination",
   firstPage: "First page",
   previousPage: "Previous page",
   nextPage: "Next page",

@@ -96,6 +96,8 @@ export interface DataTableLabels {
   /** "Page 3 of 20"; `count` is undefined while unknown. */
   page: (page: number, count: number | undefined) => string
   pageNumber: string
+  /** Name of the pagination controls group. */
+  pagination: string
   firstPage: string
   previousPage: string
   nextPage: string

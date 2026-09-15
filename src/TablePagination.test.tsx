@@ -72,4 +72,48 @@ describe("pagination footer", () => {
     const { container } = render(<Plain />)
     expect(container.querySelector(".dt-footer")).toBeNull()
   })
+
+  it("lets the user type a page while the total is still unknown", () => {
+    function ServerTable() {
+      const instance = useDataTable<Row>({
+        id: "pg-server", columns, data: rows(50), mode: "server",
+        getRowId: (r) => r.id,
+      })
+      latest = instance
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    render(<ServerTable />)
+
+    const input = screen.getByRole("spinbutton", { name: /page number/i })
+    fireEvent.change(input, { target: { value: "7" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(latest?.pagination.pageIndex).toBe(6)
+    expect(screen.getByRole("button", { name: /next page/i })).toBeEnabled()
+    expect(screen.getByRole("button", { name: /last page/i })).toBeDisabled()
+    expect(screen.getByText(/^Rows:/).textContent).toBe("Rows: …")
+  })
+
+  it("resyncs the typed page after a clamp that lands on the current page", async () => {
+    const user = userEvent.setup()
+    render(<Table />)
+    await user.click(screen.getByRole("button", { name: /last page/i })) // page 20
+
+    const input = screen.getByRole("spinbutton", { name: /page number/i })
+    fireEvent.change(input, { target: { value: "99" } })
+    fireEvent.blur(input)
+
+    expect(input).toHaveValue(20)
+  })
+
+  it("hides the footer when footer is false even with paging on", () => {
+    function NoFooter() {
+      const instance = useDataTable<Row>({
+        id: "pg-no-footer", columns, data: rows(3), pagination: true, getRowId: (r) => r.id,
+      })
+      return <DataTable instance={instance} virtualize={false} footer={false} />
+    }
+    const { container } = render(<NoFooter />)
+    expect(container.querySelector(".dt-footer")).toBeNull()
+  })
 })

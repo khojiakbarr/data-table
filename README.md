@@ -7,7 +7,7 @@ Built on [TanStack Table v9](https://tanstack.com/table). Ships as a hook plus a
 optional styled shell, so you can take the behaviour and write your own markup.
 
 ```bash
-npm i @khojiakbarr/data-table @tanstack/react-table
+npm i @khojiakbarr/data-table @tanstack/react-table @tanstack/react-virtual
 ```
 
 ```tsx
@@ -107,7 +107,10 @@ nothing and marks nothing.
 **Fit to content.** Double-click a handle, press Enter on it, or use *Fit this
 column* / *Fit all columns* from the column menu. Fitting measures the rows
 currently rendered — header, cells, and in the first column the expand toggle
-and indent of nested rows. *Fit all columns* also keeps every group label
+and indent of nested rows. On a virtualised table (the default — see
+[Large data](#large-data)) "currently rendered" means the current viewport,
+not the whole dataset: a wide value scrolled out of view is not accounted for
+until it is fitted again. *Fit all columns* also keeps every group label
 readable by widening the group's children when they come up short.
 
 **Keyboard.** With a resize handle focused, ← and → change the width by 10px,
@@ -115,6 +118,78 @@ Shift-← and Shift-→ by 50px, Enter fits the column.
 
 **Right-to-left.** Pass `direction: "rtl"` to the hook so a drag away from the
 column widens it there too.
+
+---
+
+## Large data
+
+Rows are virtualised: only the rows in view (plus a few either side) are in
+the DOM, whatever the row count. Data rows have a known height —
+`rowHeight` (default 40) or `getRowHeight(row)` — so the scrollbar is exact
+without measuring anything; only open detail panels are measured. Pass
+`virtualize={false}` to render every row (printing, very small tables).
+
+```tsx
+useDataTable({ id: "receipts", data, columns, rowHeight: 32 })
+// or, when rows vary in height:
+useDataTable({ id: "receipts", data, columns, getRowHeight: (row) => rowHeightFor(row) })
+```
+
+`<DataTable>` sets `--dt-row-height` as an **inline** style on its root
+element — it has to, so the virtualiser's row estimate and the CSS token
+never disagree. An inline style beats every selector-based rule short of
+`!important`, so `.my-app { --dt-row-height: 32px }` in a stylesheet has no
+effect on it. Reach for `!important` if you must override it from CSS; the
+supported way is to pass `rowHeight` / `getRowHeight` instead, which is what
+actually drives both the row and the token.
+
+---
+
+## Server-side data
+
+Set `mode: "server"` and the table stops sorting and paging: `data` is one
+page, already sorted, and the table tells you what it wants through a
+`TableQuery` — sorting, pagination, and (reserved for later) filters and
+grouping. With TanStack Query:
+
+```tsx
+const EMPTY: Receipt[] = [] // stable identity, so an empty page isn't a new `data` array every render
+const [query, setQuery] = useState<TableQuery>()
+const { data, isFetching, error, refetch } = useQuery({
+  queryKey: ["receipts", query],
+  queryFn: () => api.receipts(query!),
+  enabled: query !== undefined,
+  placeholderData: keepPreviousData,
+})
+const table = useDataTable({
+  id: "receipts",
+  columns,
+  mode: "server",
+  data: data?.rows ?? EMPTY,
+  // `exactOptionalPropertyTypes` rejects `rowCount: undefined` — spread the
+  // key in only once it is known, rather than writing it with `| undefined`.
+  ...(data ? { rowCount: data.total } : {}),
+  getRowId: (row) => row.id,
+  onQueryChange: setQuery,
+})
+<DataTable instance={table} loading={isFetching} error={error} onRetry={refetch} />
+```
+
+`onQueryChange` fires once on mount with the persisted sorting and page size,
+then on every change. Sorting resets the page to the first; a new `data`
+array does not. Give rows a stable `getRowId` so expansion follows records
+across pages. `instance.query` holds the same object and only changes
+identity when its contents change.
+
+**Pagination** is on by default in server mode and off in client mode; pass
+`pagination: { pageSize: 100, pageSizeOptions: [50, 100, 500] }` to change
+either. The footer shows the total, a page-size select, the current range and
+first/previous/next/last controls with a page number box. The chosen page
+size is persisted with the rest of the layout.
+
+**States.** `loading` with no rows shows skeleton rows; with rows it shows a
+progress bar and dims them. `error` shows a banner with a Retry button that
+calls `onRetry`; rows already on screen stay put.
 
 ---
 
@@ -251,6 +326,19 @@ looks finished out of the box and restyles without touching its source:
 
 Dark mode follows `prefers-color-scheme`. Pass `theme="light"` or `theme="dark"` to pin it.
 
+### shadcn/ui
+
+Two presets map the tokens onto shadcn's variables. Import one after the
+base stylesheet and the table follows the host's palette, radius, font and
+dark mode:
+
+```tsx
+import "@khojiakbarr/data-table/styles.css"
+import "@khojiakbarr/data-table/themes/shadcn.css"      // Tailwind v4 / oklch variables
+// or
+import "@khojiakbarr/data-table/themes/shadcn-hsl.css"  // hsl(var(--x)) variables
+```
+
 ---
 
 ## Headless use
@@ -299,6 +387,29 @@ const tableRef = useRef<HTMLTableElement>(null)
 const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 ```
 
+`useRowVirtualizer()` — the windowing behind [Large data](#large-data), for your
+own markup. Give it the rows, a ref to the scrolling viewport, a ref to the
+`<thead>` (its height offsets every row in the same scroll box), the row
+height(s) and a stable `isDetailOpen`; it returns the items to render plus
+`top` / `bottom` spacer heights and a `measureElement` ref-callback for detail
+rows:
+
+```tsx
+const { items, top, bottom, measureElement } = useRowVirtualizer({
+  rows: table.getRowModel().rows,
+  viewportRef,
+  headRef,
+  rowHeight: instance.rowHeight,
+  getRowHeight: instance.getRowHeight,
+  isDetailOpen: useCallback((row) => row.getIsExpanded(), []),
+  enabled: true,
+})
+```
+
+`<TablePagination instance={instance} labels={labels} />` — the footer
+`<DataTable>` renders when `footer` is on, exported so a shell of your own can
+reuse it rather than rebuild the range math and page-size select.
+
 ---
 
 ## API
@@ -319,8 +430,15 @@ const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 | `direction` | `"ltr" \| "rtl"` | `"ltr"` | Which way a drag widens a column. |
 | `getSubRows` | `(row: TData) => TData[]` | — | Child rows, for tree data. |
 | `canExpand` | `(row: TData) => boolean` | all rows | Which rows may open a detail panel. |
+| `mode` | `"client" \| "server"` | `"client"` | `"server"`: `data` is one page, already sorted; the table only describes what it wants. |
+| `rowCount` | `number` | — | Total rows across all pages. Server mode only; undefined until known. |
+| `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
+| `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. |
+| `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
+| `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
+| `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. |
 
-Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded }`.
+Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, rowHeight, getRowHeight }`.
 
 ### `<DataTable />`
 
@@ -337,6 +455,11 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded }`.
 | `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |
 | `stickyHeader` | `boolean` | `true` | Keep the header in view while the body scrolls. |
 | `onRowClick` | `(row: TData) => void` | — | |
+| `footer` | `boolean` | `true` | Show the pagination footer when paging is on. |
+| `virtualize` | `boolean` | `true` | Render only the visible window of rows. `false` renders every row. |
+| `loading` | `boolean` | `false` | Rows are on their way. Skeleton rows with none yet, a progress bar once some are on screen. |
+| `error` | `unknown` | — | Loading failed. Shown as a banner with a Retry button when `onRetry` is given. |
+| `onRetry` | `() => void` | — | Called by the Retry button. |
 
 ---
 
@@ -359,7 +482,8 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded }`.
 
 ## Requirements
 
-React 18 or 19, and `@tanstack/react-table` v9 as a peer dependency.
+React 18 or 19, and `@tanstack/react-table` v9 and `@tanstack/react-virtual` v3
+as peer dependencies.
 
 ## Licence
 

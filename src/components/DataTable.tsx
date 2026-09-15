@@ -4,6 +4,7 @@ import { classNames, insertAt } from "../core/classNames"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import { moveColumn, type DropSide } from "../core/reorder"
 import { useAutosize } from "../core/useAutosize"
+import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
@@ -56,7 +57,15 @@ export interface DataTableProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   /** Shade alternate rows. */
   striped?: boolean
-  /** Fixed height for the whole table, toolbar included; the rows scroll inside it. */
+  /**
+   * Fixed height for the whole table, toolbar included; the rows scroll inside it.
+   *
+   * Virtualisation needs a scroller, and the root has no height of its own:
+   * with neither this nor an ancestor that has a height, the table grows to
+   * fit its rows and every row renders. A table that ends up unbounded falls
+   * back to `--dt-viewport-max-height` and warns in development, but the
+   * height belongs here, where the layout is decided.
+   */
   height?: number | string
   /**
    * Keep the header row(s) in view while the body scrolls. Default true.
@@ -214,6 +223,19 @@ export function DataTable<TData extends RowData>({
    */
   const showProgress = loading && !showSkeleton
   /*
+   * Virtualisation needs something to scroll. A table nobody gave a height to
+   * grows to fit its rows instead, and then renders all of them; this notices
+   * that state and asks the stylesheet for a fallback bound. A table that is
+   * already bounded — by the prop, by an ancestor, by anything — never enters
+   * it. See {@link useUnboundedViewport}.
+   */
+  const unbounded = useUnboundedViewport({
+    viewportRef,
+    rows: rows.length,
+    enabled: virtualize && !showSkeleton,
+    id: instance.id,
+  })
+  /*
    * `--dt-row-height` is what the stylesheet sizes a row with, and the
    * virtualiser's estimate has to match it exactly — an unmeasured data row
    * whose real height differs by a pixel drags the scrollbar off by a pixel
@@ -271,7 +293,11 @@ export function DataTable<TData extends RowData>({
 
       <TableStatus loading={showProgress} error={error} onRetry={onRetry} labels={labels} />
 
-      <div className={classNames("dt-viewport", showProgress && "dt-loading")} ref={viewportRef}>
+      <div
+        className={classNames("dt-viewport", showProgress && "dt-loading")}
+        data-dt-unbounded={unbounded ? "" : undefined}
+        ref={viewportRef}
+      >
         <table
           ref={tableRef}
           className={classNames("dt-table", striped && "dt-striped")}

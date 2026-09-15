@@ -46,7 +46,7 @@ export function TableBody<TData extends RowData>({
   renderDetail,
   onRowClick,
 }: TableBodyProps<TData>) {
-  const { rowHeight, getRowHeight, expanded } = instance
+  const { rowHeight, getRowHeight, expanded, pagination } = instance
   const hasDetail = renderDetail !== undefined
   // `row.getIsExpanded()` reads the expansion state; `expanded` is in the deps
   // so the display list is rebuilt when a panel opens, whatever TanStack does
@@ -65,6 +65,14 @@ export function TableBody<TData extends RowData>({
     getRowHeight,
     isDetailOpen,
     enabled: virtualize,
+    /*
+     * A page is a whole thing: rendering 40 of its 50 rows while the viewport
+     * has no size — which is every server render, and every table inside a
+     * hidden ancestor — hands a crawler, and a browser before hydration, a
+     * page with rows missing. With paging off there is no such unit, and the
+     * built-in window stands.
+     */
+    ...(pagination.enabled ? { unmeasuredFloor: pagination.pageSize } : {}),
   })
 
   return (

@@ -135,6 +135,29 @@ useDataTable({ id: "receipts", data, columns, rowHeight: 32 })
 useDataTable({ id: "receipts", data, columns, getRowHeight: (row) => rowHeightFor(row) })
 ```
 
+`getRowHeight` may be written inline like that: its identity is not a
+measurement input, so a new arrow on every render costs nothing. It does have
+to be a pure function of its row. Change what it answers for the same row —
+a density toggle, say — and the table notices from the rows on screen and
+measures again on the next frame.
+
+**Virtualisation needs something to scroll.** The table's root has no height
+of its own, so a table given neither `height` nor an ancestor with a height
+grows to fit its rows: nothing scrolls, the visible "window" is the whole
+list, and 100 000 rows go into the DOM. Give it a bound:
+
+```tsx
+<DataTable instance={table} height={520} />          // the table's own box
+<div style={{ height: "100%" }}><DataTable … /></div> // or an ancestor's
+```
+
+A table that ends up unbounded anyway is not left to freeze: once measured as
+unable to scroll while holding more rows than any screen can show, its
+viewport falls back to `--dt-viewport-max-height` (70vh) and says so in the
+console in development. Set the token to `none` to opt out of the rescue. A
+table that already scrolls — bounded by the prop, by an ancestor, by anything
+— is never touched by it.
+
 `<DataTable>` sets `--dt-row-height` as an **inline** style on its root
 element — it has to, so the virtualiser's row estimate and the CSS token
 never disagree. An inline style beats every selector-based rule short of
@@ -320,6 +343,7 @@ looks finished out of the box and restyles without touching its source:
 | `--dt-drop-indicator` | Reorder caret |
 | `--dt-pin-shadow-start` `--dt-pin-shadow-end` | Pinned column seams |
 | `--dt-indent` `--dt-detail-bg` | Nested rows and detail panels |
+| `--dt-viewport-max-height` | Fallback height for a table nobody bounded; see [Large data](#large-data) |
 | `--dt-font` `--dt-font-size` | Typography |
 
 </details>
@@ -414,7 +438,9 @@ own markup. Give it the rows, a ref to the scrolling viewport, a ref to the
 `<thead>` (its height offsets every row in the same scroll box), the row
 height(s) and a stable `isDetailOpen`; it returns the items to render plus
 `top` / `bottom` spacer heights and a `measureElement` ref-callback for detail
-rows:
+rows. Pass `unmeasuredFloor: pageSize` when you page the rows, so the leading
+window rendered before anything is measured — every server render — covers the
+whole page:
 
 ```tsx
 const { items, top, bottom, measureElement } = useRowVirtualizer({
@@ -427,6 +453,12 @@ const { items, top, bottom, measureElement } = useRowVirtualizer({
   enabled: true,
 })
 ```
+
+`useUnboundedViewport()` — the check behind the fallback bound in
+[Large data](#large-data), for a shell with its own viewport. It answers
+whether the scroller it was given has a height of its own; render
+`data-dt-unbounded` on the viewport when it says no, and the stylesheet does
+the rest.
 
 `<TablePagination instance={instance} labels={labels} />` — the footer
 `<DataTable>` renders when `footer` is on, exported so a shell of your own can
@@ -458,7 +490,7 @@ reuse it rather than rebuild the range math and page-size select.
 | `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. |
 | `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
-| `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. |
+| `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
 
 Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, rowHeight, getRowHeight }`.
 
@@ -468,7 +500,7 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 |---|---|---|---|
 | `instance` | `DataTableInstance` | — | **Required.** From `useDataTable`. |
 | `striped` | `boolean` | `false` | |
-| `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. |
+| `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
 | `emptyState` | `ReactNode` | `labels.empty` | |

@@ -29,6 +29,7 @@ import { apply, useArrangement } from "./core/useArrangement"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
 import { usePagination, type PaginationApi } from "./core/usePagination"
 import { useTableQuery } from "./core/useTableQuery"
+import { warnOnce } from "./core/warnOnce"
 import type { DataTableFeatureFlags, LayoutStorage, TableLayout } from "./types"
 
 /**
@@ -155,7 +156,15 @@ export interface UseDataTableOptions<TData extends RowData> {
   onQueryChange?: (query: TableQuery) => void
   /** Pixel height of a data row. Default 40; also sets `--dt-row-height`. */
   rowHeight?: number
-  /** Height for particular rows, known ahead of render. */
+  /**
+   * Height for particular rows, known ahead of render.
+   *
+   * A pure function of its row. The identity may change freely — an inline
+   * arrow is fine, and costs nothing — but what it answers for a given row
+   * must not depend on anything the table cannot see. A policy that starts
+   * answering differently (a density toggle, say) is noticed from the rows on
+   * screen and corrected on the next frame.
+   */
   getRowHeight?: (row: TData) => number
 }
 
@@ -533,14 +542,6 @@ export function useDataTable<TData extends RowData>({
     rowHeight,
     getRowHeight,
   }
-}
-
-const warned = new Set<string>()
-/** Say a thing once per process; a hook re-runs every render. */
-function warnOnce(message: string): void {
-  if (warned.has(message)) return
-  warned.add(message)
-  console.warn(message)
 }
 
 /**

@@ -209,6 +209,67 @@ describe("row virtualisation", () => {
     expect(row500?.getAttribute("aria-rowindex")).toBe("502")
   })
 
+  it("keeps the row-height function's identity out of the measurement pass", () => {
+    /*
+     * An inline arrow — the form the README shows — is a new function on every
+     * host render. If that identity reaches the virtualiser's `getItemKey`,
+     * every one of the 1000 rows is re-keyed and re-estimated for a render
+     * that changed nothing about the rows.
+     */
+    const data = rows(1000)
+    const measure = vi.fn((row: Row) => (Number(row.id.slice(1)) % 2 ? 20 : 60))
+    function Host({ tick }: { tick: number }) {
+      const instance = useDataTable<Row>({
+        id: "churn",
+        columns,
+        data,
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        getRowHeight: (row) => measure(row),
+      })
+      return (
+        <>
+          <span data-testid="tick">{tick}</span>
+          <DataTable instance={instance} height={VIEWPORT_PX} />
+        </>
+      )
+    }
+    const { rerender } = render(<Host tick={0} />)
+    measure.mockClear()
+    rerender(<Host tick={1} />)
+    rerender(<Host tick={2} />)
+    // Only the rendered window may be consulted; a sweep would be 1000 a render.
+    expect(measure.mock.calls.length).toBeLessThan(100)
+  })
+
+  it("re-estimates when the row-height function starts answering differently", () => {
+    // The identity is no longer the signal, so a swapped height policy has to
+    // be noticed from the rows on screen: same data, same `rowHeight`.
+    const data = rows(100)
+    const tall = (row: Row) => (row.id ? 60 : 60)
+    const short = (row: Row) => (row.id ? 20 : 20)
+    function Density({ compact }: { compact: boolean }) {
+      const instance = useDataTable<Row>({
+        id: "density",
+        columns,
+        data,
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        getRowHeight: compact ? short : tall,
+      })
+      return <DataTable instance={instance} height={VIEWPORT_PX} />
+    }
+    const { container, rerender } = render(<Density compact={false} />)
+    const total = () => {
+      const { top, bottom } = spacers(container)
+      const rendered = renderedRows().reduce((sum, r) => sum + Number.parseFloat(r.style.height), 0)
+      return top + bottom + rendered
+    }
+    expect(total()).toBe(100 * 60)
+    rerender(<Density compact />)
+    expect(total()).toBe(100 * 20)
+  })
+
   it("re-estimates when the row height changes", () => {
     function Resizable({ rowHeight }: { rowHeight: number }) {
       const instance = useDataTable<Row>({
@@ -239,5 +300,23 @@ describe("before the viewport is measured", () => {
     expect(visible.length).toBeLessThanOrEqual(40)
     expect(visible[0]).toHaveTextContent("Row 0")
     expect(spacers(container).bottom).toBe((1000 - visible.length) * ROW_PX)
+  })
+
+  it("covers the whole page when the page is larger than the default window", () => {
+    // Server-rendered HTML for a 50-row page must carry all 50 rows, not the
+    // first 40: nothing has measured the viewport before hydration.
+    function Paged() {
+      const instance = useDataTable<Row>({
+        id: "paged",
+        columns,
+        data: rows(1000),
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        pagination: true,
+      })
+      return <DataTable instance={instance} height={VIEWPORT_PX} />
+    }
+    render(<Paged />)
+    expect(renderedRows()).toHaveLength(50)
   })
 })

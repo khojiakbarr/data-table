@@ -46,6 +46,15 @@
   --dt-indent: 18px;
   --dt-detail-bg: #f8f8fa;
 
+  /*
+   * Fallback height for a table nobody gave one. Applied only to a viewport
+   * measured as unable to scroll while holding far more rows than a screen
+   * can show — see `useUnboundedViewport`, which is also what warns about it
+   * in development. Set it to `none` to keep the unbounded layout and accept
+   * every row in the DOM.
+   */
+  --dt-viewport-max-height: 70vh;
+
   --dt-font: inherit;
   --dt-font-size: 14px;
 
@@ -81,6 +90,17 @@
   min-height: 0;
   overflow: auto;
   border-radius: inherit;
+}
+
+/*
+ * The rescue bound. Virtualisation needs a scroller, and a viewport with no
+ * height of its own never scrolls: it grows to its rows, so every row renders.
+ * The attribute is set only once that has actually been measured, so a table
+ * bounded by its `height` prop, by an ancestor or by anything else is never
+ * clipped by this rule.
+ */
+.dt-viewport[data-dt-unbounded] {
+  max-height: var(--dt-viewport-max-height);
 }
 
 /* General sibling: the Columns panel and the menu render between the two. */

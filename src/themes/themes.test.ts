@@ -22,12 +22,19 @@ const baseTokens = [...read("../styles.css").matchAll(/^\s*(--dt-[a-z0-9-]+)\s*:
 /**
  * Tokens the presets deliberately leave alone.
  *
- * shadcn has no variable for a row height or an indent, so a preset entry
- * could only repeat the base sheet's own value — at the preset's higher
- * specificity, which would quietly stop a host from changing it with a plain
- * `.dt-root {}` rule. They stay with the base sheet instead.
+ * shadcn has no variable for a row height, an indent or a fallback viewport
+ * height, so a preset entry could only repeat the base sheet's own value — at
+ * the preset's higher specificity, which would quietly stop a host from
+ * changing it with a plain `.dt-root {}` rule. They stay with the base sheet
+ * instead.
  */
-const INHERITED_TOKENS = ["--dt-header-height", "--dt-row-height", "--dt-indent", "--dt-font-size"]
+const INHERITED_TOKENS = [
+  "--dt-header-height",
+  "--dt-row-height",
+  "--dt-indent",
+  "--dt-font-size",
+  "--dt-viewport-max-height",
+]
 
 /** A preset with its comments removed, so prose cannot pass for a mapping. */
 const readDeclarations = (file: string) => read(file).replace(/\/\*[\s\S]*?\*\//g, "")
@@ -98,7 +105,7 @@ describe("base stylesheet token extraction", () => {
   // preset tests below passing vacuously with an empty token list.
   it("finds the base tokens", () => {
     expect(baseTokens.length).toBeGreaterThan(0)
-    expect(new Set(baseTokens).size).toBe(23)
+    expect(new Set(baseTokens).size).toBe(24)
   })
 
   it("matches digit-suffixed token names", () => {

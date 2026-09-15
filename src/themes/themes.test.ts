@@ -20,6 +20,42 @@ const read = (file: string) => readFileSync(resolve(__dirname, file), "utf8")
 const baseTokens = [...read("../styles.css").matchAll(/^\s*(--dt-[a-z0-9-]+)\s*:/gm)].map((m) => m[1] as string)
 
 /**
+ * Tokens the presets deliberately leave alone.
+ *
+ * shadcn has no variable for a row height or an indent, so a preset entry
+ * could only repeat the base sheet's own value — at the preset's higher
+ * specificity, which would quietly stop a host from changing it with a plain
+ * `.dt-root {}` rule. They stay with the base sheet instead.
+ */
+const INHERITED_TOKENS = ["--dt-header-height", "--dt-row-height", "--dt-indent", "--dt-font-size"]
+
+/** A preset with its comments removed, so prose cannot pass for a mapping. */
+const readDeclarations = (file: string) => read(file).replace(/\/\*[\s\S]*?\*\//g, "")
+
+/** WCAG 2.x relative luminance of a `#rgb` or `#rrggbb` colour. */
+const luminance = (hex: string): number => {
+  const full = hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex
+  const channel = (from: number): number => {
+    const value = Number.parseInt(full.slice(from, from + 2), 16) / 255
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5)
+}
+
+/** WCAG contrast ratio between two hex colours, lighter over darker. */
+const contrastRatio = (a: string, b: string): number => {
+  const first = luminance(a)
+  const second = luminance(b)
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
+}
+
+/** The value the base sheet gives a token in its default (light) block. */
+const baseTokenValue = (token: string): string => {
+  const match = read("../styles.css").match(new RegExp(`^\\s*${token}\\s*:\\s*([^;]+);`, "m"))
+  return (match?.[1] ?? "").trim()
+}
+
+/**
  * Approximates CSS specificity for the simple selectors these theme files
  * use (classes and attribute selectors only — no ids or type selectors), by
  * counting `.class` and `[attr=value]` components, including ones nested
@@ -74,14 +110,26 @@ describe("base stylesheet token extraction", () => {
 
 describe("shadcn presets", () => {
   for (const file of ["shadcn.css", "shadcn-hsl.css"]) {
-    it(`${file} maps every base token`, () => {
-      const preset = read(file)
-      const missing = [...new Set(baseTokens)].filter((token) => !preset.includes(`${token}:`))
+    it(`${file} maps every base token shadcn can supply`, () => {
+      // Comments are stripped first: both headers name tokens in prose, and a
+      // raw-text search once counted that as a mapping — deleting a real
+      // declaration left this test green.
+      const preset = readDeclarations(file)
+      const missing = [...new Set(baseTokens)]
+        .filter((token) => !INHERITED_TOKENS.includes(token))
+        .filter((token) => !preset.includes(`${token}:`))
       expect(missing).toEqual([])
     })
 
+    it(`${file} leaves the sizing tokens to the base sheet`, () => {
+      // Re-declaring a base value inside the preset's (0,2,0) rule costs the
+      // host a plain `.dt-root {}` override and buys nothing.
+      const preset = readDeclarations(file)
+      expect(INHERITED_TOKENS.filter((token) => preset.includes(`${token}:`))).toEqual([])
+    })
+
     it(`${file} pairs --dt-accent with a readable foreground token`, () => {
-      const preset = read(file)
+      const preset = readDeclarations(file)
       // shadcn guarantees --primary-foreground contrasts with --primary in
       // both light and dark, unlike a hardcoded white foreground.
       expect(preset).toMatch(/--dt-accent-fg:\s*(hsl\()?var\(--primary-foreground\)/)
@@ -230,5 +278,15 @@ describe("pin badge contrast", () => {
     const badge = styles.match(/\.dt-pin-badge\s*\{([^}]*)\}/)?.[1] ?? ""
     expect(badge).toContain("color: var(--dt-accent-fg)")
     expect(badge).not.toMatch(/color:\s*#fff/)
+  })
+})
+
+describe("base palette", () => {
+  it("prints the pin badge at WCAG AA", () => {
+    // `.dt-pin-badge` renders --dt-accent-fg on --dt-accent at 10px. That is
+    // normal-size text under WCAG, so it needs 4.5:1 — the 3:1 large-text
+    // allowance cannot apply at that size.
+    const ratio = contrastRatio(baseTokenValue("--dt-accent"), baseTokenValue("--dt-accent-fg"))
+    expect(ratio).toBeGreaterThanOrEqual(4.5)
   })
 })

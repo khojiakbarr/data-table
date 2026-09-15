@@ -339,6 +339,28 @@ import "@khojiakbarr/data-table/themes/shadcn.css"      // Tailwind v4 / oklch v
 import "@khojiakbarr/data-table/themes/shadcn-hsl.css"  // hsl(var(--x)) variables
 ```
 
+Pick by how your shadcn variables are written. A complete colour such as
+`oklch(0.62 0.19 259)` needs `shadcn.css`; a bare channel triplet such as
+`221 83% 53%`, read by the host as `hsl(var(--primary))`, needs
+`shadcn-hsl.css`. The wrong file produces no colour at all rather than a
+warning, so check one variable before deciding.
+
+Only tokens shadcn has an equivalent for are mapped. Sizes stay with the base
+sheet, so `--dt-header-height`, `--dt-row-height`, `--dt-indent` and
+`--dt-font-size` are still yours to set on `.dt-root`. A mapped token needs a
+rule that matches the preset's specificity, which the repeated class gives
+without excluding anything:
+
+```css
+.dt-root.dt-root {
+  --dt-accent: var(--chart-2);
+}
+```
+
+`theme="light"` or `theme="dark"` opts that table out of the preset and back
+onto the built-in palette, so the prop still means what it says while other
+tables on the page keep following shadcn.
+
 ---
 
 ## Headless use

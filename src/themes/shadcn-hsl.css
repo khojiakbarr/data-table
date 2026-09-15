@@ -23,10 +23,16 @@
  * base sheet's own maximum (its `[data-dt-theme="dark"]` / dark-media rules),
  * which is what lets this single rule beat the base sheet's default `.dt-root
  * {}` in every OS mode without a duplicated `@media` block. The trade-off: a
- * plain host override loaded after this file, `.dt-root { --dt-header-height:
- * 48px }`, is only (0,1,0) and no longer wins. To override a token on an
- * unpinned table, write the host rule at (0,2,0) or higher, e.g.
- * `.dt-root:not([data-dt-theme]) { --dt-header-height: 48px }`.
+ * plain host override loaded after this file, `.dt-root { --dt-accent: red }`,
+ * is only (0,1,0) and no longer wins. Repeat the class instead:
+ * `.dt-root.dt-root { --dt-accent: red }` is also (0,2,0) and, unlike
+ * `.dt-root:not([data-dt-theme])`, keeps matching a table that pins its
+ * theme — so one host rule covers every table on the page.
+ *
+ * Only tokens shadcn has an equivalent for are mapped. The sizing tokens are
+ * deliberately left to the base sheet: re-declaring its own values here would
+ * add no colour and quietly cost hosts the ability to change a height or an
+ * indent with a plain `.dt-root {}` rule.
  */
 
 .dt-root:not([data-dt-theme]) {
@@ -38,11 +44,9 @@
 
   --dt-header-bg: hsl(var(--muted));
   --dt-header-fg: hsl(var(--muted-foreground));
-  --dt-header-height: 38px;
 
   --dt-row-hover: hsl(var(--accent));
   --dt-row-stripe: color-mix(in srgb, hsl(var(--muted)) 50%, hsl(var(--background)));
-  --dt-row-height: 40px;
 
   --dt-accent: hsl(var(--primary));
   --dt-accent-fg: hsl(var(--primary-foreground));
@@ -54,9 +58,7 @@
   --dt-pin-shadow-start: 6px 0 6px -6px hsl(var(--foreground) / 0.25);
   --dt-pin-shadow-end: -6px 0 6px -6px hsl(var(--foreground) / 0.25);
 
-  --dt-indent: 18px;
   --dt-detail-bg: hsl(var(--muted) / 0.5);
 
   --dt-font: var(--font-sans, inherit);
-  --dt-font-size: 14px;
 }

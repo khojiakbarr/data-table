@@ -31,7 +31,9 @@
 
   /* interaction */
   --dt-accent: #3b82f6;
-  --dt-accent-fg: #fff;
+  /* Printed on --dt-accent by the pin badge at 10px, so it is normal-size
+     text: white would be 3.7:1, short of the 4.5:1 WCAG AA needs. */
+  --dt-accent-fg: #18181b;
   --dt-resize-handle: #d4d4d8;
   --dt-resize-handle-active: var(--dt-accent);
   --dt-drop-indicator: var(--dt-accent);

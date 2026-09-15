@@ -9,7 +9,7 @@ export type {
   UseDataTableOptions,
 } from "./useDataTable"
 export { localStorageLayout, noLayoutStorage, pruneLayout } from "./core/persistence"
-export { pinnedStyle } from "./core/pinning"
+export { pinnedStyle, renderedLeafColumns } from "./core/pinning"
 export type {
   DataTableFeatureFlags,
   DataTableLabels,

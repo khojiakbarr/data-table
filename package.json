@@ -1,7 +1,7 @@
 {
   "name": "@khojiakbarr/data-table",
-  "version": "0.1.0",
-  "description": "Headless-first React data table with column pinning, resizing, reordering, sorting and per-table persisted layout. Built on TanStack Table.",
+  "version": "0.2.0",
+  "description": "Headless-first React data table with nested column groups, column pinning, resizing, reordering, sorting and per-table persisted layout. Built on TanStack Table.",
   "keywords": [
     "react",
     "table",
@@ -10,7 +10,9 @@
     "tanstack-table",
     "column-pinning",
     "column-resizing",
-    "column-reordering"
+    "column-reordering",
+    "column-groups",
+    "nested-columns"
   ],
   "license": "MIT",
   "author": "Khojiakbar Chinozbekov",

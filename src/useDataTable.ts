@@ -126,16 +126,17 @@ export function useDataTable<TData extends RowData>({
 
   const store = useMemo(() => storage ?? noLayoutStorage(), [storage])
 
-  const columnIds = useMemo(
-    () => columns.map((column, index) => resolveColumnId(column, index)),
-    [columns],
-  )
+  const columnIds = useMemo(() => collectLeafIds(columns), [columns])
 
   // Read storage once per table id. Re-reading on every render would fight the
   // user: a change is saved, then immediately re-applied from disk.
+  //
+  // `columnOrder` starts empty rather than pre-seeded. TanStack reads it as
+  // "natural order" when empty, and seeding it is how grouped tables break:
+  // the ordering feature matches leaf ids, so a seeded list containing group
+  // ids silently reorders every column that is not in it.
   const [layout, setLayout] = useState<TableLayout>(() => ({
     ...EMPTY_LAYOUT,
-    columnOrder: columnIds,
     ...initialLayout,
     ...pruneLayout(store.load(id) ?? {}, columnIds),
   }))
@@ -153,8 +154,8 @@ export function useDataTable<TData extends RowData>({
 
   const resetLayout = useCallback(() => {
     store.clear(id)
-    setLayout({ ...EMPTY_LAYOUT, columnOrder: columnIds, ...initialRef.current })
-  }, [store, id, columnIds])
+    setLayout({ ...EMPTY_LAYOUT, ...initialRef.current })
+  }, [store, id])
 
   const isCustomised = useMemo(
     () => store.load(id) !== null,
@@ -209,9 +210,28 @@ function apply<T>(updater: T | ((old: T) => T), current: T): T {
   return typeof updater === "function" ? (updater as (old: T) => T)(current) : updater
 }
 
-/** Mirror TanStack's column id resolution so stored layouts line up. */
-function resolveColumnId(column: { id?: string; accessorKey?: unknown }, index: number): string {
-  if (typeof column.id === "string") return column.id
-  if (typeof column.accessorKey === "string") return column.accessorKey
-  return String(index)
+interface ColumnDefShape {
+  id?: string
+  accessorKey?: unknown
+  columns?: readonly ColumnDefShape[]
+}
+
+/**
+ * Leaf column ids, in declaration order.
+ *
+ * Only leaves carry order, visibility, width and pinning, so a group's own id
+ * must not appear — mixing them in makes TanStack drop every id it cannot match
+ * and reshuffle the rest. Mirrors TanStack's own id resolution so stored
+ * layouts line up with live columns.
+ *
+ * @param columns - Column definitions, possibly nested.
+ * @returns Every leaf id, depth-first.
+ */
+function collectLeafIds(columns: readonly ColumnDefShape[]): string[] {
+  return columns.flatMap((column, index) => {
+    if (column.columns?.length) return collectLeafIds(column.columns)
+    if (typeof column.id === "string") return [column.id]
+    if (typeof column.accessorKey === "string") return [column.accessorKey]
+    return [String(index)]
+  })
 }

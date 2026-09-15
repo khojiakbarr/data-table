@@ -73,20 +73,38 @@ export function Demo() {
   const receiptColumns = useMemo(
     () => [
       receiptCols.accessor("code", { header: "Kod", size: 110 }),
-      receiptCols.accessor("partner", { header: "Kontragent", size: 240 }),
-      receiptCols.accessor("warehouse", { header: "Ombor", size: 170 }),
-      receiptCols.accessor("date", { header: "Sana", size: 120 }),
-      receiptCols.accessor("quantity", {
-        header: "Miqdor",
-        size: 130,
-        cell: (info) => <span className="num">{qty.format(info.getValue())}</span>,
+      receiptCols.group({
+        id: "document",
+        header: "Hujjat",
+        columns: receiptCols.columns([
+          receiptCols.accessor("partner", { header: "Kontragent", size: 240 }),
+          receiptCols.accessor("warehouse", { header: "Ombor", size: 170 }),
+          receiptCols.accessor("date", { header: "Sana", size: 120 }),
+        ]),
       }),
-      receiptCols.accessor("amount", {
-        header: "Summa",
-        size: 170,
-        cell: (info) => <span className="num">{money.format(info.getValue())}</span>,
+      receiptCols.group({
+        id: "amounts",
+        header: "Summalar",
+        columns: receiptCols.columns([
+          receiptCols.accessor("quantity", {
+            header: "Miqdor",
+            size: 130,
+            cell: (info) => <span className="num">{qty.format(info.getValue())}</span>,
+          }),
+          receiptCols.group({
+            id: "money",
+            header: "Pul",
+            columns: receiptCols.columns([
+              receiptCols.accessor("amount", {
+                header: "Summa",
+                size: 170,
+                cell: (info) => <span className="num">{money.format(info.getValue())}</span>,
+              }),
+              receiptCols.accessor("currency", { header: "Valyuta", size: 90 }),
+            ]),
+          }),
+        ]),
       }),
-      receiptCols.accessor("currency", { header: "Valyuta", size: 90 }),
       receiptCols.accessor("status", { header: "Holat", size: 130 }),
     ],
     [],

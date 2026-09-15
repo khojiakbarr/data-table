@@ -34,10 +34,22 @@ export function HeaderCell<TData extends RowData>({
   const [dropSide, setDropSide] = useState<DropSide>(null)
   const [isDragging, setIsDragging] = useState(false)
 
+  /**
+   * A group header spans several leaf columns. Sorting, resizing and reordering
+   * all act on a single column, so none of them apply here — a group's width is
+   * the sum of its children's.
+   *
+   * The test is on the COLUMN, not on `header.subHeaders`: a leaf column that
+   * sits above its natural depth is rendered by a spanning placeholder header,
+   * and that header reports a sub-header while still standing for one ordinary
+   * sortable column.
+   */
+  const isGroup = column.columns.length > 0
+
   const pinned = column.getIsPinned()
-  const canSort = flags.sorting && column.getCanSort()
-  const canResize = flags.resizing && column.getCanResize()
-  const canDrag = flags.reordering && !column.getIsPinned()
+  const canSort = flags.sorting && !isGroup && column.getCanSort()
+  const canResize = flags.resizing && !isGroup && column.getCanResize()
+  const canDrag = flags.reordering && !isGroup && !column.getIsPinned()
   const isResizing = column.getIsResizing()
   const sorted = column.getIsSorted()
 
@@ -68,6 +80,7 @@ export function HeaderCell<TData extends RowData>({
 
   const className = [
     "dt-th",
+    isGroup ? "dt-th-group" : "",
     pinned ? "dt-pinned" : "",
     pinnedEdgeClass(header),
     isResizing ? "dt-resizing" : "",
@@ -79,8 +92,13 @@ export function HeaderCell<TData extends RowData>({
     .filter(Boolean)
     .join(" ")
 
+  /**
+   * No width here: column widths come from the <colgroup>, which is the only
+   * thing `table-layout: fixed` consults. Setting a width on a spanning header
+   * would be ignored at best and fight the colgroup at worst.
+   */
   const style: CSSProperties = {
-    width: header.getSize(),
+    top: `calc(var(--dt-header-height) * ${header.depth - 1})`,
     ...pinnedStyle(column),
   }
 
@@ -93,6 +111,7 @@ export function HeaderCell<TData extends RowData>({
   return (
     <th
       colSpan={header.colSpan}
+      rowSpan={header.rowSpan > 1 ? header.rowSpan : undefined}
       className={className}
       style={style}
       aria-sort={canSort ? ariaSort : undefined}

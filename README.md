@@ -33,12 +33,54 @@ function Receipts({ data, columns }) {
 
 | | |
 |---|---|
+| **Nested column groups** | Group headers to any depth. A column that sits above the deepest level spans down to meet the rows. |
 | **Pin columns** | To the start edge, the end edge, or both. Pinned columns stay put while the rest scrolls, with a shadow marking the seam. |
 | **Resize columns** | Drag the right edge of a header. Double-click it to go back to the declared width. |
 | **Reorder columns** | Drag a header onto another; a caret shows which side it will land on. |
 | **Sort** | Click a header: ascending, descending, off. Multi-sort shows its position. |
 | **Hide columns** | From the **Columns** panel. |
 | **Remember all of it** | Per table, per user, wherever you choose to put it. |
+
+---
+
+## Nested columns
+
+Use TanStack's `group()` helper. Wrap each group's children in `columns()` so
+TypeScript keeps each column's own value type:
+
+```tsx
+const col = createColumnHelper<DataTableFeatures, Receipt>()
+
+const columns = [
+  col.accessor("code", { header: "Code", size: 100 }),
+  col.group({
+    id: "document",
+    header: "Document",
+    columns: col.columns([
+      col.accessor("partner", { header: "Partner", size: 240 }),
+      col.accessor("city", { header: "City", size: 170 }),
+    ]),
+  }),
+  col.accessor("status", { header: "Status", size: 120 }),
+]
+```
+
+```
+┌──────┬──────────────────────┬────────┐
+│      │       Document       │        │
+│ Code ├───────────┬──────────┤ Status │
+│      │  Partner  │   City   │        │
+├──────┼───────────┼──────────┼────────┤
+```
+
+`Code` and `Status` span down to the rows on their own; you do not declare that.
+Group headers carry no sort, resize or drag control — those act on one column,
+and a group's width is the sum of its children's.
+
+Widths are declared in a `<colgroup>` rather than on each cell. Under
+`table-layout: fixed` the browser reads widths from the first row only, which
+with grouped headers is a row of spanning cells — so per-cell widths get
+divided evenly and every column comes out the wrong size.
 
 ---
 
@@ -135,18 +177,33 @@ Dark mode follows `prefers-color-scheme`. Pass `theme="light"` or `theme="dark"`
 additions, so you can render whatever markup you need and keep the behaviour:
 
 ```tsx
-import { useDataTable, pinnedStyle } from "@khojiakbarr/data-table"
+import { useDataTable, pinnedStyle, renderedLeafColumns } from "@khojiakbarr/data-table"
 
 const { table } = useDataTable({ id: "receipts", data, columns })
 
-table.getHeaderGroups() // …your own <thead>
-<td style={{ width: cell.column.getSize(), ...pinnedStyle(cell.column) }} />
+// Widths belong in a colgroup, in render order — not on each cell.
+<colgroup>
+  {renderedLeafColumns(table).map((c) => (
+    <col key={c.id} style={{ width: c.getSize() }} />
+  ))}
+</colgroup>
+
+// Skip headers a spanning cell above already covers.
+headerGroup.headers.filter((h) => h.rowSpan > 0)
+
+<td style={pinnedStyle(cell.column)} />
 ```
 
-`pinnedStyle()` is the only piece worth borrowing rather than rewriting: a pinned column's
-offset is the running total of every pinned column before it, and those widths change on
-every frame while a resize handle is being dragged. It reads TanStack's memoised offset
-map instead of recomputing.
+Two helpers are worth borrowing rather than rewriting:
+
+`pinnedStyle()` — a pinned column's offset is the running total of every pinned column
+before it, and those widths change on every frame while a resize handle is dragged. It
+reads TanStack's memoised offset map instead of recomputing.
+
+`renderedLeafColumns()` — `table.getVisibleLeafColumns()` groups pinned columns first,
+which is *not* the order cells appear in, because pinned cells keep their DOM position and
+are stuck with `position: sticky`. Feeding that order to a `<colgroup>` hands every column
+somebody else's width.
 
 ---
 

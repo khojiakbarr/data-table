@@ -407,3 +407,26 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- grouped headers ---------- *
+ * A group header labels the columns beneath it; it is not itself a column, so
+ * it carries no sort, resize or drag affordance.
+ */
+
+.dt-th-group {
+  text-align: center;
+  border-inline-end: 1px solid var(--dt-border);
+}
+
+.dt-th-group .dt-th-inner {
+  justify-content: center;
+  font-size: 0.92em;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+}
+
+/* Each header row sticks below the one above it; `top` is set inline from the
+   header's depth. */
+.dt-th {
+  vertical-align: bottom;
+}

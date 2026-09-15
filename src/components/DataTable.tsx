@@ -1,6 +1,6 @@
 import { flexRender, type RowData } from "@tanstack/react-table"
 import { useCallback, useState, type CSSProperties, type ReactNode } from "react"
-import { pinnedStyle } from "../core/pinning"
+import { pinnedStyle, renderedLeafColumns } from "../core/pinning"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { ColumnPanel } from "./ColumnPanel"
@@ -125,18 +125,37 @@ export function DataTable<TData extends RowData>({
         className={["dt-table", striped ? "dt-striped" : ""].filter(Boolean).join(" ")}
         style={{ width: table.getTotalSize(), minWidth: "100%" }}
       >
+        {/*
+          Under `table-layout: fixed` the browser takes column widths from the
+          first row only — which, with grouped headers, is a row of spanning
+          cells. A colgroup states the widths directly, so nested headers and
+          resizing stop fighting each other.
+        */}
+        <colgroup>
+          {renderedLeafColumns(table).map((column) => (
+            <col key={column.id} style={{ width: column.getSize() }} />
+          ))}
+        </colgroup>
+
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => (
-                <HeaderCell
-                  key={header.id}
-                  header={header}
-                  flags={flags}
-                  labels={labels}
-                  onReorder={handleReorder}
-                />
-              ))}
+              {headerGroup.headers
+                /*
+                 * TanStack marks a header that a taller cell above already
+                 * covers with rowSpan 0. Rendering those would repeat every
+                 * label once per header row.
+                 */
+                .filter((header) => header.rowSpan > 0)
+                .map((header) => (
+                  <HeaderCell
+                    key={header.id}
+                    header={header}
+                    flags={flags}
+                    labels={labels}
+                    onReorder={handleReorder}
+                  />
+                ))}
             </tr>
           ))}
         </thead>
@@ -157,10 +176,7 @@ export function DataTable<TData extends RowData>({
                   ]
                     .filter(Boolean)
                     .join(" ")}
-                  style={{
-                    width: cell.column.getSize(),
-                    ...pinnedStyle(cell.column),
-                  }}
+                  style={pinnedStyle(cell.column)}
                 >
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>

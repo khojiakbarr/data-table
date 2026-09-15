@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
 
 /**
  * Presets are static CSS, not code — the only automatable check is that each
@@ -98,12 +98,13 @@ describe("shadcn presets", () => {
 
     it(`${file} leaves the pinned \`theme\` prop branches to the base sheet`, () => {
       const preset = read(file)
-      // A selector may legitimately *exclude* a pinned theme (the dark-media
-      // branch does, via `:not([data-dt-theme="light"])`) without mapping
-      // it. What must not reappear is a selector that positively matches
-      // `[data-dt-theme="dark"]` or `[data-dt-theme="light"]` — that would
-      // map the pinned branches to the same shadcn variables as the
-      // unpinned case, making the public `theme` prop a no-op.
+      // A selector may legitimately *exclude* a pinned theme (the sole rule
+      // does, via `:not([data-dt-theme])`) without mapping it. What must not
+      // reappear is a selector that positively matches `[data-dt-theme="dark"]`
+      // or `[data-dt-theme="light"]` — that would map a pinned branch to the
+      // same shadcn variables as the unpinned case, making the public `theme`
+      // prop a no-op. This is a text-level guard only; the cascade-resolution
+      // suite below is what actually proves the pin holds.
       const selectors = extractSelectorGroups(preset)
         .flatMap((group) => group.split(","))
         .map((selector) => selector.trim())
@@ -111,6 +112,114 @@ describe("shadcn presets", () => {
         /\[data-dt-theme="(dark|light)"\]/.test(selector.replace(/:not\([^)]*\)/g, "")),
       )
       expect(pinsATheme).toBe(false)
+    })
+
+    it(`${file} excludes both pinned states from its one rule, not just one of them`, () => {
+      const preset = read(file)
+      // Regression guard for a real bug: an earlier round only excluded
+      // `[data-dt-theme="light"]`, so `theme="dark"` under an OS dark
+      // preference still lost to this preset (see the cascade-resolution
+      // suite below for the reproduction). Excluding the attribute by
+      // presence — `:not([data-dt-theme])`, with no value — excludes every
+      // pinned value at once and can't silently regress to excluding just one.
+      expect(preset).toContain(":not([data-dt-theme])")
+      expect(preset).not.toContain(':not([data-dt-theme="light"])')
+      expect(preset).not.toContain(':not([data-dt-theme="dark"])')
+    })
+
+    it(`${file} does not duplicate a dark-media branch`, () => {
+      const preset = read(file)
+      // A second `@media (prefers-color-scheme: dark)` block re-declaring
+      // the same tokens at the base sheet's own specificity is how the
+      // previous round silently defeated host overrides in dark OS mode
+      // only (the plain rule and the media rule disagreed on what a host
+      // override needs to beat). One rule, unconditional on OS mode, can't
+      // reintroduce that mode-dependent asymmetry. Strip comments first: the
+      // file's own header comment discusses `@media` in prose.
+      const withoutComments = preset.replace(/\/\*[\s\S]*?\*\//g, "")
+      expect(withoutComments).not.toMatch(/@media/)
+    })
+
+    it(`${file} keeps the row stripe opaque instead of mixing to transparent`, () => {
+      const preset = read(file)
+      // A translucent stripe lets horizontally-scrolled content show through
+      // a sticky pinned column on striped odd rows (`.dt-pinned` paints no
+      // background of its own — see styles.css). Mixing toward the surface
+      // token instead of `transparent` keeps the result opaque.
+      const stripeDeclaration = preset.match(/--dt-row-stripe:\s*([^;]+);/)?.[1] ?? ""
+      expect(stripeDeclaration).not.toContain("transparent")
+      expect(stripeDeclaration).toMatch(/background/)
+    })
+  }
+})
+
+/**
+ * Renders the base sheet plus each preset into a real `<style>` element and
+ * reads back `getComputedStyle` — the actual CSS cascade, not a guess about
+ * it from selector text. This is what catches specificity/source-order bugs
+ * that a purely textual check (above) cannot: jsdom's CSSOM resolves classes,
+ * attribute selectors and `:not()` exactly as a browser would, picking the
+ * winning declaration by the real (specificity, source order) rule — it just
+ * doesn't resolve `var()`/`color-mix()` values, so assertions compare the
+ * winning declaration's raw text instead of a final resolved colour.
+ *
+ * Known gap: jsdom does not evaluate `prefers-color-scheme` for cascade
+ * purposes (confirmed empirically — `window.matchMedia` mocked to report
+ * `dark` does not change which `@media` rules apply), so these tests can only
+ * exercise the "OS light" cascade. That is sufficient to catch the pin-defeat
+ * regression this suite guards against: presets are unconditional on
+ * `prefers-color-scheme` since the fix (see the "does not duplicate a
+ * dark-media branch" test above), so an OS-dark branch no longer exists to
+ * hide a separate bug from this OS-light check.
+ */
+describe("shadcn presets — cascade resolution", () => {
+  const base = read("../styles.css")
+
+  for (const file of ["shadcn.css", "shadcn-hsl.css"]) {
+    describe(file, () => {
+      let styleEl: HTMLStyleElement
+
+      beforeEach(() => {
+        styleEl = document.createElement("style")
+        styleEl.textContent = `${base}\n${read(file)}`
+        document.head.appendChild(styleEl)
+      })
+
+      afterEach(() => {
+        styleEl.remove()
+      })
+
+      /** Renders a `.dt-root` with the given `data-dt-theme` (omitted when undefined) and returns its computed `--dt-bg`. */
+      const resolvedBg = (theme?: "light" | "dark"): string => {
+        const el = document.createElement("div")
+        el.className = "dt-root"
+        if (theme) el.setAttribute("data-dt-theme", theme)
+        document.body.appendChild(el)
+        const value = getComputedStyle(el).getPropertyValue("--dt-bg").trim()
+        el.remove()
+        return value
+      }
+
+      it("leaves an unpinned table on the preset's shadcn mapping", () => {
+        // The base sheet's own light-default value is a hardcoded #ffffff;
+        // winning over it with `var(--background)` is the preset's entire job.
+        expect(resolvedBg()).toContain("var(--background)")
+      })
+
+      it('does not let the preset win over theme="light"', () => {
+        // Regression: the previous round's unguarded `.dt-root {}` rule tied
+        // the base sheet's own plain rule on specificity and loaded after it,
+        // so this resolved to `var(--background)` instead of the pinned value.
+        const value = resolvedBg("light")
+        expect(value).not.toContain("var(--background)")
+        expect(value).toBe("#ffffff")
+      })
+
+      it('does not let the preset win over theme="dark"', () => {
+        const value = resolvedBg("dark")
+        expect(value).not.toContain("var(--background)")
+        expect(value).toBe("#18181b")
+      })
     })
   }
 })

@@ -7,25 +7,28 @@
  *
  * Dark mode is the host's: shadcn swaps its variables on `.dark`, so the same
  * `var(--x)` reference below resolves to the right colour in either mode
- * without this file needing to distinguish them. What DOES need
- * distinguishing is the base stylesheet's own fallback palette, which sets
- * hardcoded colours at specificity (0,2,0) — a class plus one attribute
- * selector — for the "OS prefers dark, no explicit pin" case. This preset
- * mirrors only that one branch, at that same specificity, so cascade order
- * (this file loads after the base sheet) decides the tie.
+ * without this file needing its own `prefers-color-scheme` branch.
  *
- * The base sheet's `[data-dt-theme="dark"]` / `[data-dt-theme="light"]`
- * branches are deliberately left alone: passing an explicit `theme` prop
- * opts a table out of this preset and back to the built-in palette, exactly
- * as the README's `theme` prop documentation promises. Mapping those
- * branches to the same shadcn variables here would make `theme` a no-op.
+ * Scope: `.dt-root:not([data-dt-theme])` matches only an UNPINNED table —
+ * `[data-dt-theme]` is an attribute-presence check, so it excludes both
+ * `theme="light"` and `theme="dark"` (not just one of them). A pinned table
+ * is left entirely to the base sheet's own `[data-dt-theme="dark"]` rule (or
+ * its plain, light-by-default rule), exactly as the README's `theme` prop
+ * documentation promises — passing `theme` opts a table back out of this
+ * preset. Mapping the pinned branches to the same shadcn variables here
+ * would make `theme` a no-op.
  *
- * No branch below exceeds the base sheet's own specificity, so an ordinary
- * host override loaded after this file — e.g. `.dt-root { --dt-header-height:
- * 48px }` — still wins.
+ * Specificity: one class plus one attribute selector, (0,2,0) — matching the
+ * base sheet's own maximum (its `[data-dt-theme="dark"]` / dark-media rules),
+ * which is what lets this single rule beat the base sheet's default `.dt-root
+ * {}` in every OS mode without a duplicated `@media` block. The trade-off: a
+ * plain host override loaded after this file, `.dt-root { --dt-header-height:
+ * 48px }`, is only (0,1,0) and no longer wins. To override a token on an
+ * unpinned table, write the host rule at (0,2,0) or higher, e.g.
+ * `.dt-root:not([data-dt-theme]) { --dt-header-height: 48px }`.
  */
 
-.dt-root {
+.dt-root:not([data-dt-theme]) {
   --dt-bg: var(--background);
   --dt-fg: var(--foreground);
   --dt-muted-fg: var(--muted-foreground);
@@ -37,7 +40,7 @@
   --dt-header-height: 38px;
 
   --dt-row-hover: var(--accent);
-  --dt-row-stripe: color-mix(in oklab, var(--muted) 50%, transparent);
+  --dt-row-stripe: color-mix(in oklab, var(--muted) 50%, var(--background));
   --dt-row-height: 40px;
 
   --dt-accent: var(--primary);
@@ -55,40 +58,4 @@
 
   --dt-font: var(--font-sans, inherit);
   --dt-font-size: 14px;
-}
-
-@media (prefers-color-scheme: dark) {
-  /* Same map as above, repeated only to match the base sheet's dark-mode
-     specificity — see the file header for why. */
-  .dt-root:not([data-dt-theme="light"]) {
-    --dt-bg: var(--background);
-    --dt-fg: var(--foreground);
-    --dt-muted-fg: var(--muted-foreground);
-    --dt-border: var(--border);
-    --dt-radius: var(--radius);
-
-    --dt-header-bg: var(--muted);
-    --dt-header-fg: var(--muted-foreground);
-    --dt-header-height: 38px;
-
-    --dt-row-hover: var(--accent);
-    --dt-row-stripe: color-mix(in oklab, var(--muted) 50%, transparent);
-    --dt-row-height: 40px;
-
-    --dt-accent: var(--primary);
-    --dt-accent-fg: var(--primary-foreground);
-    --dt-resize-handle: var(--border);
-    --dt-resize-handle-active: var(--primary);
-    --dt-drop-indicator: var(--primary);
-    --dt-focus-ring: var(--ring);
-
-    --dt-pin-shadow-start: 6px 0 6px -6px color-mix(in oklab, var(--foreground) 25%, transparent);
-    --dt-pin-shadow-end: -6px 0 6px -6px color-mix(in oklab, var(--foreground) 25%, transparent);
-
-    --dt-indent: 18px;
-    --dt-detail-bg: color-mix(in oklab, var(--muted) 50%, transparent);
-
-    --dt-font: var(--font-sans, inherit);
-    --dt-font-size: 14px;
-  }
 }

@@ -10,6 +10,7 @@ import { BodyRow } from "./BodyRow"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import { ColumnPanel } from "./ColumnPanel"
 import { HeaderCell } from "./HeaderCell"
+import { TablePagination } from "./TablePagination"
 
 /** English defaults; pass `labels` to translate. */
 export const defaultLabels: DataTableLabels = {
@@ -80,6 +81,10 @@ export interface DataTableProps<TData extends RowData> {
   theme?: "light" | "dark"
   className?: string
   onRowClick?: (row: TData) => void
+  /** Show the pagination footer when paging is on. Default true. */
+  footer?: boolean
+  /** Render every row instead of only the visible window. Default true. */
+  virtualize?: boolean
 }
 
 /**
@@ -118,7 +123,11 @@ export function DataTable<TData extends RowData>({
   theme,
   className,
   onRowClick,
+  footer = true,
+  virtualize = true,
 }: DataTableProps<TData>) {
+  // Wired up by the virtualised body; accepted now so the prop is stable.
+  void virtualize
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState(false)
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
@@ -311,6 +320,8 @@ export function DataTable<TData extends RowData>({
           <div className="dt-empty">{emptyState ?? labels.empty}</div>
         ) : null}
       </div>
+
+      {footer ? <TablePagination instance={instance} labels={labels} /> : null}
     </div>
   )
 }

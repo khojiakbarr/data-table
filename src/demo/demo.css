@@ -1,0 +1,17 @@
+:root { color-scheme: light dark; }
+body {
+  margin: 0;
+  padding: 24px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: #f6f6f7;
+  color: #18181b;
+}
+@media (prefers-color-scheme: dark) {
+  body { background: #0f0f11; color: #fafafa; }
+}
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 28px 0 8px; font-weight: 600; }
+p.lede { margin: 0 0 20px; color: #71717a; font-size: 14px; max-width: 70ch; }
+.hint { font-size: 12px; color: #71717a; margin: 6px 0 0; }
+.num { font-variant-numeric: tabular-nums; display: block; text-align: right; }
+code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }

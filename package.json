@@ -1,0 +1,75 @@
+{
+  "name": "@khojiakbarr/data-table",
+  "version": "0.1.0",
+  "description": "Headless-first React data table with column pinning, resizing, reordering, sorting and per-table persisted layout. Built on TanStack Table.",
+  "keywords": [
+    "react",
+    "table",
+    "datatable",
+    "datagrid",
+    "tanstack-table",
+    "column-pinning",
+    "column-resizing",
+    "column-reordering"
+  ],
+  "license": "MIT",
+  "author": "Khojiakbar Chinozbekov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khojiakbarr/data-table.git"
+  },
+  "bugs": {
+    "url": "https://github.com/khojiakbarr/data-table/issues"
+  },
+  "homepage": "https://github.com/khojiakbarr/data-table#readme",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm run build && pnpm run test"
+  },
+  "peerDependencies": {
+    "@tanstack/react-table": "^9.0.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@tanstack/react-table": "^9.2.4",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^30.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^5.0.0"
+  }
+}

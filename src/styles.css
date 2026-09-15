@@ -1,0 +1,409 @@
+/*
+ * Token contract.
+ *
+ * Every value is a CSS custom property with a working default, so the table
+ * looks finished with no configuration. Override any of them on an ancestor —
+ * or map your own design system onto them — to restyle the whole table:
+ *
+ *   .my-app { --dt-header-bg: var(--table-header-bg); }
+ *
+ * Nothing here reads a colour from outside this contract, which is what makes
+ * the table themeable without touching its source.
+ */
+
+.dt-root {
+  /* surface */
+  --dt-bg: #ffffff;
+  --dt-fg: #18181b;
+  --dt-muted-fg: #71717a;
+  --dt-border: #e4e4e7;
+  --dt-radius: 8px;
+
+  /* header */
+  --dt-header-bg: #fafafa;
+  --dt-header-fg: #52525b;
+  --dt-header-height: 38px;
+
+  /* rows */
+  --dt-row-hover: #f4f4f5;
+  --dt-row-stripe: #fcfcfd;
+  --dt-row-height: 40px;
+
+  /* interaction */
+  --dt-accent: #3b82f6;
+  --dt-resize-handle: #d4d4d8;
+  --dt-resize-handle-active: var(--dt-accent);
+  --dt-drop-indicator: var(--dt-accent);
+  --dt-focus-ring: var(--dt-accent);
+
+  /* pinned column edge shadow */
+  --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.18);
+  --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.18);
+
+  --dt-font: inherit;
+  --dt-font-size: 14px;
+
+  position: relative;
+  overflow: auto;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius);
+  background: var(--dt-bg);
+  color: var(--dt-fg);
+  font-family: var(--dt-font);
+  font-size: var(--dt-font-size);
+}
+
+@media (prefers-color-scheme: dark) {
+  .dt-root:not([data-dt-theme="light"]) {
+    --dt-bg: #18181b;
+    --dt-fg: #fafafa;
+    --dt-muted-fg: #a1a1aa;
+    --dt-border: #2e2e33;
+    --dt-header-bg: #1f1f23;
+    --dt-header-fg: #a1a1aa;
+    --dt-row-hover: #232327;
+    --dt-row-stripe: #1b1b1f;
+    --dt-resize-handle: #3f3f46;
+    --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
+    --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
+  }
+}
+
+.dt-root[data-dt-theme="dark"] {
+  --dt-bg: #18181b;
+  --dt-fg: #fafafa;
+  --dt-muted-fg: #a1a1aa;
+  --dt-border: #2e2e33;
+  --dt-header-bg: #1f1f23;
+  --dt-header-fg: #a1a1aa;
+  --dt-row-hover: #232327;
+  --dt-row-stripe: #1b1b1f;
+  --dt-resize-handle: #3f3f46;
+  --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
+  --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
+}
+
+.dt-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  /* Width is set inline from table.getTotalSize(); see DataTable.tsx. */
+}
+
+/* ---------- header ---------- */
+
+.dt-th {
+  position: relative;
+  height: var(--dt-header-height);
+  padding: 0;
+  background: var(--dt-header-bg);
+  color: var(--dt-header-fg);
+  font-weight: 500;
+  text-align: start;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--dt-border);
+  /* Header sits above body cells, including pinned ones. */
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+.dt-th-inner {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding-inline: 10px;
+  overflow: hidden;
+}
+
+.dt-th-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+}
+
+.dt-sortable {
+  cursor: pointer;
+  user-select: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  flex: 1 1 auto;
+  text-align: start;
+}
+
+.dt-sortable:focus-visible,
+.dt-menu-button:focus-visible,
+.dt-panel-item:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+  border-radius: 3px;
+}
+
+.dt-sort-icon {
+  flex: none;
+  opacity: 0.45;
+  transition: opacity 120ms ease;
+}
+
+.dt-th[aria-sort]:not([aria-sort="none"]) .dt-sort-icon {
+  opacity: 1;
+}
+
+.dt-sort-index {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+/* ---------- body ---------- */
+
+.dt-td {
+  height: var(--dt-row-height);
+  padding-inline: 10px;
+  border-bottom: 1px solid var(--dt-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--dt-bg);
+}
+
+.dt-tr:last-child .dt-td {
+  border-bottom: 0;
+}
+
+.dt-striped .dt-tr:nth-child(even) .dt-td {
+  background: var(--dt-row-stripe);
+}
+
+.dt-tr:hover .dt-td {
+  background: var(--dt-row-hover);
+}
+
+/* ---------- pinning ---------- *
+ * Offsets come from column.getStart()/getAfter(), which already account for
+ * the live width of every preceding column — so a pinned column stays put
+ * while a column to its left is being dragged wider.
+ */
+
+.dt-pinned {
+  position: sticky;
+  z-index: 2;
+}
+
+.dt-th.dt-pinned {
+  z-index: 4;
+}
+
+.dt-pinned-start-last {
+  box-shadow: var(--dt-pin-shadow-start);
+}
+
+.dt-pinned-end-first {
+  box-shadow: var(--dt-pin-shadow-end);
+}
+
+/* ---------- resizing ---------- */
+
+.dt-resizer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.dt-resizer::after {
+  content: "";
+  width: 1px;
+  height: 100%;
+  background: var(--dt-resize-handle);
+  transition: background 120ms ease, width 120ms ease;
+}
+
+.dt-resizer:hover::after,
+.dt-resizer:focus-visible::after,
+.dt-resizing .dt-resizer::after {
+  width: 2px;
+  background: var(--dt-resize-handle-active);
+}
+
+/* While dragging, hint the whole column. */
+.dt-resizing {
+  user-select: none;
+}
+
+/* ---------- reordering ---------- */
+
+.dt-draggable {
+  cursor: grab;
+}
+
+.dt-dragging {
+  opacity: 0.4;
+}
+
+.dt-drop-start::before,
+.dt-drop-end::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  width: 2px;
+  background: var(--dt-drop-indicator);
+  z-index: 5;
+}
+
+.dt-drop-start::before {
+  inset-inline-start: 0;
+}
+
+.dt-drop-end::after {
+  inset-inline-end: 0;
+}
+
+/* ---------- column panel ---------- */
+
+.dt-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--dt-border);
+  background: var(--dt-bg);
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
+.dt-spacer {
+  flex: 1 1 auto;
+}
+
+.dt-menu-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding-inline: 10px;
+  border: 1px solid var(--dt-border);
+  border-radius: 6px;
+  background: var(--dt-bg);
+  color: var(--dt-fg);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dt-menu-button:hover {
+  background: var(--dt-row-hover);
+}
+
+.dt-panel {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 40px;
+  z-index: 10;
+  width: 260px;
+  max-height: 340px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius);
+  background: var(--dt-bg);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+}
+
+.dt-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 8px;
+  font-size: 12px;
+  color: var(--dt-muted-fg);
+}
+
+.dt-panel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.dt-panel-item:hover {
+  background: var(--dt-row-hover);
+}
+
+.dt-panel-label {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dt-pin-group {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.dt-pin-toggle {
+  border: 1px solid var(--dt-border);
+  border-radius: 4px;
+  background: var(--dt-bg);
+  color: var(--dt-muted-fg);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+
+.dt-pin-toggle[aria-pressed="true"] {
+  background: var(--dt-accent);
+  border-color: var(--dt-accent);
+  color: #fff;
+}
+
+.dt-link {
+  border: 0;
+  background: none;
+  color: var(--dt-accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.dt-empty {
+  padding: 28px 12px;
+  text-align: center;
+  color: var(--dt-muted-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-root * {
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,130 @@
+import type { LayoutStorage, TableLayout } from "../types"
+
+/**
+ * Persisting a table's layout.
+ *
+ * Every entry is keyed by the table's `id`. That is the whole reason `id` is a
+ * required option: two tables rendered on one page have independent layouts,
+ * and a shared storage key would let one silently overwrite the other's columns
+ * the moment either is rearranged.
+ */
+
+const KEY_PREFIX = "data-table:layout:"
+
+/** Layouts written by an older version of the library are discarded, not guessed at. */
+const FORMAT_VERSION = 1
+
+interface StoredLayout {
+  v: number
+  layout: Partial<TableLayout>
+}
+
+/**
+ * Keep layouts in `localStorage`, scoped to the browser.
+ *
+ * Every access is guarded: private windows, disabled site data and full quotas
+ * all throw, and a table that cannot remember its columns should still render.
+ *
+ * @param prefix - Key prefix, useful when several apps share an origin.
+ * @returns A storage adapter for {@link useDataTable}.
+ *
+ * @example
+ * useDataTable({ id: "receipts", storage: localStorageLayout(), ... })
+ */
+export function localStorageLayout(prefix = KEY_PREFIX): LayoutStorage {
+  return {
+    load(id) {
+      try {
+        const raw = localStorage.getItem(prefix + id)
+        if (!raw) return null
+        const parsed = JSON.parse(raw) as StoredLayout
+        if (parsed.v !== FORMAT_VERSION) return null
+        return parsed.layout
+      } catch {
+        return null
+      }
+    },
+    save(id, layout) {
+      try {
+        const payload: StoredLayout = { v: FORMAT_VERSION, layout }
+        localStorage.setItem(prefix + id, JSON.stringify(payload))
+      } catch {
+        // Quota or a blocked store. The layout still applies for this session.
+      }
+    },
+    clear(id) {
+      try {
+        localStorage.removeItem(prefix + id)
+      } catch {
+        // Nothing to do — the entry is unreachable either way.
+      }
+    },
+  }
+}
+
+/**
+ * Discard layout changes when the table unmounts.
+ *
+ * The default, because silently remembering state a developer did not ask for
+ * is surprising — and because a server-backed adapter is usually what a
+ * multi-user application actually wants.
+ *
+ * @returns A storage adapter that stores nothing.
+ */
+export function noLayoutStorage(): LayoutStorage {
+  return {
+    load: () => null,
+    save: () => undefined,
+    clear: () => undefined,
+  }
+}
+
+/**
+ * Drop stored columns that the table no longer defines.
+ *
+ * Without this, removing a column from the code leaves it in every user's saved
+ * layout forever, and a renamed column resurfaces as a phantom entry in the
+ * column list.
+ *
+ * @param stored - Layout as it came out of storage.
+ * @param knownColumnIds - Column IDs the table currently defines.
+ * @returns The layout with unknown column references removed.
+ */
+export function pruneLayout(
+  stored: Partial<TableLayout>,
+  knownColumnIds: readonly string[],
+): Partial<TableLayout> {
+  const known = new Set(knownColumnIds)
+  const keepKeys = <TValue,>(
+    record: Record<string, TValue> | undefined,
+  ): Record<string, TValue> | undefined =>
+    record
+      ? Object.fromEntries(Object.entries(record).filter(([id]) => known.has(id)))
+      : undefined
+
+  const pruned: Partial<TableLayout> = {}
+
+  if (stored.columnOrder) {
+    // Keep the stored order, then append columns added since it was saved.
+    const ordered = stored.columnOrder.filter((id) => known.has(id))
+    const missing = knownColumnIds.filter((id) => !ordered.includes(id))
+    pruned.columnOrder = [...ordered, ...missing]
+  }
+  const visibility = keepKeys(stored.columnVisibility)
+  if (visibility) pruned.columnVisibility = visibility
+
+  const sizing = keepKeys(stored.columnSizing)
+  if (sizing) pruned.columnSizing = sizing
+
+  if (stored.columnPinning) {
+    pruned.columnPinning = {
+      start: (stored.columnPinning.start ?? []).filter((id) => known.has(id)),
+      end: (stored.columnPinning.end ?? []).filter((id) => known.has(id)),
+    }
+  }
+  if (stored.sorting) {
+    pruned.sorting = stored.sorting.filter((entry) => known.has(entry.id))
+  }
+
+  return pruned
+}

@@ -1,0 +1,46 @@
+/*
+ * shadcn/ui preset — for hosts whose shadcn variables hold HSL channel
+ * triplets (pre-Tailwind-v4 format), where a variable is read as
+ * `hsl(var(--x))`. Import AFTER the base stylesheet:
+ *
+ *   import "@khojiakbarr/data-table/styles.css"
+ *   import "@khojiakbarr/data-table/themes/shadcn-hsl.css"
+ *
+ * Dark mode is the host's: shadcn swaps its variables on `.dark`, and these
+ * rules follow under every table theme state. The selectors match or exceed
+ * the base sheet's dark-mode specificity so load order is all that matters.
+ */
+
+.dt-root,
+.dt-root:not([data-dt-theme="light"]):not([data-dt-theme="dark"]),
+.dt-root[data-dt-theme="light"],
+.dt-root[data-dt-theme="dark"] {
+  --dt-bg: hsl(var(--background));
+  --dt-fg: hsl(var(--foreground));
+  --dt-muted-fg: hsl(var(--muted-foreground));
+  --dt-border: hsl(var(--border));
+  --dt-radius: var(--radius);
+
+  --dt-header-bg: hsl(var(--muted));
+  --dt-header-fg: hsl(var(--muted-foreground));
+  --dt-header-height: 38px;
+
+  --dt-row-hover: hsl(var(--accent));
+  --dt-row-stripe: hsl(var(--muted) / 0.5);
+  --dt-row-height: 40px;
+
+  --dt-accent: hsl(var(--primary));
+  --dt-resize-handle: hsl(var(--border));
+  --dt-resize-handle-active: hsl(var(--primary));
+  --dt-drop-indicator: hsl(var(--primary));
+  --dt-focus-ring: hsl(var(--ring));
+
+  --dt-pin-shadow-start: 6px 0 6px -6px hsl(var(--foreground) / 0.25);
+  --dt-pin-shadow-end: -6px 0 6px -6px hsl(var(--foreground) / 0.25);
+
+  --dt-indent: 18px;
+  --dt-detail-bg: hsl(var(--muted) / 0.5);
+
+  --dt-font: var(--font-sans, inherit);
+  --dt-font-size: 14px;
+}

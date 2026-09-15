@@ -55,7 +55,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && mkdir -p dist/themes && cp src/themes/*.css dist/themes/",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",

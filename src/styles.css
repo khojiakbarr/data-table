@@ -821,10 +821,22 @@
   flex: none;
   z-index: 6;
   height: 2px;
+  /*
+   * The negative margin lets the bar overlay the first 2px of the viewport
+   * instead of pushing it down, so toggling `loading` never moves a row. With
+   * no toolbar above, the bar meets the card's rounded top corners; the inset
+   * keeps its square ends from crossing that arc.
+   */
   margin-bottom: -2px;
+  margin-inline: var(--dt-radius);
   background: linear-gradient(90deg, transparent, var(--dt-accent), transparent);
   background-size: 40% 100%;
   animation: dt-progress 1s linear infinite;
+}
+
+/* Below the toolbar the bar is mid-card, where the full width reads better. */
+.dt-toolbar ~ .dt-progress {
+  margin-inline: 0;
 }
 
 @keyframes dt-progress {

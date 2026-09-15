@@ -4,6 +4,7 @@ import { useState, type CSSProperties, type DragEvent } from "react"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 import { pinnedStyle } from "../core/pinning"
+import { dropSideAt, type DropSide } from "../core/reorder"
 
 /**
  * One header cell: the sort control, the drag target for reordering, and the
@@ -19,19 +20,23 @@ interface HeaderCellProps<TData extends RowData> {
   header: Header<DataTableFeatures, TData, unknown>
   flags: Required<DataTableFeatureFlags>
   labels: DataTableLabels
-  onReorder: (draggedId: string, targetId: string) => void
+  /** Keep the header in view while the body scrolls. */
+  sticky: boolean
+  /** Open the per-column action menu at a viewport position. */
+  onOpenMenu: (at: { x: number; y: number }) => void
+  onReorder: (draggedId: string, targetId: string, side: DropSide) => void
 }
-
-type DropSide = "start" | "end" | null
 
 export function HeaderCell<TData extends RowData>({
   header,
   flags,
   labels,
+  sticky,
   onReorder,
+  onOpenMenu,
 }: HeaderCellProps<TData>) {
   const { column } = header
-  const [dropSide, setDropSide] = useState<DropSide>(null)
+  const [dropSide, setDropSide] = useState<DropSide | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
   /**
@@ -66,16 +71,16 @@ export function HeaderCell<TData extends RowData>({
     if (!canDrag) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
-    const rect = event.currentTarget.getBoundingClientRect()
-    const isPastMiddle = event.clientX - rect.left > rect.width / 2
-    setDropSide(isPastMiddle ? "end" : "start")
+    // State here drives the caret only; the drop reads the event again.
+    setDropSide(dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect()))
   }
 
   const handleDrop = (event: DragEvent<HTMLTableCellElement>) => {
     event.preventDefault()
     const draggedId = event.dataTransfer.getData("text/plain")
+    const side = dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect())
     setDropSide(null)
-    if (draggedId && draggedId !== column.id) onReorder(draggedId, column.id)
+    if (draggedId && draggedId !== column.id) onReorder(draggedId, column.id, side)
   }
 
   const className = [
@@ -98,7 +103,9 @@ export function HeaderCell<TData extends RowData>({
    * would be ignored at best and fight the colgroup at worst.
    */
   const style: CSSProperties = {
-    top: `calc(var(--dt-header-height) * ${header.depth - 1})`,
+    ...(sticky
+      ? { top: `calc(var(--dt-header-height) * ${header.depth - 1})` }
+      : {}),
     ...pinnedStyle(column),
   }
 
@@ -124,6 +131,14 @@ export function HeaderCell<TData extends RowData>({
       onDragOver={handleDragOver}
       onDragLeave={() => setDropSide(null)}
       onDrop={handleDrop}
+      onContextMenu={
+        isGroup
+          ? undefined
+          : (event) => {
+              event.preventDefault()
+              onOpenMenu({ x: event.clientX, y: event.clientY })
+            }
+      }
       title={canDrag ? labels.dragHint : undefined}
     >
       <div className="dt-th-inner">
@@ -144,6 +159,27 @@ export function HeaderCell<TData extends RowData>({
           <span className="dt-th-label">{label}</span>
         )}
       </div>
+
+      {isGroup ? null : (
+        <button
+          type="button"
+          className="dt-kebab"
+          aria-label={`${columnName}: ${labels.columnActions}`}
+          aria-haspopup="menu"
+          onClick={(event) => {
+            event.stopPropagation()
+            const rect = event.currentTarget.getBoundingClientRect()
+            onOpenMenu({ x: rect.left, y: rect.bottom + 2 })
+          }}
+          onDragStart={(event) => event.preventDefault()}
+        >
+          <svg width="3" height="13" viewBox="0 0 3 13" aria-hidden="true" fill="currentColor">
+            <circle cx="1.5" cy="2" r="1.3" />
+            <circle cx="1.5" cy="6.5" r="1.3" />
+            <circle cx="1.5" cy="11" r="1.3" />
+          </svg>
+        </button>
+      )}
 
       {canResize ? (
         <button

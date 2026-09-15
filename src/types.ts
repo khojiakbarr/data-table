@@ -77,4 +77,10 @@ export interface DataTableLabels {
   empty: string
   dragHint: string
   resizeColumn: string
+  expandRow: string
+  collapseRow: string
+  columnActions: string
+  autosize: string
+  autosizeAll: string
+  resetWidth: string
 }

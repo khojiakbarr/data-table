@@ -39,6 +39,8 @@ function Receipts({ data, columns }) {
 | **Reorder columns** | Drag a header onto another; a caret shows which side it will land on. |
 | **Sort** | Click a header: ascending, descending, off. Multi-sort shows its position. |
 | **Hide columns** | From the **Columns** panel. |
+| **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
+| **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. |
 | **Remember all of it** | Per table, per user, wherever you choose to put it. |
 
 ---
@@ -81,6 +83,51 @@ Widths are declared in a `<colgroup>` rather than on each cell. Under
 `table-layout: fixed` the browser reads widths from the first row only, which
 with grouped headers is a row of spanning cells — so per-cell widths get
 divided evenly and every column comes out the wrong size.
+
+---
+
+## Expandable rows
+
+Two shapes, one mechanism. Use either, or both together.
+
+**A detail panel** under a row — pass `renderDetail`:
+
+```tsx
+<DataTable
+  instance={table}
+  renderDetail={(row) => <MovementHistory sku={row.sku} />}
+/>
+```
+
+The panel holds anything, including another `<DataTable>`. Give each nested
+table its own `id` and they stay independent:
+
+```tsx
+function Detail({ product }) {
+  const table = useDataTable({ id: `movements-${product.sku}`, data, columns })
+  return <DataTable instance={table} toolbar={false} stickyHeader={false} />
+}
+```
+
+**Child rows** — pass `getSubRows`:
+
+```tsx
+useDataTable({ id: "bom", data, columns, getSubRows: (row) => row.children })
+```
+
+```
+▸ Cement M400 — 1 t
+  ▾ Clinker
+    · Limestone
+    · Gypsum
+  · Packaging
+```
+
+Each level expands on its own and indents by `--dt-indent`. A row with no
+children keeps its alignment with a spacer rather than a disabled control.
+
+Which rows are open is **not** persisted: it is a reading position, not an
+arrangement someone chose to keep, and restoring it days later is surprising.
 
 ---
 
@@ -163,6 +210,7 @@ looks finished out of the box and restyles without touching its source:
 | `--dt-resize-handle` `--dt-resize-handle-active` | Resize handle |
 | `--dt-drop-indicator` | Reorder caret |
 | `--dt-pin-shadow-start` `--dt-pin-shadow-end` | Pinned column seams |
+| `--dt-indent` `--dt-detail-bg` | Nested rows and detail panels |
 | `--dt-font` `--dt-font-size` | Typography |
 
 </details>
@@ -222,6 +270,8 @@ somebody else's width.
 | `defaultColumnWidth` | `number` | `160` | |
 | `minColumnWidth` | `number` | `60` | |
 | `maxColumnWidth` | `number` | `800` | |
+| `getSubRows` | `(row: TData) => TData[]` | — | Child rows, for tree data. |
+| `canExpand` | `(row: TData) => boolean` | all rows | Which rows may open a detail panel. |
 
 Returns `{ table, id, flags, resetLayout, isCustomised }`.
 
@@ -237,6 +287,8 @@ Returns `{ table, id, flags, resetLayout, isCustomised }`.
 | `emptyState` | `ReactNode` | `labels.empty` | |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | |
+| `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |
+| `stickyHeader` | `boolean` | `true` | Keep the header in view while the body scrolls. |
 | `onRowClick` | `(row: TData) => void` | — | |
 
 ---
@@ -248,8 +300,11 @@ Returns `{ table, id, flags, resetLayout, isCustomised }`.
 - Sort controls, the resize handle and the Columns panel are all reachable by keyboard
   with a visible focus ring.
 - The Columns panel closes on `Escape` and on an outside click.
-- Reordering is drag-only today. If you need a keyboard path, the panel is the place to
-  add it — see [#1](https://github.com/khojiakbarr/data-table/issues).
+- The per-column menu opens from a button as well as from right-click, and is reachable
+  by keyboard; it closes on `Escape`.
+- Row toggles report `aria-expanded` and name themselves.
+- Reordering is drag-only today. If you need a keyboard path, the Columns panel is the
+  place to add it — see [#1](https://github.com/khojiakbarr/data-table/issues).
 - `prefers-reduced-motion` disables transitions.
 
 ---

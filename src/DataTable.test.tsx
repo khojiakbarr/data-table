@@ -1,5 +1,5 @@
 import { createColumnHelper } from "@tanstack/react-table"
-import { render, screen, within } from "@testing-library/react"
+import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
@@ -105,10 +105,9 @@ describe("DataTable", () => {
     const user = userEvent.setup()
     render(<Table id="t1" pinned />)
 
-    await user.click(screen.getByRole("button", { name: /columns/i }))
-    // Pin "Partner" to the start as well; it must sit after "Code".
-    const partnerRow = screen.getByLabelText("Partner").closest(".dt-panel-item")
-    await user.click(within(partnerRow as HTMLElement).getByTitle("Pin to start"))
+    // Pin "Partner" to the start as well, from its header menu.
+    await user.click(screen.getByRole("button", { name: /partner: column actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: /pin to start/i }))
 
     const partnerHeader = screen.getByRole("columnheader", { name: /partner/i })
     // Code is 100 wide, so Partner starts at 100.
@@ -121,6 +120,7 @@ describe("DataTable", () => {
 
     await user.click(screen.getByRole("button", { name: /columns/i }))
     await user.click(screen.getByLabelText("Partner"))
+    // Unmounting mid-debounce must still flush.
     first.unmount()
 
     render(<Table id="persisted" />)
@@ -150,7 +150,10 @@ describe("DataTable", () => {
     expect(within(left).queryByRole("columnheader", { name: /partner/i })).toBeNull()
     expect(within(right).getByRole("columnheader", { name: /partner/i })).toBeInTheDocument()
 
-    expect(localStorage.getItem("data-table:layout:left-table")).not.toBeNull()
+    // Saves are debounced so a resize drag does not write on every frame.
+    await waitFor(() =>
+      expect(localStorage.getItem("data-table:layout:left-table")).not.toBeNull(),
+    )
     expect(localStorage.getItem("data-table:layout:right-table")).toBeNull()
   })
 

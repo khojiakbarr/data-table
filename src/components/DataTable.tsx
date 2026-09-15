@@ -1,8 +1,12 @@
 import { flexRender, type RowData } from "@tanstack/react-table"
-import { useCallback, useState, type CSSProperties, type ReactNode } from "react"
+import { Fragment, useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { pinnedStyle, renderedLeafColumns } from "../core/pinning"
+import { moveColumn, type DropSide } from "../core/reorder"
+import { measureColumnWidth } from "../core/autosize"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
+import { DepthSpacer, ExpandToggle } from "./ExpandToggle"
+import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import { ColumnPanel } from "./ColumnPanel"
 import { HeaderCell } from "./HeaderCell"
 
@@ -22,20 +26,40 @@ export const defaultLabels: DataTableLabels = {
   empty: "No rows",
   dragHint: "Drag to reorder",
   resizeColumn: "resize column",
+  expandRow: "Expand row",
+  collapseRow: "Collapse row",
+  columnActions: "Column actions",
+  autosize: "Fit this column",
+  autosizeAll: "Fit all columns",
+  resetWidth: "Reset width",
 }
 
 export interface DataTableProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   /** Shade alternate rows. */
   striped?: boolean
-  /** Fixed height; the header and pinned columns stay put while scrolling. */
+  /** Fixed height; the body scrolls inside it. */
   height?: number | string
+  /**
+   * Keep the header row(s) in view while the body scrolls. Default true.
+   *
+   * Turn it off for a short table inside a longer page, where a header that
+   * follows the scroll is more distracting than useful.
+   */
+  stickyHeader?: boolean
   /** Hide the toolbar when the host application provides its own controls. */
   toolbar?: boolean
   /** Extra toolbar content, rendered before the Columns button. */
   toolbarContent?: ReactNode
   /** Shown instead of rows when there are none. */
   emptyState?: ReactNode
+  /**
+   * Content revealed under an expanded row.
+   *
+   * Rendered in a full-width row beneath its parent. It may contain anything,
+   * including another `<DataTable>` — nesting is not limited.
+   */
+  renderDetail?: (row: TData) => ReactNode
   labels?: Partial<DataTableLabels>
   /** Forces a theme instead of following the OS setting. */
   theme?: "light" | "dark"
@@ -58,9 +82,11 @@ export function DataTable<TData extends RowData>({
   instance,
   striped = false,
   height,
+  stickyHeader = true,
   toolbar = true,
   toolbarContent,
   emptyState,
+  renderDetail,
   labels: labelOverrides,
   theme,
   className,
@@ -68,19 +94,66 @@ export function DataTable<TData extends RowData>({
 }: DataTableProps<TData>) {
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState(false)
+  const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const labels = { ...defaultLabels, ...labelOverrides }
 
+  const bounds = { min: 60, max: 800 }
+
+  /** Fit one column to the content currently rendered. */
+  const autosize = useCallback(
+    (columnId: string) => {
+      const root = rootRef.current
+      if (!root) return
+      const index = renderedLeafColumns(table).findIndex((c) => c.id === columnId)
+      if (index === -1) return
+      const width = measureColumnWidth(root, index, bounds)
+      if (width !== null) {
+        table.setColumnSizing((previous) => ({ ...previous, [columnId]: width }))
+      }
+    },
+    // `bounds` is a literal recreated per render but never changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [table],
+  )
+
+  const autosizeAll = useCallback(() => {
+    const root = rootRef.current
+    if (!root) return
+    const columns = renderedLeafColumns(table)
+    const sizes: Record<string, number> = {}
+    columns.forEach((column, index) => {
+      const width = measureColumnWidth(root, index, bounds)
+      if (width !== null) sizes[column.id] = width
+    })
+    // One state write for the whole table rather than one per column.
+    table.setColumnSizing((previous) => ({ ...previous, ...sizes }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table])
+
   const handleReorder = useCallback(
-    (draggedId: string, targetId: string) => {
+    (draggedId: string, targetId: string, side: DropSide) => {
+      /*
+       * A leaf column cannot leave its group: the order is a flat list, so
+       * moving one across a group boundary would either be ignored or tear the
+       * group's header apart. Refusing the drop is the honest outcome.
+       */
+      const dragged = table.getColumn(draggedId)
+      const target = table.getColumn(targetId)
+      if (!dragged || !target) return
+      if (dragged.parent?.id !== target.parent?.id) return
+
       table.setColumnOrder((current) => {
+        /*
+         * When nothing has been reordered yet the order is empty, meaning
+         * "natural". The fallback must be the order the columns are RENDERED
+         * in — `getAllLeafColumns()` groups pinned columns first, so using it
+         * here scrambles every column on the very first drag.
+         */
         const order = current.length
-          ? [...current]
-          : table.getAllLeafColumns().map((column) => column.id)
-        const from = order.indexOf(draggedId)
-        const to = order.indexOf(targetId)
-        if (from === -1 || to === -1) return order
-        order.splice(to, 0, ...order.splice(from, 1))
-        return order
+          ? current
+          : renderedLeafColumns(table).map((column) => column.id)
+        return moveColumn(order, draggedId, targetId, side)
       })
     },
     [table],
@@ -91,6 +164,7 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div
+      ref={rootRef}
       className={["dt-root", className].filter(Boolean).join(" ")}
       style={rootStyle}
       data-dt-theme={theme}
@@ -117,7 +191,20 @@ export function DataTable<TData extends RowData>({
         <ColumnPanel
           instance={instance}
           labels={labels}
+          onReorder={handleReorder}
           onClose={() => setPanelOpen(false)}
+        />
+      ) : null}
+
+      {menu ? (
+        <HeaderMenu
+          column={table.getColumn(menu.columnId)!}
+          position={menu.at}
+          flags={flags}
+          labels={labels}
+          onAutosize={() => autosize(menu.columnId)}
+          onAutosizeAll={autosizeAll}
+          onClose={() => setMenu(null)}
         />
       ) : null}
 
@@ -153,7 +240,9 @@ export function DataTable<TData extends RowData>({
                     header={header}
                     flags={flags}
                     labels={labels}
+                    sticky={stickyHeader}
                     onReorder={handleReorder}
+                    onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
                   />
                 ))}
             </tr>
@@ -161,28 +250,67 @@ export function DataTable<TData extends RowData>({
         </thead>
 
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.id}
-              className="dt-tr"
-              onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-            >
-              {row.getVisibleCells().map((cell) => (
-                <td
-                  key={cell.id}
-                  className={[
-                    "dt-td",
-                    cell.column.getIsPinned() ? "dt-pinned" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  style={pinnedStyle(cell.column)}
+          {rows.map((row) => {
+            const cells = row.getVisibleCells()
+            const hasChildren = row.subRows.length > 0
+            const expandable = hasChildren || Boolean(renderDetail)
+            const isExpanded = expandable && row.getIsExpanded()
+
+            return (
+              <Fragment key={row.id}>
+                <tr
+                  className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
+                  data-depth={row.depth}
+                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                 >
-                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                </td>
-              ))}
-            </tr>
-          ))}
+                  {cells.map((cell, index) => (
+                    <td
+                      key={cell.id}
+                      className={[
+                        "dt-td",
+                        cell.column.getIsPinned() ? "dt-pinned" : "",
+                        index === 0 ? "dt-td-lead" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      style={pinnedStyle(cell.column)}
+                    >
+                      {index === 0 ? (
+                        expandable ? (
+                          <ExpandToggle
+                            expanded={isExpanded}
+                            depth={row.depth}
+                            label={isExpanded ? labels.collapseRow : labels.expandRow}
+                            onToggle={() => row.toggleExpanded()}
+                          />
+                        ) : (
+                          <DepthSpacer depth={row.depth} />
+                        )
+                      ) : null}
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+
+                {isExpanded && renderDetail ? (
+                  <tr className="dt-detail-row" data-depth={row.depth}>
+                    <td className="dt-detail-cell" colSpan={cells.length}>
+                      <div
+                        className="dt-detail"
+                        style={
+                          row.depth > 0
+                            ? { marginInlineStart: `calc(var(--dt-indent) * ${row.depth + 1})` }
+                            : undefined
+                        }
+                      >
+                        {renderDetail(row.original)}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
+            )
+          })}
         </tbody>
       </table>
 

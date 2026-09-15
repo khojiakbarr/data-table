@@ -40,6 +40,9 @@
   --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.18);
   --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.18);
 
+  --dt-indent: 18px;
+  --dt-detail-bg: #f8f8fa;
+
   --dt-font: inherit;
   --dt-font-size: 14px;
 
@@ -64,6 +67,7 @@
     --dt-row-hover: #232327;
     --dt-row-stripe: #1b1b1f;
     --dt-resize-handle: #3f3f46;
+    --dt-detail-bg: #1c1c20;
     --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
     --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
   }
@@ -79,6 +83,7 @@
   --dt-row-hover: #232327;
   --dt-row-stripe: #1b1b1f;
   --dt-resize-handle: #3f3f46;
+  --dt-detail-bg: #1c1c20;
   --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
   --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
 }
@@ -93,7 +98,12 @@
 /* ---------- header ---------- */
 
 .dt-th {
-  position: relative;
+  /*
+   * Always sticky: a pinned column needs it horizontally even when the header
+   * does not stick vertically. Vertical sticking is controlled by `top`, which
+   * is set inline only when the header is meant to stay in view.
+   */
+  position: sticky;
   height: var(--dt-header-height);
   padding: 0;
   background: var(--dt-header-bg);
@@ -102,9 +112,6 @@
   text-align: start;
   white-space: nowrap;
   border-bottom: 1px solid var(--dt-border);
-  /* Header sits above body cells, including pinned ones. */
-  position: sticky;
-  top: 0;
   z-index: 3;
 }
 
@@ -363,27 +370,63 @@
   white-space: nowrap;
 }
 
-.dt-pin-group {
-  display: inline-flex;
-  gap: 2px;
+.dt-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.dt-pin-toggle {
-  border: 1px solid var(--dt-border);
-  border-radius: 4px;
-  background: var(--dt-bg);
+.dt-panel-item {
+  position: relative;
+}
+
+.dt-drag-handle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
   color: var(--dt-muted-fg);
-  font: inherit;
-  font-size: 11px;
+  cursor: grab;
+  opacity: 0.55;
+}
+
+.dt-panel-item:hover .dt-drag-handle {
+  opacity: 1;
+}
+
+.dt-panel-dragging {
+  opacity: 0.4;
+}
+
+.dt-panel-drop-before::before,
+.dt-panel-drop-after::after {
+  content: "";
+  position: absolute;
+  inset-inline: 4px;
+  height: 2px;
+  background: var(--dt-drop-indicator);
+  border-radius: 2px;
+}
+
+.dt-panel-drop-before::before {
+  top: -1px;
+}
+
+.dt-panel-drop-after::after {
+  bottom: -1px;
+}
+
+.dt-pin-badge {
+  flex: none;
+  font-size: 10px;
   line-height: 1;
   padding: 3px 5px;
-  cursor: pointer;
-}
-
-.dt-pin-toggle[aria-pressed="true"] {
+  border-radius: 4px;
   background: var(--dt-accent);
-  border-color: var(--dt-accent);
   color: #fff;
+  white-space: nowrap;
 }
 
 .dt-link {
@@ -429,4 +472,153 @@
    header's depth. */
 .dt-th {
   vertical-align: bottom;
+}
+
+
+/* ---------- expandable rows ---------- *
+ * Two shapes share one mechanism: child rows, which indent by depth, and a
+ * detail panel, which is a full-width row beneath its parent.
+ */
+
+.dt-td-lead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dt-expand {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dt-muted-fg);
+  cursor: pointer;
+}
+
+.dt-expand:hover {
+  background: var(--dt-row-hover);
+  color: var(--dt-fg);
+}
+
+.dt-expand:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+}
+
+.dt-expand-icon {
+  transition: transform 140ms ease;
+}
+
+.dt-expand-open {
+  transform: rotate(90deg);
+}
+
+.dt-depth-spacer {
+  flex: none;
+  display: inline-block;
+}
+
+.dt-tr-expanded .dt-td {
+  background: var(--dt-row-hover);
+}
+
+.dt-detail-row .dt-detail-cell {
+  padding: 0;
+  border-bottom: 1px solid var(--dt-border);
+  background: var(--dt-detail-bg);
+}
+
+.dt-detail {
+  padding: 12px 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-expand-icon {
+    transition: none;
+  }
+}
+
+/* ---------- header menu ---------- */
+
+.dt-kebab {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 9px;
+  width: 16px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--dt-muted-fg);
+  cursor: pointer;
+}
+
+.dt-th:hover .dt-kebab,
+.dt-kebab:focus-visible {
+  display: flex;
+}
+
+.dt-kebab:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+  border-radius: 3px;
+}
+
+/* Leave room so the label never runs under the kebab. */
+.dt-th:hover .dt-th-inner {
+  padding-inline-end: 26px;
+}
+
+.dt-menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius);
+  background: var(--dt-bg);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 0.18);
+}
+
+.dt-menu-item {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--dt-fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+
+.dt-menu-item:hover {
+  background: var(--dt-row-hover);
+}
+
+.dt-menu-item:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+}
+
+.dt-menu-item[aria-current="true"] {
+  color: var(--dt-accent);
+  font-weight: 500;
+}
+
+.dt-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  border: 0;
+  background: var(--dt-border);
 }

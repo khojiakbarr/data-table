@@ -1,29 +1,36 @@
 import type { RowData } from "@tanstack/react-table"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState, type DragEvent } from "react"
+import { renderedLeafColumns } from "../core/pinning"
+import type { DropSide } from "../core/reorder"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 
 /**
- * The panel behind the "Columns" button: show, hide, pin and reset.
+ * The panel behind the "Columns" button.
  *
- * Reordering happens by dragging headers; this panel deliberately does not
- * duplicate it. Two ways to do one thing in one screen is how a control surface
- * starts to feel arbitrary.
+ * Columns are listed in the order they appear in the table and dragged into a
+ * new order by their handle. Pinning lives in the header's context menu, where
+ * it sits next to the other per-column actions instead of as a pair of arrow
+ * buttons whose direction has to be decoded.
  */
 
 interface ColumnPanelProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   labels: DataTableLabels
+  onReorder: (draggedId: string, targetId: string, side: DropSide) => void
   onClose: () => void
 }
 
 export function ColumnPanel<TData extends RowData>({
   instance,
   labels,
+  onReorder,
   onClose,
 }: ColumnPanelProps<TData>) {
   const { table, flags, resetLayout, isCustomised } = instance
   const ref = useRef<HTMLDivElement>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ id: string; side: DropSide } | null>(null)
 
   // Close on outside click and on Escape, the two things a user will try.
   useEffect(() => {
@@ -41,7 +48,32 @@ export function ColumnPanel<TData extends RowData>({
     }
   }, [onClose])
 
-  const columns = table.getAllLeafColumns()
+  /*
+   * Listed in render order, not `getAllLeafColumns()` order — the latter puts
+   * pinned columns first, so the panel would disagree with the table about
+   * where a column is, and dragging inside it would move the wrong one.
+   */
+  const columns = renderedLeafColumns(table)
+
+  const handleDragOver = (event: DragEvent<HTMLElement>, id: string) => {
+    if (!flags.reordering || !draggingId) return
+    event.preventDefault()
+    const rect = event.currentTarget.getBoundingClientRect()
+    // A list runs vertically: the midpoint that matters is the horizontal one.
+    const side: DropSide =
+      event.clientY - rect.top > rect.height / 2 ? "end" : "start"
+    setDropTarget({ id, side })
+  }
+
+  const handleDrop = (event: DragEvent<HTMLElement>, id: string) => {
+    event.preventDefault()
+    const draggedId = event.dataTransfer.getData("text/plain")
+    const rect = event.currentTarget.getBoundingClientRect()
+    const side: DropSide = event.clientY - rect.top > rect.height / 2 ? "end" : "start"
+    setDropTarget(null)
+    setDraggingId(null)
+    if (draggedId && draggedId !== id) onReorder(draggedId, id, side)
+  }
 
   return (
     <div className="dt-panel" ref={ref} role="dialog" aria-label={labels.columnsTitle}>
@@ -62,49 +94,71 @@ export function ColumnPanel<TData extends RowData>({
         ) : null}
       </div>
 
-      {columns.map((column) => {
-        const pinned = column.getIsPinned()
-        return (
-          <div key={column.id} className="dt-panel-item">
-            <input
-              id={`${instance.id}-col-${column.id}`}
-              type="checkbox"
-              checked={column.getIsVisible()}
-              disabled={!flags.hiding || !column.getCanHide()}
-              onChange={column.getToggleVisibilityHandler()}
-            />
-            <label
-              className="dt-panel-label"
-              htmlFor={`${instance.id}-col-${column.id}`}
-            >
-              {columnLabel(column.id, column.columnDef.header)}
-            </label>
+      <ul className="dt-panel-list">
+        {columns.map((column) => {
+          const isTarget = dropTarget?.id === column.id
+          const className = [
+            "dt-panel-item",
+            draggingId === column.id ? "dt-panel-dragging" : "",
+            isTarget && dropTarget.side === "start" ? "dt-panel-drop-before" : "",
+            isTarget && dropTarget.side === "end" ? "dt-panel-drop-after" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")
 
-            {flags.pinning && column.getCanPin() ? (
-              <span className="dt-pin-group">
-                <button
-                  type="button"
-                  className="dt-pin-toggle"
-                  aria-pressed={pinned === "start"}
-                  title={pinned === "start" ? labels.unpin : labels.pinStart}
-                  onClick={() => column.pin(pinned === "start" ? false : "start")}
+          return (
+            <li
+              key={column.id}
+              className={className}
+              onDragOver={(event) => handleDragOver(event, column.id)}
+              onDragLeave={() => setDropTarget(null)}
+              onDrop={(event) => handleDrop(event, column.id)}
+            >
+              {flags.reordering ? (
+                <span
+                  className="dt-drag-handle"
+                  draggable
+                  role="button"
+                  tabIndex={-1}
+                  aria-label={`${columnLabel(column.id, column.columnDef.header)}: ${labels.dragHint}`}
+                  title={labels.dragHint}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move"
+                    event.dataTransfer.setData("text/plain", column.id)
+                    setDraggingId(column.id)
+                  }}
+                  onDragEnd={() => {
+                    setDraggingId(null)
+                    setDropTarget(null)
+                  }}
                 >
-                  ⇤
-                </button>
-                <button
-                  type="button"
-                  className="dt-pin-toggle"
-                  aria-pressed={pinned === "end"}
-                  title={pinned === "end" ? labels.unpin : labels.pinEnd}
-                  onClick={() => column.pin(pinned === "end" ? false : "end")}
-                >
-                  ⇥
-                </button>
-              </span>
-            ) : null}
-          </div>
-        )
-      })}
+                  <GripIcon />
+                </span>
+              ) : null}
+
+              <input
+                id={`${instance.id}-col-${column.id}`}
+                type="checkbox"
+                checked={column.getIsVisible()}
+                disabled={!flags.hiding || !column.getCanHide()}
+                onChange={column.getToggleVisibilityHandler()}
+              />
+              <label
+                className="dt-panel-label"
+                htmlFor={`${instance.id}-col-${column.id}`}
+              >
+                {columnLabel(column.id, column.columnDef.header)}
+              </label>
+
+              {column.getIsPinned() ? (
+                <span className="dt-pin-badge" title={labels.unpin}>
+                  {column.getIsPinned() === "start" ? labels.pinStart : labels.pinEnd}
+                </span>
+              ) : null}
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
@@ -112,4 +166,14 @@ export function ColumnPanel<TData extends RowData>({
 /** Header definitions can be strings or render functions; only strings label well. */
 function columnLabel(id: string, header: unknown): string {
   return typeof header === "string" && header.length > 0 ? header : id
+}
+
+function GripIcon() {
+  return (
+    <svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true" fill="currentColor">
+      {[2, 7, 12].map((y) =>
+        [2, 8].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.1" />),
+      )}
+    </svg>
+  )
 }

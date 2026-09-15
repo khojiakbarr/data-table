@@ -214,6 +214,25 @@ size is persisted with the rest of the layout.
 progress bar and dims them. `error` shows a banner with a Retry button that
 calls `onRetry`; rows already on screen stay put.
 
+**The empty state waits for the first answer.** The initial query is announced
+from an effect, one commit after mount, so a server table always commits at
+least one render with no rows, no error and `isFetching === false` — the query
+above is still disabled — and a host that starts its request from an effect of
+its own commits a second. Those look exactly like "the server has nothing",
+and a table that believed them would flash "No rows" before its first
+skeleton. It does not: in server mode the empty state waits until the host has
+answered once, where an answer is rows, a `rowCount` (`0` counts — an empty
+page is an answer), an `error`, or `loading` turning true. The recipe above
+reports all four, so copying it is enough.
+
+The other side of that guarantee: a server table whose host reports none of
+the four has said nothing the table can read, and keeps its skeleton rather
+than claiming an emptiness nobody confirmed. Pass `rowCount` with each page —
+server mode needs it for the footer anyway — and `loading` while the request
+is out. A shell of your own has to draw the same line: no rows, no error,
+nothing loading and `rowCount === undefined` means the query has not been
+answered yet, not that the answer was empty.
+
 ---
 
 ## Expandable rows

@@ -4,6 +4,7 @@ import { classNames, insertAt } from "../core/classNames"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import { moveColumn, type DropSide } from "../core/reorder"
 import { useAutosize } from "../core/useAutosize"
+import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -104,6 +105,14 @@ export interface DataTableProps<TData extends RowData> {
   /**
    * Rows are on their way. With no rows yet, skeleton rows show; with rows,
    * a progress bar and dimmed rows.
+   *
+   * In server mode this is also one of the four ways a host answers the query
+   * the table announced — rows, a `rowCount`, an `error`, or `loading` turning
+   * true. Until one of them arrives the table keeps its skeleton instead of
+   * showing the empty state: `loading === false` on the commits before a host
+   * can have started fetching means "nobody has asked yet", not "the server
+   * has no rows". Report at least one, or the table has nothing to tell those
+   * two apart.
    */
   loading?: boolean | undefined
   /**
@@ -214,8 +223,21 @@ export function DataTable<TData extends RowData>({
   const headerRowCount = table.getHeaderGroups().length
   const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
   const hasError = error !== undefined && error !== null
-  const showSkeleton = loading && rows.length === 0 && !hasError
-  const showEmpty = !loading && !hasError && rows.length === 0
+  /*
+   * A server table has asked for its first page and not been answered yet.
+   * Those commits look identical to "the server has no rows" — nothing, no
+   * error, not loading — so the empty state has to wait for them. See
+   * {@link useAwaitingFirstPage}.
+   */
+  const awaitingFirstPage = useAwaitingFirstPage({
+    server: instance.mode === "server",
+    rows: rows.length,
+    rowCount: instance.pagination.rowCount,
+    loading,
+    hasError,
+  })
+  const showSkeleton = (loading || awaitingFirstPage) && rows.length === 0 && !hasError
+  const showEmpty = !loading && !awaitingFirstPage && !hasError && rows.length === 0
   /*
    * The skeleton already communicates "loading" on its own; a progress bar
    * and dimmed rows on top of it would be a second, redundant signal (and

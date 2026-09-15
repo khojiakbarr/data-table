@@ -138,7 +138,13 @@ export interface UseDataTableOptions<TData extends RowData> {
    * what it wants through `onQueryChange` / `query`.
    */
   mode?: TableMode
-  /** Total rows across all pages. Server mode only; undefined until known. */
+  /**
+   * Total rows across all pages. Server mode only; undefined until known.
+   *
+   * It is also how `<DataTable>` knows a page has been counted: with no rows,
+   * no error and nothing loading, a `rowCount` of 0 is what makes the empty
+   * state honest rather than a guess about a query nobody has answered.
+   */
   rowCount?: number
   /**
    * Page the rows. Off by default in client mode, on in server mode. Pass

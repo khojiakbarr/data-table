@@ -57,11 +57,16 @@ export interface RowVirtualizerResult<TRow> {
  * nothing out. Rendering nothing there means a table that is revealed shows
  * blank until it scrolls, and a jsdom test sees no rows at all. The first
  * {@link UNMEASURED_WINDOW} items cover a tall viewport and cost little.
+ * This library's own jsdom suites depend on it — nothing has a size there — so
+ * the cap must stay at or above the row counts those fixtures render.
  *
  * Preconditions:
  * - `isDetailOpen` must be referentially stable (e.g. wrapped in
  *   `useCallback`). An inline arrow is a new function every render, which
  *   rebuilds the display list and forces an O(n) measurement pass each time.
+ * - `getRowHeight` must be referentially stable too, for the same reason: it
+ *   is one of `getItemKey`'s dependencies, so a fresh arrow per host render
+ *   changes the key function and re-measures every item.
  * - `rowHeight` / `getRowHeight` must equal the rendered row's border-box
  *   height exactly. Data rows are never measured, so even a 1px discrepancy
  *   accumulates across rows into a wrong scrollbar height.
@@ -84,7 +89,7 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
 }: RowVirtualizerOptions<TRow>): RowVirtualizerResult<TRow> {
   const items = useMemo(() => buildDisplayList(rows, isDetailOpen), [rows, isDetailOpen])
   const scrollMargin = useElementHeight(headRef)
-  useViewportLookup()
+  useViewportLookup(enabled)
 
   // The virtualiser only ever asks for indices within [0, items.length) — the
   // `count` it was given — so `items[index]` below is always in range. The
@@ -130,26 +135,31 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
     }
   }
 
+  const virtualItems = virtualizer.getVirtualItems()
+
   /*
-   * `scrollRect` is virtual-core's own record of the scroll element's size,
-   * filled from `offsetWidth`/`offsetHeight` — not `getBoundingClientRect` —
-   * and left null until the element is observed. Either state means no range,
-   * so fall back to a leading window rather than an empty body.
+   * Rows to show but no window to show them in: the viewport has no size yet,
+   * so there is no range. `measurementsCache` holds the same item geometry the
+   * measured path uses — `getVirtualItems()` above has just filled it — so the
+   * spacers are exact rather than a second, divergent sum.
    */
-  const scrollRect = virtualizer.scrollRect
-  if (!scrollRect || scrollRect.height === 0) {
+  if (virtualItems.length === 0 && items.length > 0) {
     const count = Math.min(items.length, UNMEASURED_WINDOW)
-    let renderedHeight = 0
-    for (let index = 0; index < count; index++) renderedHeight += estimateSize(index)
+    const measurements = virtualizer.measurementsCache
+    const { top, bottom } = spacerSizes(
+      measurements[0],
+      measurements[count - 1],
+      virtualizer.getTotalSize(),
+      scrollMargin,
+    )
     return {
       items: items.slice(0, count).map((item, index) => ({ item, index })),
-      top: 0,
-      bottom: Math.max(0, virtualizer.getTotalSize() - renderedHeight),
+      top,
+      bottom,
       measureElement: virtualizer.measureElement,
     }
   }
 
-  const virtualItems = virtualizer.getVirtualItems()
   const { top, bottom } = spacerSizes(
     virtualItems[0],
     virtualItems[virtualItems.length - 1],
@@ -169,15 +179,24 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
  * Render once more right after mounting, so the viewport can be found.
  *
  * The scrolling viewport is an ANCESTOR of the rows, and React attaches a
- * parent's ref only after its children's layout effects have run. The
- * virtualiser looks for its scroll element in a layout effect of its own, so
- * on the first commit it finds null — and, with nothing else to prompt it, it
- * would never look again. A state change made from a layout effect is flushed
- * before paint, so the second look costs a render but no visible frame.
+ * parent's ref only after its children's layout effects have run, so the
+ * virtualiser's first look for its scroll element finds null. The adapter
+ * re-reads `getScrollElement()` on every render — its layout effect has no
+ * dependency array — so nothing is stuck except for the want of a second
+ * render, which is what this supplies. In a browser one usually arrives
+ * anyway, from `useElementHeight(headRef)` reporting the header's height as it
+ * goes from 0 to its real value; the bump is what makes a header-less table,
+ * and jsdom, work as well. A state change made from a layout effect is
+ * flushed before paint, so it costs a render but no visible frame.
+ *
+ * @param enabled - Whether virtualisation is on; there is nothing to look for
+ *   otherwise, and the extra render would be pure waste.
  */
-function useViewportLookup(): void {
+function useViewportLookup(enabled: boolean): void {
   const [, look] = useState(0)
-  useIsomorphicLayoutEffect(() => look(1), [])
+  useIsomorphicLayoutEffect(() => {
+    if (enabled) look((n) => n + 1)
+  }, [enabled])
 }
 
 /** The rendered height of an element, kept current with a ResizeObserver when one exists. */

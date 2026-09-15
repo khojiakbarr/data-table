@@ -40,8 +40,12 @@ function stubViewportSize() {
     },
   })
   return () => {
+    // Deleting matters: jsdom may not define these at all, and a stub left on
+    // the prototype would size every later suite's elements.
     if (height) Object.defineProperty(HTMLElement.prototype, "offsetHeight", height)
+    else delete (HTMLElement.prototype as { offsetHeight?: unknown }).offsetHeight
     if (width) Object.defineProperty(HTMLElement.prototype, "offsetWidth", width)
+    else delete (HTMLElement.prototype as { offsetWidth?: unknown }).offsetWidth
   }
 }
 
@@ -81,7 +85,7 @@ const renderedRows = () => screen.getAllByRole("row").filter((r) => r.classList.
 /** Spacer heights by position: a spacer is "top" when a data row follows it, "bottom" otherwise. */
 const spacers = (container: HTMLElement) => {
   const result = { top: 0, bottom: 0 }
-  for (const tr of container.querySelectorAll<HTMLElement>("tr.dt-spacer")) {
+  for (const tr of container.querySelectorAll<HTMLElement>("tr.dt-spacer-row")) {
     const height = Number.parseFloat(tr.style.height)
     if (tr.nextElementSibling?.classList.contains("dt-tr")) result.top = height
     else result.bottom = height
@@ -133,7 +137,7 @@ describe("row virtualisation", () => {
   it("renders every row when virtualisation is off", () => {
     const { container } = render(<Table count={50} virtualize={false} />)
     expect(renderedRows()).toHaveLength(50)
-    expect(container.querySelector("tr.dt-spacer")).toBeNull()
+    expect(container.querySelector("tr.dt-spacer-row")).toBeNull()
   })
 
   it("keeps stripe parity by row position, not DOM position", () => {
@@ -152,6 +156,57 @@ describe("row virtualisation", () => {
     const detailRow = container.querySelector("tr.dt-detail-row") as HTMLElement
     expect(detailRow.dataset.index).toBe("1")
     expect(screen.getByTestId("detail")).toHaveTextContent("Detail r0")
+  })
+
+  it("renders the last row with no negative spacer at the very end", () => {
+    const { container } = render(<Table />)
+    const viewport = container.querySelector(".dt-viewport") as HTMLElement
+    scrollTo(viewport, 1000 * ROW_PX)
+
+    const visible = renderedRows()
+    expect(visible.some((r) => r.textContent?.includes("Row 999"))).toBe(true)
+    const { top, bottom } = spacers(container)
+    expect(bottom).toBe(0)
+    expect(top + visible.length * ROW_PX).toBe(1000 * ROW_PX)
+  })
+
+  it("estimates per-row heights from getRowHeight", () => {
+    // Even ids are tall, odd ones short: 50 * 60 + 50 * 20 = 4000px in all.
+    const getRowHeight = (row: Row) => (Number(row.id.slice(1)) % 2 ? 20 : 60)
+    function Varied() {
+      const instance = useDataTable<Row>({
+        id: "vh",
+        columns,
+        data: rows(100),
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        getRowHeight,
+      })
+      return <DataTable instance={instance} height={VIEWPORT_PX} />
+    }
+    const { container } = render(<Varied />)
+
+    const visible = renderedRows()
+    const heights = visible.map((r) => Number.parseFloat(r.style.height))
+    expect(heights).not.toContain(Number.NaN)
+    expect(new Set(heights)).toEqual(new Set([60, 20]))
+
+    const { top, bottom } = spacers(container)
+    const rendered = heights.reduce((sum, height) => sum + height, 0)
+    expect(top + bottom + rendered).toBe(4000)
+  })
+
+  it("reports the full row count to assistive technology", () => {
+    const { container } = render(<Table />)
+    const table = container.querySelector("table.dt-table") as HTMLElement
+    // 1000 rows plus the one header row; `aria-rowindex` counts both.
+    expect(table.getAttribute("aria-rowcount")).toBe("1001")
+    expect(renderedRows()[0]?.getAttribute("aria-rowindex")).toBe("2")
+
+    const viewport = container.querySelector(".dt-viewport") as HTMLElement
+    scrollTo(viewport, 20_000)
+    const row500 = renderedRows().find((r) => r.textContent?.includes("Row 500"))
+    expect(row500?.getAttribute("aria-rowindex")).toBe("502")
   })
 
   it("re-estimates when the row height changes", () => {

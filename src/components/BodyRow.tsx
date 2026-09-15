@@ -1,4 +1,5 @@
 import { flexRender, type Row, type RowData } from "@tanstack/react-table"
+import type { CSSProperties } from "react"
 import { classNames, insertAt } from "../core/classNames"
 import { pinnedStyle } from "../core/pinning"
 import type { DataTableFeatures } from "../useDataTable"
@@ -11,6 +12,8 @@ interface BodyRowProps<TData extends RowData> {
   position: number
   /** Explicit height when the table has `getRowHeight`. */
   height?: number | undefined
+  /** Header rows above the body, so `aria-rowindex` can count past them. */
+  headerRowCount: number
   /** Where the filler cell goes among the visible cells; see `fillerIndex`. */
   fillerAt: number
   labels: DataTableLabels
@@ -28,11 +31,19 @@ interface BodyRowProps<TData extends RowData> {
  *
  * Striping is keyed on `data-parity`, not `:nth-child`: with virtualisation
  * the DOM position of a row says nothing about its position in the data.
+ * `aria-rowindex` says the same thing to assistive technology, which would
+ * otherwise be told the table holds only the rows currently in the DOM.
+ *
+ * An explicit `height` also re-declares `--dt-row-height` on the row. The
+ * stylesheet sizes cells from that token, and a `height` on the `<tr>` alone
+ * is only a floor — a row asked to be shorter than the table's default would
+ * render at the default while the virtualiser budgeted for the shorter one.
  */
 export function BodyRow<TData extends RowData>({
   row,
   position,
   height,
+  headerRowCount,
   fillerAt,
   labels,
   hasDetail,
@@ -81,7 +92,12 @@ export function BodyRow<TData extends RowData>({
       className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
       data-depth={row.depth}
       data-parity={position % 2 === 0 ? "even" : "odd"}
-      style={height === undefined ? undefined : { height }}
+      aria-rowindex={position + headerRowCount + 1}
+      style={
+        height === undefined
+          ? undefined
+          : ({ height, "--dt-row-height": `${height}px` } as CSSProperties)
+      }
       onClick={onRowClick ? () => onRowClick(row.original) : undefined}
     >
       {insertAt(

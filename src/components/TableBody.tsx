@@ -1,6 +1,7 @@
 import type { Row, RowData } from "@tanstack/react-table"
 import { useCallback, type ReactNode, type RefObject } from "react"
 import { useRowVirtualizer } from "../core/useRowVirtualizer"
+import { displayItemKey } from "../core/virtualRows"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { BodyRow } from "./BodyRow"
@@ -14,6 +15,8 @@ interface TableBodyProps<TData extends RowData> {
   fillerAt: number
   /** Visible leaf columns plus the filler, for the spacer's colSpan. */
   columnCount: number
+  /** Header rows above the body, so `aria-rowindex` can count past them. */
+  headerRowCount: number
   labels: DataTableLabels
   virtualize: boolean
   renderDetail?: ((row: TData) => ReactNode) | undefined
@@ -26,6 +29,9 @@ interface TableBodyProps<TData extends RowData> {
  * A top spacer, the rendered window (data rows and open detail panels), and
  * a bottom spacer. Rows stay in normal table flow, so sticky headers, pinned
  * cells and the colgroup behave as they do without virtualisation.
+ *
+ * The spacers are `aria-hidden`, and every real row carries an explicit
+ * `aria-rowindex`, so the window the DOM holds is not mistaken for the table.
  */
 export function TableBody<TData extends RowData>({
   instance,
@@ -34,6 +40,7 @@ export function TableBody<TData extends RowData>({
   headRef,
   fillerAt,
   columnCount,
+  headerRowCount,
   labels,
   virtualize,
   renderDetail,
@@ -66,10 +73,11 @@ export function TableBody<TData extends RowData>({
       {items.map(({ item, index }) =>
         item.kind === "row" ? (
           <BodyRow
-            key={item.row.id}
+            key={displayItemKey(item)}
             row={item.row}
             position={item.position}
             height={getRowHeight?.(item.row.original)}
+            headerRowCount={headerRowCount}
             fillerAt={fillerAt}
             labels={labels}
             hasDetail={hasDetail}
@@ -77,10 +85,12 @@ export function TableBody<TData extends RowData>({
           />
         ) : (
           <tr
-            key={`${item.row.id}:detail`}
+            key={displayItemKey(item)}
             className="dt-detail-row"
             data-depth={item.row.depth}
             data-index={index}
+            /* A panel is part of the row it belongs to, not a row of its own. */
+            aria-rowindex={item.position + headerRowCount + 1}
             ref={measureElement}
           >
             <td className="dt-detail-cell" colSpan={columnCount}>
@@ -106,7 +116,7 @@ export function TableBody<TData extends RowData>({
 /** Empty space standing in for rows that are not rendered. */
 function SpacerRow({ height, span }: { height: number; span: number }) {
   return (
-    <tr className="dt-spacer" aria-hidden="true" style={{ height }}>
+    <tr className="dt-spacer-row" aria-hidden="true" style={{ height }}>
       <td colSpan={span} />
     </tr>
   )

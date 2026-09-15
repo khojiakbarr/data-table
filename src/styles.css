@@ -244,7 +244,7 @@
 }
 
 /* Empty rows standing in for the ones outside the rendered window. */
-.dt-spacer > td {
+.dt-spacer-row > td {
   padding: 0;
   border: 0;
 }

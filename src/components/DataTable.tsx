@@ -249,6 +249,13 @@ export function DataTable<TData extends RowData>({
           ref={tableRef}
           className={classNames("dt-table", striped && "dt-striped")}
           style={{ width: "100%", minWidth: table.getTotalSize() }}
+          /*
+           * Only a window of rows is in the DOM, so the count a screen reader
+           * would infer from it is wrong. `aria-rowcount` states the real
+           * total — header rows included, since `aria-rowindex` counts them —
+           * and every row carries its own index.
+           */
+          aria-rowcount={rows.length + headerRowCount}
         >
           {/*
             Under `table-layout: fixed` the browser takes column widths from the
@@ -307,7 +314,7 @@ export function DataTable<TData extends RowData>({
                   />
                 ) : null
               return (
-                <tr key={depth}>
+                <tr key={depth} aria-rowindex={depth + 1}>
                   {start}
                   {center}
                   {filler}
@@ -324,6 +331,7 @@ export function DataTable<TData extends RowData>({
             headRef={headRef}
             fillerAt={fillerAt}
             columnCount={leafColumns.length + 1}
+            headerRowCount={headerRowCount}
             labels={labels}
             virtualize={virtualize}
             renderDetail={renderDetail}

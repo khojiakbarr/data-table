@@ -798,3 +798,61 @@
   outline: 2px solid var(--dt-focus-ring);
   outline-offset: -2px;
 }
+
+/* ---------- status ---------- */
+
+.dt-progress {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 2px;
+  margin-bottom: -2px;
+  background: linear-gradient(90deg, transparent, var(--dt-accent), transparent);
+  background-size: 40% 100%;
+  animation: dt-progress 1s linear infinite;
+}
+
+@keyframes dt-progress {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+
+.dt-loading tbody {
+  opacity: 0.6;
+  transition: opacity 200ms ease;
+}
+
+.dt-error {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dt-border);
+  background: var(--dt-bg);
+  color: var(--dt-fg);
+  font-size: 13px;
+}
+
+.dt-skeleton {
+  display: inline-block;
+  height: 12px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--dt-row-hover) 25%, var(--dt-border) 50%, var(--dt-row-hover) 75%);
+  background-size: 200% 100%;
+  animation: dt-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes dt-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-progress,
+  .dt-skeleton {
+    animation: none;
+  }
+}

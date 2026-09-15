@@ -11,6 +11,7 @@ import { ColumnPanel } from "./ColumnPanel"
 import { HeaderCell } from "./HeaderCell"
 import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
+import { SkeletonRows, TableStatus } from "./TableStatus"
 
 /** English defaults; pass `labels` to translate. */
 export const defaultLabels: DataTableLabels = {
@@ -91,6 +92,18 @@ export interface DataTableProps<TData extends RowData> {
   footer?: boolean
   /** Render every row instead of only the visible window. Default true. */
   virtualize?: boolean
+  /**
+   * Rows are on their way. With no rows yet, skeleton rows show; with rows,
+   * a progress bar and dimmed rows.
+   */
+  loading?: boolean | undefined
+  /**
+   * Loading failed; rendered as a banner with a Retry button when `onRetry`
+   * is given. Rows already on screen stay.
+   */
+  error?: unknown
+  /** Called by the Retry button. */
+  onRetry?: (() => void) | undefined
 }
 
 /**
@@ -131,6 +144,9 @@ export function DataTable<TData extends RowData>({
   onRowClick,
   footer = true,
   virtualize = true,
+  loading = false,
+  error,
+  onRetry,
 }: DataTableProps<TData>) {
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState(false)
@@ -188,6 +204,9 @@ export function DataTable<TData extends RowData>({
   ] as const
   const headerRowCount = table.getHeaderGroups().length
   const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
+  const hasError = error !== undefined && error !== null
+  const showSkeleton = loading && rows.length === 0 && !hasError
+  const showEmpty = !loading && !hasError && rows.length === 0
   /*
    * `--dt-row-height` is what the stylesheet sizes a row with, and the
    * virtualiser's estimate has to match it exactly — an unmeasured data row
@@ -244,7 +263,9 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
 
-      <div className="dt-viewport" ref={viewportRef}>
+      <div className={classNames("dt-viewport", loading && "dt-loading")} ref={viewportRef}>
+        <TableStatus loading={loading} error={error} onRetry={onRetry} labels={labels} />
+
         <table
           ref={tableRef}
           className={classNames("dt-table", striped && "dt-striped")}
@@ -324,22 +345,33 @@ export function DataTable<TData extends RowData>({
             })}
           </thead>
 
-          <TableBody
-            instance={instance}
-            rows={rows}
-            viewportRef={viewportRef}
-            headRef={headRef}
-            fillerAt={fillerAt}
-            columnCount={leafColumns.length + 1}
-            headerRowCount={headerRowCount}
-            labels={labels}
-            virtualize={virtualize}
-            renderDetail={renderDetail}
-            onRowClick={onRowClick}
-          />
+          {showSkeleton ? (
+            <SkeletonRows
+              widths={insertAt(
+                leafColumns.map((column) => column.getSize()),
+                fillerAt,
+                0,
+              )}
+              count={Math.min(instance.pagination.pageSize, 8)}
+            />
+          ) : (
+            <TableBody
+              instance={instance}
+              rows={rows}
+              viewportRef={viewportRef}
+              headRef={headRef}
+              fillerAt={fillerAt}
+              columnCount={leafColumns.length + 1}
+              headerRowCount={headerRowCount}
+              labels={labels}
+              virtualize={virtualize}
+              renderDetail={renderDetail}
+              onRowClick={onRowClick}
+            />
+          )}
         </table>
 
-        {rows.length === 0 ? (
+        {showEmpty ? (
           <div className="dt-empty">{emptyState ?? labels.empty}</div>
         ) : null}
       </div>

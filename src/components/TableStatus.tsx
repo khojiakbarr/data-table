@@ -14,9 +14,10 @@ interface TableStatusProps {
  */
 export function TableStatus({ loading, error, onRetry, labels }: TableStatusProps) {
   if (error !== undefined && error !== null) {
+    const message = errorMessage(error)
     return (
       <div className="dt-error" role="alert">
-        <span>{labels.loadFailed}: {errorMessage(error)}</span>
+        <span>{message ? `${labels.loadFailed}: ${message}` : labels.loadFailed}</span>
         {onRetry ? (
           <button type="button" className="dt-menu-button" onClick={onRetry}>
             {labels.retry}
@@ -61,10 +62,18 @@ export function SkeletonRows({ widths, count }: SkeletonRowsProps) {
  * Renders an unknown thrown value as display text.
  *
  * @param error - Whatever was thrown or passed as the `error` prop.
- * @returns The `Error#message`, the string itself, or a `String(error)` fallback.
+ * @returns The `Error#message`, the string itself, or a `String(error)`
+ *   fallback. `String()` itself can throw — for an object created with
+ *   `Object.create(null)` (no prototype, so no inherited `toString`) or one
+ *   whose own `toString` throws — so that fallback is wrapped in a try/catch
+ *   and falls back to `""` rather than crashing the render.
  */
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === "string") return error
-  return String(error)
+  try {
+    return String(error)
+  } catch {
+    return ""
+  }
 }

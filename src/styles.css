@@ -81,7 +81,8 @@
 }
 
 /* General sibling: the Columns panel and the menu render between the two. */
-.dt-toolbar ~ .dt-viewport {
+.dt-toolbar ~ .dt-viewport,
+.dt-error ~ .dt-viewport {
   border-start-start-radius: 0;
   border-start-end-radius: 0;
 }
@@ -799,12 +800,26 @@
   outline-offset: -2px;
 }
 
-/* ---------- status ---------- */
+/*
+ * ---------- status ----------
+ * Both pieces are flex children of `.dt-root`, rendered before `.dt-viewport`
+ * — outside the scroller, so the banner and the progress bar never compete
+ * with the sticky header for position or stacking the way a scrolled-over
+ * sticky status bar would.
+ */
 
 .dt-progress {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  /*
+   * `.dt-root` has `isolation: isolate`, and `.dt-viewport` (`position:
+   * relative`, no z-index of its own) does not open a new stacking context —
+   * so `.dt-th` (3), `.dt-th.dt-pinned` (4) and the drag drop-indicator (5)
+   * all compete inside the root's single stacking context. z-index 6 keeps
+   * this bar's bottom 2px painting above the header underneath it while the
+   * Columns menu (10) and panel (20) still win over the bar.
+   */
+  position: relative;
+  flex: none;
+  z-index: 6;
   height: 2px;
   margin-bottom: -2px;
   background: linear-gradient(90deg, transparent, var(--dt-accent), transparent);
@@ -823,9 +838,10 @@
 }
 
 .dt-error {
-  position: sticky;
-  top: 0;
-  z-index: 5;
+  flex: none;
+  border-radius: inherit;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -834,6 +850,11 @@
   background: var(--dt-bg);
   color: var(--dt-fg);
   font-size: 13px;
+}
+
+.dt-toolbar ~ .dt-error {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
 }
 
 .dt-skeleton {

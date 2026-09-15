@@ -208,6 +208,12 @@ export function DataTable<TData extends RowData>({
   const showSkeleton = loading && rows.length === 0 && !hasError
   const showEmpty = !loading && !hasError && rows.length === 0
   /*
+   * The skeleton already communicates "loading" on its own; a progress bar
+   * and dimmed rows on top of it would be a second, redundant signal (and
+   * there is no `tbody` of real rows to dim yet).
+   */
+  const showProgress = loading && !showSkeleton
+  /*
    * `--dt-row-height` is what the stylesheet sizes a row with, and the
    * virtualiser's estimate has to match it exactly — an unmeasured data row
    * whose real height differs by a pixel drags the scrollbar off by a pixel
@@ -263,9 +269,9 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
 
-      <div className={classNames("dt-viewport", loading && "dt-loading")} ref={viewportRef}>
-        <TableStatus loading={loading} error={error} onRetry={onRetry} labels={labels} />
+      <TableStatus loading={showProgress} error={error} onRetry={onRetry} labels={labels} />
 
+      <div className={classNames("dt-viewport", showProgress && "dt-loading")} ref={viewportRef}>
         <table
           ref={tableRef}
           className={classNames("dt-table", striped && "dt-striped")}

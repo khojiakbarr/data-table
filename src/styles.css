@@ -39,8 +39,8 @@
      text: white would be 3.7:1, short of the 4.5:1 WCAG AA needs. */
   --dt-accent-fg: #18181b;
   /*
-   * --dt-accent printed AS TEXT on --dt-bg (.dt-link, the active sort
-   * direction in the header menu) — a different pairing from --dt-accent-fg
+   * --dt-accent printed AS TEXT on --dt-bg (.dt-link, and every current
+   * choice in a header menu -- the active sort direction and the active pin) — a different pairing from --dt-accent-fg
    * above, which is tuned for text on an --dt-accent background and is fixed
    * at #18181b in every theme (identical to this theme's own --dt-bg, so it
    * would be invisible printed on the page instead of on the badge). #3b82f6

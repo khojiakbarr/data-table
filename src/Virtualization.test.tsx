@@ -315,6 +315,39 @@ describe("row virtualisation", () => {
     expect(totalHeight(container)).toBe(50 * ROW_PX + 50 * 80)
   })
 
+  it("catches a run as short as the promised reach, anywhere in a long list", () => {
+    /*
+     * The reach the docs promise is `ceil(count / 16)` adjacent rows, and it
+     * only holds if probes sit one slice apart. Spacing them from end to end
+     * instead put them `(count - 1) / 15` apart — a hair wider than a slice —
+     * so this exact run (63 rows, the promised length, all off screen, none of
+     * them a probe) slipped through and the scrollbar stayed 2520px short.
+     */
+    const COUNT = 1000
+    const REACH = Math.ceil(COUNT / 16)
+    const FIRST = 534
+    const data = rows(COUNT)
+    function Run({ tall }: { tall: boolean }) {
+      const instance = useDataTable<Row>({
+        id: "reach",
+        columns,
+        data,
+        getRowId: (r) => r.id,
+        rowHeight: ROW_PX,
+        getRowHeight: (row) => {
+          const index = Number(row.id.slice(1))
+          return tall && index >= FIRST && index < FIRST + REACH ? 80 : ROW_PX
+        },
+      })
+      return <DataTable instance={instance} height={VIEWPORT_PX} />
+    }
+    const { container, rerender } = render(<Run tall={false} />)
+    expect(totalHeight(container)).toBe(COUNT * ROW_PX)
+    rerender(<Run tall />)
+    expect(renderedRows().every((r) => Number.parseFloat(r.style.height) === ROW_PX)).toBe(true)
+    expect(totalHeight(container)).toBe((COUNT - REACH) * ROW_PX + REACH * 80)
+  })
+
   it("leaves a change too narrow for the sample to the host's heightVersion", () => {
     /*
      * The documented edge of the sample, pinned so it cannot quietly become a

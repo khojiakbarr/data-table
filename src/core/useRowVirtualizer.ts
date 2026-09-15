@@ -16,9 +16,9 @@ const UNMEASURED_WINDOW = 40
  * check is that it must not grow with the row count: 16 probes cost 16 calls
  * to a function that answers from a row the caller already holds, whatever
  * the list is — nothing beside the React rows rendered next to them. What the
- * number buys is reach: with both ends of the list included, any run of
- * `ceil(count / 16)` adjacent items contains a probe, so a height change over
- * a region that size is seen at once wherever in the list it sits.
+ * number buys is reach: probes sit one slice apart, so any run of
+ * `ceil(count / 16)` adjacent items contains one, and a height change over a
+ * region that size is seen at once wherever in the list it sits.
  */
 const HEIGHT_PROBE_COUNT = 16
 /** Stable no-op for the disabled path, so `measureElement` does not re-attach its ref every render. */
@@ -333,10 +333,10 @@ function hasDrifted<TRow>(
 /**
  * Whether a bounded, evenly spaced sample of the whole list has drifted.
  *
- * Both ends are included, so a policy that only changes the first or the last
- * rows is sampled rather than fallen between probes. A list no longer than
- * {@link HEIGHT_PROBE_COUNT} is checked in full, which makes the answer exact
- * for a small table.
+ * Probes are spaced one slice apart, so no run of `ceil(count / probes)`
+ * adjacent rows can fall between two of them — that is the reach the check
+ * promises. A list no longer than {@link HEIGHT_PROBE_COUNT} is checked in
+ * full, which makes the answer exact for a small table.
  *
  * @param items - The display list.
  * @param measurements - Recorded geometry for every item, rendered or not.
@@ -351,7 +351,16 @@ function sampleDrifted<TRow>(
   const count = items.length
   const probes = Math.min(count, HEIGHT_PROBE_COUNT)
   for (let probe = 0; probe < probes; probe++) {
-    const index = probes === 1 ? 0 : Math.round((probe * (count - 1)) / (probes - 1))
+    /*
+     * Probes sit at the MIDDLE of each of `probes` equal slices, not at both
+     * ends of the list. Spacing both ends inclusive would space them
+     * `(count - 1) / (probes - 1)` apart — wider than a slice — which leaves a
+     * probe-free run longer than `ceil(count / probes)` and breaks the reach
+     * this check promises. Half-offset slices keep every gap at most one
+     * slice wide, and spend no probe on row 0 or the last row, which the
+     * rendered window usually covers anyway.
+     */
+    const index = Math.min(count - 1, Math.floor(((probe + 0.5) * count) / probes))
     if (hasDrifted(items[index], measurements[index]?.size, heightOf)) return true
   }
   return false

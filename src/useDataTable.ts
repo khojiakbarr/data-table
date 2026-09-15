@@ -568,44 +568,16 @@ export function useDataTable<TData extends RowData>({
   }
 
   /*
-   * `<DataTable>` keeps a server table on its skeleton until it has an answer
-   * — rows, a `rowCount`, an error or `loading` — deliberately: with none of
-   * those, "still waiting" is the only honest reading (see
-   * `useAwaitingFirstPage`). But this hook cannot see `loading` or `error`
-   * (those are `<DataTable>` props, not `useDataTable` options), so it cannot
-   * time that wait out the way a host-facing warning normally would.
-   *
-   * No timer, on purpose: one would either never fire — `renderToStaticMarkup`
-   * and any other synchronous SSR pass runs no timers at all, so the host that
-   * most needs this warning would never see it — or force a guess at a delay
-   * that is too eager for a slow-but-working fetch and too patient to help
-   * anyone debugging live, and either way it would have to survive a fake or
-   * real clock inside every test that merely mounts a server table.
-   *
-   * `!onQueryChange` is not a guess about elapsed time; it is a structural
-   * fact this render can already see: a server table with no way to tell its
-   * host what page it wants can never be answered, no matter how long the
-   * host is given — there is no event left for `useAwaitingFirstPage`'s ref to
-   * ever latch. That is a dead end, not a slow answer, so it is reported the
-   * moment it is observed. A host that supplies `onQueryChange` but still
-   * never reports `rowCount` is a real but different mistake, one only a
-   * commit this hook cannot see (loading/error) could catch — out of reach
-   * here for the same reason a timer is.
+   * There is deliberately NO dev warning for a server table that is still
+   * awaiting its first page. Every signal available here is ambiguous: this
+   * hook cannot see `loading` or `error` (they are `<DataTable>` props), and
+   * "no rows, no rowCount, no onQueryChange" is also what a perfectly healthy
+   * host looks like on its first render before its own props resolve. A
+   * warning that fires there cries wolf on the very hosts it was meant to
+   * help and, being a warnOnce, can never take itself back. The behaviour it
+   * would have explained is documented in the README's server-mode section
+   * and pinned by `ServerFirstPaint.test.tsx` instead.
    */
-  if (
-    process.env.NODE_ENV !== "production" &&
-    isServer &&
-    rowCount === undefined &&
-    data.length === 0 &&
-    !onQueryChange
-  ) {
-    warnOnce(
-      `useDataTable("${id}"): mode "server" with no onQueryChange and no rowCount has no way ` +
-        `to learn what page was requested or to report one has been answered, so the table ` +
-        `will show its skeleton forever. Pass onQueryChange to receive the requested page, and ` +
-        `rowCount once you have an answer for it (0 counts as an answer).`,
-    )
-  }
 
   return {
     table,

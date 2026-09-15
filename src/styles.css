@@ -31,6 +31,7 @@
 
   /* interaction */
   --dt-accent: #3b82f6;
+  --dt-accent-fg: #fff;
   --dt-resize-handle: #d4d4d8;
   --dt-resize-handle-active: var(--dt-accent);
   --dt-drop-indicator: var(--dt-accent);
@@ -504,7 +505,7 @@
   padding: 3px 5px;
   border-radius: 4px;
   background: var(--dt-accent);
-  color: #fff;
+  color: var(--dt-accent-fg);
   white-space: nowrap;
 }
 

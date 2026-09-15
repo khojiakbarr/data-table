@@ -240,7 +240,7 @@ looks finished out of the box and restyles without touching its source:
 | `--dt-border` `--dt-radius` | Edges |
 | `--dt-header-bg` `--dt-header-fg` `--dt-header-height` | Header row |
 | `--dt-row-hover` `--dt-row-stripe` `--dt-row-height` | Body rows |
-| `--dt-accent` `--dt-focus-ring` | Interactive accents |
+| `--dt-accent` `--dt-accent-fg` `--dt-focus-ring` | Interactive accents |
 | `--dt-resize-handle` `--dt-resize-handle-active` | Resize handle |
 | `--dt-drop-indicator` | Reorder caret |
 | `--dt-pin-shadow-start` `--dt-pin-shadow-end` | Pinned column seams |

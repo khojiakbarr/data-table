@@ -24,11 +24,16 @@ export { ColumnPanel } from "./components/ColumnPanel"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
 
 /* Helpers worth borrowing rather than rewriting. */
-export { pinnedStyle, renderedLeafColumns } from "./core/pinning"
+export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"
+export type { HeaderPinning } from "./core/pinning"
 export { dropSideAt, moveColumn } from "./core/reorder"
 export type { DropSide } from "./core/reorder"
-export { measureColumnWidth } from "./core/autosize"
+export { measureColumnWidth, measureHeaderWidth } from "./core/autosize"
 export type { AutosizeBounds } from "./core/autosize"
+export { useAutosize } from "./core/useAutosize"
+export type { AutosizeActions } from "./core/useAutosize"
+export { clampColumnWidth, columnBounds } from "./core/sizing"
+export type { ColumnBounds } from "./core/sizing"
 export { localStorageLayout, noLayoutStorage, pruneLayout } from "./core/persistence"
 
 export type {

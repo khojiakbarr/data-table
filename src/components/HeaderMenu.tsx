@@ -141,7 +141,7 @@ export function HeaderMenu<TData extends RowData>({
         </>
       ) : null}
 
-      {flags.resizing ? (
+      {flags.resizing && column.getCanResize() ? (
         <>
           <button type="button" role="menuitem" className="dt-menu-item" onClick={run(onAutosize)}>
             {labels.autosize}

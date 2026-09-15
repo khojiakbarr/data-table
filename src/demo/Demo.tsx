@@ -66,6 +66,11 @@ const products: Product[] = Array.from({ length: 25 }, (_, index) => ({
 const money = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 2 })
 const qty = new Intl.NumberFormat("ru-RU", { minimumFractionDigits: 3 })
 
+const storage = localStorageLayout()
+
+/** The accordion's rows; a stable array, so expanding one is not undone by a re-render. */
+const detailProducts = products.slice(0, 8)
+
 interface TreeNode {
   name: string
   kind: string
@@ -147,11 +152,15 @@ const movementColumns = [
  * with its own id — which is what keeps their layouts apart.
  */
 function ProductDetail({ product }: { product: Product }) {
-  const movements: Movement[] = Array.from({ length: 4 }, (_, index) => ({
-    date: `2026-0${index + 1}-1${index}`,
-    document: `KR-10${index}${product.sku.slice(-1)}`,
-    change: index % 2 === 0 ? 40 + index * 7 : -(12 + index * 3),
-  }))
+  const movements = useMemo<Movement[]>(
+    () =>
+      Array.from({ length: 4 }, (_, index) => ({
+        date: `2026-0${index + 1}-1${index}`,
+        document: `KR-10${index}${product.sku.slice(-1)}`,
+        change: index % 2 === 0 ? 40 + index * 7 : -(12 + index * 3),
+      })),
+    [product.sku],
+  )
 
   const table = useDataTable({
     id: `demo-movements-${product.sku}`,
@@ -237,22 +246,22 @@ export function Demo() {
     id: "demo-receipts",
     data: receipts,
     columns: receiptColumns,
-    storage: localStorageLayout(),
+    storage,
     initialLayout: { columnPinning: { start: ["code"], end: ["status"] } },
   })
 
   const productTable2 = useDataTable({
     id: "demo-detail",
-    data: products.slice(0, 8),
+    data: detailProducts,
     columns: productColumns,
-    storage: localStorageLayout(),
+    storage,
   })
 
   const treeTable = useDataTable({
     id: "demo-tree",
     data: tree,
     columns: treeColumns,
-    storage: localStorageLayout(),
+    storage,
     getSubRows: (row) => row.children,
   })
 
@@ -260,7 +269,7 @@ export function Demo() {
     id: "demo-products",
     data: products,
     columns: productColumns,
-    storage: localStorageLayout(),
+    storage,
   })
 
   return (
@@ -268,9 +277,9 @@ export function Demo() {
       <h1>@khojiakbarr/data-table</h1>
       <p className="lede">
         Drag a header to reorder. Drag its right edge to resize, double-click the edge to
-        reset. Click a header to sort, click again to reverse. Use <b>Columns</b> to pin or
-        hide. Both tables remember their own layout — rearrange one, reload, and the other
-        is exactly as you left it.
+        fit the column to its content. Click a header to sort, click again to reverse. Use{" "}
+        <b>Columns</b> to pin or hide. Both tables remember their own layout — rearrange one,
+        reload, and the other is exactly as you left it.
       </p>
 
       <h2>Kirim hujjatlari — pinned start + end, 60 rows</h2>

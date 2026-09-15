@@ -1,11 +1,12 @@
-import { flexRender, type RowData } from "@tanstack/react-table"
-import { Fragment, useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
-import { pinnedStyle, renderedLeafColumns } from "../core/pinning"
+import type { RowData } from "@tanstack/react-table"
+import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { classNames, insertAt } from "../core/classNames"
+import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import { moveColumn, type DropSide } from "../core/reorder"
-import { measureColumnWidth } from "../core/autosize"
+import { useAutosize } from "../core/useAutosize"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
-import { DepthSpacer, ExpandToggle } from "./ExpandToggle"
+import { BodyRow } from "./BodyRow"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import { ColumnPanel } from "./ColumnPanel"
 import { HeaderCell } from "./HeaderCell"
@@ -40,7 +41,7 @@ export interface DataTableProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   /** Shade alternate rows. */
   striped?: boolean
-  /** Fixed height; the body scrolls inside it. */
+  /** Fixed height for the whole table, toolbar included; the rows scroll inside it. */
   height?: number | string
   /**
    * Keep the header row(s) in view while the body scrolls. Default true.
@@ -76,6 +77,18 @@ export interface DataTableProps<TData extends RowData> {
  * so an application that wants different markup can keep the behaviour and
  * write its own shell.
  *
+ * Two layout decisions are worth knowing about:
+ *
+ * - The toolbar sits OUTSIDE the scrolling viewport. Sticky headers stick to
+ *   the top of whatever scrolls; a sticky toolbar in the same box would sit on
+ *   top of them.
+ * - Columns are never stretched to fill the container. The table is as wide
+ *   as its container or as wide as its columns, whichever is larger, and any
+ *   surplus goes to a blank filler column — the way AG Grid leaves space after
+ *   its last column. Stretching would make every rendered width differ from
+ *   `column.getSize()`, so dragging one handle would visibly resize them all
+ *   and every pinned offset would be wrong.
+ *
  * @example
  * const instance = useDataTable({ id: "receipts", data, columns })
  * <DataTable instance={instance} striped height={520} />
@@ -97,41 +110,9 @@ export function DataTable<TData extends RowData>({
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState(false)
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
+  const tableRef = useRef<HTMLTableElement>(null)
   const labels = { ...defaultLabels, ...labelOverrides }
-
-  const bounds = { min: 60, max: 800 }
-
-  /** Fit one column to the content currently rendered. */
-  const autosize = useCallback(
-    (columnId: string) => {
-      const root = rootRef.current
-      if (!root) return
-      const index = renderedLeafColumns(table).findIndex((c) => c.id === columnId)
-      if (index === -1) return
-      const width = measureColumnWidth(root, index, bounds)
-      if (width !== null) {
-        table.setColumnSizing((previous) => ({ ...previous, [columnId]: width }))
-      }
-    },
-    // `bounds` is a literal recreated per render but never changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [table],
-  )
-
-  const autosizeAll = useCallback(() => {
-    const root = rootRef.current
-    if (!root) return
-    const columns = renderedLeafColumns(table)
-    const sizes: Record<string, number> = {}
-    columns.forEach((column, index) => {
-      const width = measureColumnWidth(root, index, bounds)
-      if (width !== null) sizes[column.id] = width
-    })
-    // One state write for the whole table rather than one per column.
-    table.setColumnSizing((previous) => ({ ...previous, ...sizes }))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table])
+  const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 
   const handleReorder = useCallback(
     (draggedId: string, targetId: string, side: DropSide) => {
@@ -162,12 +143,29 @@ export function DataTable<TData extends RowData>({
   )
 
   const rows = table.getRowModel().rows
-  const rootStyle: CSSProperties = height === undefined ? {} : { height, overflow: "auto" }
+  const leafColumns = renderedLeafColumns(table)
+  const fillerAt = fillerIndex(table)
+  /*
+   * Header rows are assembled per pinning section rather than from the merged
+   * `getHeaderGroups()`. The merged tree keeps a group in one piece even when
+   * only some of its leaves are pinned, so its header would have to choose
+   * between sticking (on top of the columns that really are pinned) and
+   * scrolling away from its pinned leaf. Built per section, a group that
+   * straddles the seam gets one header on each side — which is how AG Grid
+   * renders it too — and every header can be pinned the way its leaves are.
+   */
+  const headerSections = [
+    table.getStartHeaderGroups(),
+    table.getCenterHeaderGroups(),
+    table.getEndHeaderGroups(),
+  ] as const
+  const headerRowCount = table.getHeaderGroups().length
+  const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
+  const rootStyle: CSSProperties | undefined = height === undefined ? undefined : { height }
 
   return (
     <div
-      ref={rootRef}
-      className={["dt-root", className].filter(Boolean).join(" ")}
+      className={classNames("dt-root", className, isResizing && "dt-is-resizing")}
       style={rootStyle}
       data-dt-theme={theme}
     >
@@ -210,115 +208,97 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
 
-      <table
-        className={["dt-table", striped ? "dt-striped" : ""].filter(Boolean).join(" ")}
-        style={{ width: table.getTotalSize(), minWidth: "100%" }}
-      >
-        {/*
-          Under `table-layout: fixed` the browser takes column widths from the
-          first row only — which, with grouped headers, is a row of spanning
-          cells. A colgroup states the widths directly, so nested headers and
-          resizing stop fighting each other.
-        */}
-        <colgroup>
-          {renderedLeafColumns(table).map((column) => (
-            <col key={column.id} style={{ width: column.getSize() }} />
-          ))}
-        </colgroup>
+      <div className="dt-viewport">
+        <table
+          ref={tableRef}
+          className={classNames("dt-table", striped && "dt-striped")}
+          style={{ width: "100%", minWidth: table.getTotalSize() }}
+        >
+          {/*
+            Under `table-layout: fixed` the browser takes column widths from the
+            first row only — which, with grouped headers, is a row of spanning
+            cells. A colgroup states the widths directly, so nested headers and
+            resizing stop fighting each other. The filler has no width: it takes
+            whatever the columns leave over, which is nothing once they overflow.
+          */}
+          <colgroup>
+            {insertAt(
+              leafColumns.map((column) => (
+                <col
+                  key={column.id}
+                  data-column-id={column.id}
+                  style={{ width: column.getSize() }}
+                />
+              )),
+              fillerAt,
+              <col key="filler" className="dt-col-filler" />,
+            )}
+          </colgroup>
 
-        <thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers
-                /*
-                 * TanStack marks a header that a taller cell above already
-                 * covers with rowSpan 0. Rendering those would repeat every
-                 * label once per header row.
-                 */
-                .filter((header) => header.rowSpan > 0)
-                .map((header) => (
-                  <HeaderCell
-                    key={header.id}
-                    header={header}
-                    flags={flags}
-                    labels={labels}
-                    sticky={stickyHeader}
-                    onReorder={handleReorder}
-                    onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
+          <thead>
+            {Array.from({ length: headerRowCount }, (_, depth) => {
+              const [start, center, end] = headerSections.map((section) =>
+                (section[depth]?.headers ?? [])
+                  /*
+                   * TanStack marks a header that a taller cell above already
+                   * covers with rowSpan 0. Rendering those would repeat every
+                   * label once per header row.
+                   */
+                  .filter((header) => header.rowSpan > 0)
+                  .map((header) => (
+                    <HeaderCell
+                      key={header.id}
+                      header={header}
+                      flags={flags}
+                      labels={labels}
+                      sticky={stickyHeader}
+                      onReorder={handleReorder}
+                      onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
+                      onAutosize={autosize}
+                    />
+                  )),
+              )
+              // The filler's header spans every header row and sits between
+              // the scrolling and the end-pinned headers, like the column.
+              const filler =
+                depth === 0 ? (
+                  <th
+                    key="filler"
+                    className="dt-th dt-th-filler"
+                    role="presentation"
+                    rowSpan={headerRowCount > 1 ? headerRowCount : undefined}
+                    style={stickyHeader ? { top: 0 } : undefined}
                   />
-                ))}
-            </tr>
-          ))}
-        </thead>
-
-        <tbody>
-          {rows.map((row) => {
-            const cells = row.getVisibleCells()
-            const hasChildren = row.subRows.length > 0
-            const expandable = hasChildren || Boolean(renderDetail)
-            const isExpanded = expandable && row.getIsExpanded()
-
-            return (
-              <Fragment key={row.id}>
-                <tr
-                  className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
-                  data-depth={row.depth}
-                  onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-                >
-                  {cells.map((cell, index) => (
-                    <td
-                      key={cell.id}
-                      className={[
-                        "dt-td",
-                        cell.column.getIsPinned() ? "dt-pinned" : "",
-                        index === 0 ? "dt-td-lead" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      style={pinnedStyle(cell.column)}
-                    >
-                      {index === 0 ? (
-                        expandable ? (
-                          <ExpandToggle
-                            expanded={isExpanded}
-                            depth={row.depth}
-                            label={isExpanded ? labels.collapseRow : labels.expandRow}
-                            onToggle={() => row.toggleExpanded()}
-                          />
-                        ) : (
-                          <DepthSpacer depth={row.depth} />
-                        )
-                      ) : null}
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
+                ) : null
+              return (
+                <tr key={depth}>
+                  {start}
+                  {center}
+                  {filler}
+                  {end}
                 </tr>
+              )
+            })}
+          </thead>
 
-                {isExpanded && renderDetail ? (
-                  <tr className="dt-detail-row" data-depth={row.depth}>
-                    <td className="dt-detail-cell" colSpan={cells.length}>
-                      <div
-                        className="dt-detail"
-                        style={
-                          row.depth > 0
-                            ? { marginInlineStart: `calc(var(--dt-indent) * ${row.depth + 1})` }
-                            : undefined
-                        }
-                      >
-                        {renderDetail(row.original)}
-                      </div>
-                    </td>
-                  </tr>
-                ) : null}
-              </Fragment>
-            )
-          })}
-        </tbody>
-      </table>
+          <tbody>
+            {rows.map((row) => (
+              <BodyRow
+                key={row.id}
+                row={row}
+                fillerAt={fillerAt}
+                labels={labels}
+                renderDetail={renderDetail}
+                onRowClick={onRowClick}
+              />
+            ))}
+          </tbody>
+        </table>
 
-      {rows.length === 0 ? (
-        <div className="dt-empty">{emptyState ?? labels.empty}</div>
-      ) : null}
+        {rows.length === 0 ? (
+          <div className="dt-empty">{emptyState ?? labels.empty}</div>
+        ) : null}
+      </div>
     </div>
   )
 }

@@ -35,7 +35,7 @@ function Receipts({ data, columns }) {
 |---|---|
 | **Nested column groups** | Group headers to any depth. A column that sits above the deepest level spans down to meet the rows. |
 | **Pin columns** | To the start edge, the end edge, or both. Pinned columns stay put while the rest scrolls, with a shadow marking the seam. |
-| **Resize columns** | Drag the right edge of a header. Double-click it to go back to the declared width. |
+| **Resize columns** | Drag the right edge of a header; double-click it to fit the column to its content. A group header's edge resizes every column under it. Columns are never stretched to fill the container. |
 | **Reorder columns** | Drag a header onto another; a caret shows which side it will land on. |
 | **Sort** | Click a header: ascending, descending, off. Multi-sort shows its position. |
 | **Hide columns** | From the **Columns** panel. |
@@ -76,13 +76,45 @@ const columns = [
 ```
 
 `Code` and `Status` span down to the rows on their own; you do not declare that.
-Group headers carry no sort, resize or drag control — those act on one column,
-and a group's width is the sum of its children's.
+Group headers carry no sort or drag control — those act on one column. A group's
+width is the sum of its children's, and dragging a group's edge scales them all by
+the same proportion.
 
 Widths are declared in a `<colgroup>` rather than on each cell. Under
 `table-layout: fixed` the browser reads widths from the first row only, which
 with grouped headers is a row of spanning cells — so per-cell widths get
 divided evenly and every column comes out the wrong size.
+
+---
+
+## Column widths
+
+Every column is exactly as wide as it says. The table is as wide as its container
+or as wide as its columns, whichever is larger, and any space left over goes to a
+blank filler column between the scrolling columns and the end-pinned ones — the
+way AG Grid leaves room after its last column.
+
+The alternative, stretching columns to fill the container, is what makes resizing
+feel broken: every rendered width then differs from the declared one, so dragging
+one edge visibly moves every other column, and pinned offsets (which are sums of
+declared widths) land in the wrong place.
+
+Widths are clamped to `minColumnWidth` / `maxColumnWidth` (or a column's own
+`minSize` / `maxSize`) when they are written, so a stored layout never holds a
+width the table would refuse to render. A press-and-release on a handle changes
+nothing and marks nothing.
+
+**Fit to content.** Double-click a handle, press Enter on it, or use *Fit this
+column* / *Fit all columns* from the column menu. Fitting measures the rows
+currently rendered — header, cells, and in the first column the expand toggle
+and indent of nested rows. *Fit all columns* also keeps every group label
+readable by widening the group's children when they come up short.
+
+**Keyboard.** With a resize handle focused, ← and → change the width by 10px,
+Shift-← and Shift-→ by 50px, Enter fits the column.
+
+**Right-to-left.** Pass `direction: "rtl"` to the hook so a drag away from the
+column widens it there too.
 
 ---
 
@@ -175,7 +207,9 @@ const serverLayout: LayoutStorage = {
 ```
 
 `load` is called once when the table mounts, so it must be synchronous — fetch layouts
-alongside the rest of your page data and read them from your cache here.
+alongside the rest of your page data and read them from your cache here. `save` is
+called only after the user changes something, a short while after the last change —
+never on mount, and never on every frame of a drag.
 
 **Columns that disappear.** When you remove a column from the code, stored layouts still
 mention it. Those references are dropped on load, and columns added since are appended, so
@@ -246,12 +280,24 @@ Two helpers are worth borrowing rather than rewriting:
 
 `pinnedStyle()` — a pinned column's offset is the running total of every pinned column
 before it, and those widths change on every frame while a resize handle is dragged. It
-reads TanStack's memoised offset map instead of recomputing.
+reads TanStack's memoised offset map instead of recomputing. For headers, including
+group headers, use `headerPinning(header)`: TanStack calls a group "pinned" as soon as
+one leaf under it is, and knows no offset for a group id, so a group rendered from
+`pinnedStyle` would stick at the left edge on top of the real pinned columns.
 
 `renderedLeafColumns()` — `table.getVisibleLeafColumns()` groups pinned columns first,
 which is *not* the order cells appear in, because pinned cells keep their DOM position and
 are stuck with `position: sticky`. Feeding that order to a `<colgroup>` hands every column
-somebody else's width.
+somebody else's width. `fillerIndex()` says where the filler column goes in that order.
+
+`useAutosize()` — "fit to content" for your own markup. Give it the instance and a ref to
+your `<table>`, put `data-column-id` on every `<th>`, `<td>` and `<col>` as the built-in
+shell does, and wire `autosize(columnId)` / `autosizeAll()` to whatever you like:
+
+```tsx
+const tableRef = useRef<HTMLTableElement>(null)
+const { autosize, autosizeAll } = useAutosize(instance, tableRef)
+```
 
 ---
 
@@ -270,10 +316,11 @@ somebody else's width.
 | `defaultColumnWidth` | `number` | `160` | |
 | `minColumnWidth` | `number` | `60` | |
 | `maxColumnWidth` | `number` | `800` | |
+| `direction` | `"ltr" \| "rtl"` | `"ltr"` | Which way a drag widens a column. |
 | `getSubRows` | `(row: TData) => TData[]` | — | Child rows, for tree data. |
 | `canExpand` | `(row: TData) => boolean` | all rows | Which rows may open a detail panel. |
 
-Returns `{ table, id, flags, resetLayout, isCustomised }`.
+Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded }`.
 
 ### `<DataTable />`
 
@@ -281,7 +328,7 @@ Returns `{ table, id, flags, resetLayout, isCustomised }`.
 |---|---|---|---|
 | `instance` | `DataTableInstance` | — | **Required.** From `useDataTable`. |
 | `striped` | `boolean` | `false` | |
-| `height` | `number \| string` | auto | Fixed height; header and pinned columns stay put while scrolling. |
+| `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
 | `emptyState` | `ReactNode` | `labels.empty` | |
@@ -297,8 +344,9 @@ Returns `{ table, id, flags, resetLayout, isCustomised }`.
 
 - Headers carry `aria-sort`, and each sort control names its column, so a screen reader
   announces "Amount: sort ascending" rather than three identical buttons.
-- Sort controls, the resize handle and the Columns panel are all reachable by keyboard
-  with a visible focus ring.
+- Sort controls, the resize handle, the per-column menu and the Columns panel are all
+  reachable by keyboard with a visible focus ring. A focused resize handle resizes with
+  ← / → (Shift for larger steps) and fits the column on Enter.
 - The Columns panel closes on `Escape` and on an outside click.
 - The per-column menu opens from a button as well as from right-click, and is reachable
   by keyboard; it closes on `Escape`.

@@ -46,14 +46,51 @@
   --dt-font: inherit;
   --dt-font-size: 14px;
 
+  /*
+   * The root does not scroll; `.dt-viewport` below does. Keeping the toolbar
+   * and the Columns panel out of the scrolling box is what stops the toolbar
+   * from covering the sticky header and the panel from scrolling out of view.
+   * The root does not clip either, so a panel taller than a short table can
+   * hang below it; the rounded corners are drawn by the toolbar and the
+   * viewport instead. `isolation` keeps a nested table's sticky header under
+   * this one's.
+   */
   position: relative;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
   border: 1px solid var(--dt-border);
   border-radius: var(--dt-radius);
   background: var(--dt-bg);
   color: var(--dt-fg);
   font-family: var(--dt-font);
   font-size: var(--dt-font-size);
+}
+
+/* Lift the table above whatever follows it while its panel hangs open. */
+.dt-root:has(> .dt-panel) {
+  z-index: 1;
+}
+
+.dt-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border-radius: inherit;
+}
+
+/* General sibling: the Columns panel and the menu render between the two. */
+.dt-toolbar ~ .dt-viewport {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+/* While a handle is dragged the pointer leaves it at once; keep the cursor. */
+.dt-root.dt-is-resizing,
+.dt-root.dt-is-resizing * {
+  cursor: col-resize !important;
+  user-select: none;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -92,7 +129,8 @@
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
-  /* Width is set inline from table.getTotalSize(); see DataTable.tsx. */
+  /* Inline: width 100% with min-width from table.getTotalSize(), so columns
+     are never stretched — the surplus goes to the filler column. */
 }
 
 /* ---------- header ---------- */
@@ -104,6 +142,9 @@
    * is set inline only when the header is meant to stay in view.
    */
   position: sticky;
+  /* Border-box, so a header row is exactly --dt-header-height tall and the
+     sticky `top` of the row beneath it lands flush rather than 1px high. */
+  box-sizing: border-box;
   height: var(--dt-header-height);
   padding: 0;
   background: var(--dt-header-bg);
@@ -173,7 +214,9 @@
 /* ---------- body ---------- */
 
 .dt-td {
+  box-sizing: border-box;
   height: var(--dt-row-height);
+  padding-block: 0;
   padding-inline: 10px;
   border-bottom: 1px solid var(--dt-border);
   overflow: hidden;
@@ -254,6 +297,18 @@
   user-select: none;
 }
 
+/* ---------- filler column ---------- *
+ * Columns are never stretched to fill the container; whatever is left over
+ * goes here, between the scrolling columns and the end-pinned ones. It has no
+ * padding so that, once the columns overflow, it is exactly zero wide.
+ */
+
+.dt-th-filler,
+.dt-td-filler {
+  padding: 0;
+  border-inline: 0;
+}
+
 /* ---------- reordering ---------- */
 
 .dt-draggable {
@@ -291,9 +346,10 @@
   padding: 6px 8px;
   border-bottom: 1px solid var(--dt-border);
   background: var(--dt-bg);
-  position: sticky;
-  top: 0;
-  z-index: 6;
+  flex: none;
+  border-radius: inherit;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
 }
 
 .dt-spacer {
@@ -480,10 +536,21 @@
  * detail panel, which is a full-width row beneath its parent.
  */
 
-.dt-td-lead {
+/* The flex wrapper is INSIDE the cell: a <td> that is itself a flex container
+   cannot truncate its text with an ellipsis. */
+.dt-lead {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+
+.dt-td-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dt-expand {
@@ -551,7 +618,7 @@
   inset-block: 0;
   inset-inline-end: 9px;
   width: 16px;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -559,11 +626,17 @@
   background: none;
   color: var(--dt-muted-fg);
   cursor: pointer;
+  /* Hidden, but still in the tab order: `display: none` cannot take focus, so
+     the menu would be unreachable without a mouse. */
+  opacity: 0;
+  pointer-events: none;
 }
 
 .dt-th:hover .dt-kebab,
+.dt-th:focus-within .dt-kebab,
 .dt-kebab:focus-visible {
-  display: flex;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .dt-kebab:focus-visible {
@@ -573,7 +646,8 @@
 }
 
 /* Leave room so the label never runs under the kebab. */
-.dt-th:hover .dt-th-inner {
+.dt-th:hover .dt-th-inner,
+.dt-th:focus-within .dt-th-inner {
   padding-inline-end: 26px;
 }
 

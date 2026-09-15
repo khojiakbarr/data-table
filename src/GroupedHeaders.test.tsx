@@ -1,5 +1,6 @@
 import { createColumnHelper } from "@tanstack/react-table"
 import { render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
@@ -121,7 +122,7 @@ describe("grouped headers", () => {
 
   it("declares column widths in the order the cells are rendered", () => {
     const { container } = render(<Grouped />)
-    const widths = [...container.querySelectorAll("colgroup col")].map(
+    const widths = [...container.querySelectorAll("colgroup col:not(.dt-col-filler)")].map(
       (col) => (col as HTMLElement).style.width,
     )
     expect(widths).toEqual(["100px", "240px", "170px", "130px", "90px", "120px"])
@@ -131,7 +132,7 @@ describe("grouped headers", () => {
     // `getVisibleLeafColumns()` puts pinned columns first; the DOM does not.
     // If the colgroup followed that order, Partner would take Status's width.
     const { container } = render(<Grouped pinned />)
-    const widths = [...container.querySelectorAll("colgroup col")].map(
+    const widths = [...container.querySelectorAll("colgroup col:not(.dt-col-filler)")].map(
       (col) => (col as HTMLElement).style.width,
     )
     expect(widths).toEqual(["100px", "240px", "170px", "130px", "90px", "120px"])
@@ -156,5 +157,58 @@ describe("grouped headers", () => {
     expect(screen.getByRole("columnheader", { name: /^Status/ }).style.insetInlineEnd).toBe(
       "0px",
     )
+  })
+
+  it("sticks a group header only over the part of it that is pinned", async () => {
+    const user = userEvent.setup()
+    render(<Grouped pinned />)
+
+    await user.click(screen.getByRole("button", { name: /partner: column actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: /pin to start/i }))
+
+    // TanStack splits "Document" in two: one header over the pinned Partner,
+    // one over the still-scrolling City. Only the first may stick, and it
+    // sticks behind Code — not at offset 0 on top of it.
+    const [pinnedPart, scrollingPart] = screen.getAllByRole("columnheader", {
+      name: /^Document$/,
+    })
+    expect(pinnedPart?.className).toContain("dt-pinned")
+    expect(pinnedPart?.style.insetInlineStart).toBe("100px")
+    expect(scrollingPart?.className).not.toContain("dt-pinned")
+    expect(scrollingPart?.style.insetInlineStart).toBe("")
+  })
+
+  it("offsets an end-pinned group header by the columns after it", () => {
+    function EndPinnedGroup() {
+      const instance = useDataTable({
+        id: "end-group",
+        data: rows,
+        columns,
+        initialLayout: { columnPinning: { start: [], end: ["partner", "city", "status"] } },
+      })
+      return <DataTable instance={instance} />
+    }
+    render(<EndPinnedGroup />)
+
+    // Document's leaves sit ahead of Status at the end edge: the group header
+    // must be 120px (Status) in from the edge, not on top of it — which is
+    // what reading the group's own, unknown-to-the-offset-map id gives.
+    const document = screen.getByRole("columnheader", { name: /^Document$/ })
+    expect(document.className).toContain("dt-pinned-end-first")
+    expect(document.style.insetInlineEnd).toBe("120px")
+  })
+
+  it("marks a start-pinned group header as the seam", async () => {
+    const user = userEvent.setup()
+    render(<Grouped pinned />)
+
+    for (const name of [/partner: column actions/i, /city: column actions/i]) {
+      await user.click(screen.getByRole("button", { name }))
+      await user.click(screen.getByRole("menuitem", { name: /pin to start/i }))
+    }
+
+    const document = screen.getByRole("columnheader", { name: /^Document$/ })
+    expect(document.className).toContain("dt-pinned-start-last")
+    expect(document.style.insetInlineStart).toBe("100px")
   })
 })

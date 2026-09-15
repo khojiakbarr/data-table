@@ -1,5 +1,4 @@
 import { flexRender, type Row, type RowData } from "@tanstack/react-table"
-import { Fragment, type ReactNode } from "react"
 import { classNames, insertAt } from "../core/classNames"
 import { pinnedStyle } from "../core/pinning"
 import type { DataTableFeatures } from "../useDataTable"
@@ -8,31 +7,39 @@ import { DepthSpacer, ExpandToggle } from "./ExpandToggle"
 
 interface BodyRowProps<TData extends RowData> {
   row: Row<DataTableFeatures, TData>
+  /** Position among rows in render order; drives striping. */
+  position: number
+  /** Explicit height when the table has `getRowHeight`. */
+  height?: number | undefined
   /** Where the filler cell goes among the visible cells; see `fillerIndex`. */
   fillerAt: number
   labels: DataTableLabels
-  renderDetail?: ((row: TData) => ReactNode) | undefined
+  /** Whether a detail panel can open under this row. */
+  hasDetail: boolean
   onRowClick?: ((row: TData) => void) | undefined
 }
 
 /**
- * One data row, plus its detail panel when it is open.
+ * One data row.
  *
  * The lead cell holds the expand toggle (or an indent spacer) beside the
- * value. Those sit in a flex wrapper INSIDE the cell rather than on the cell
- * itself: a `<td>` that is a flex container cannot truncate its text with an
- * ellipsis, so the first column would clip hard the moment it was narrowed.
+ * value, in a flex wrapper INSIDE the cell: a `<td>` that is itself a flex
+ * container cannot truncate its text with an ellipsis.
+ *
+ * Striping is keyed on `data-parity`, not `:nth-child`: with virtualisation
+ * the DOM position of a row says nothing about its position in the data.
  */
 export function BodyRow<TData extends RowData>({
   row,
+  position,
+  height,
   fillerAt,
   labels,
-  renderDetail,
+  hasDetail,
   onRowClick,
 }: BodyRowProps<TData>) {
   const cells = row.getVisibleCells()
-  const hasChildren = row.subRows.length > 0
-  const expandable = hasChildren || Boolean(renderDetail)
+  const expandable = row.subRows.length > 0 || hasDetail
   const isExpanded = expandable && row.getIsExpanded()
 
   const rendered = cells.map((cell, index) => {
@@ -70,36 +77,18 @@ export function BodyRow<TData extends RowData>({
   })
 
   return (
-    <Fragment>
-      <tr
-        className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
-        data-depth={row.depth}
-        onClick={onRowClick ? () => onRowClick(row.original) : undefined}
-      >
-        {insertAt(
-          rendered,
-          fillerAt,
-          <td key="filler" className="dt-td dt-td-filler" role="presentation" />,
-        )}
-      </tr>
-
-      {isExpanded && renderDetail ? (
-        <tr className="dt-detail-row" data-depth={row.depth}>
-          {/* One more than the cells: the filler column counts too. */}
-          <td className="dt-detail-cell" colSpan={cells.length + 1}>
-            <div
-              className="dt-detail"
-              style={
-                row.depth > 0
-                  ? { marginInlineStart: `calc(var(--dt-indent) * ${row.depth + 1})` }
-                  : undefined
-              }
-            >
-              {renderDetail(row.original)}
-            </div>
-          </td>
-        </tr>
-      ) : null}
-    </Fragment>
+    <tr
+      className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
+      data-depth={row.depth}
+      data-parity={position % 2 === 0 ? "even" : "odd"}
+      style={height === undefined ? undefined : { height }}
+      onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+    >
+      {insertAt(
+        rendered,
+        fillerAt,
+        <td key="filler" className="dt-td dt-td-filler" role="presentation" />,
+      )}
+    </tr>
   )
 }

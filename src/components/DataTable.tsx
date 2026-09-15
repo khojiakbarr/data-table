@@ -6,10 +6,10 @@ import { moveColumn, type DropSide } from "../core/reorder"
 import { useAutosize } from "../core/useAutosize"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
-import { BodyRow } from "./BodyRow"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import { ColumnPanel } from "./ColumnPanel"
 import { HeaderCell } from "./HeaderCell"
+import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
 
 /** English defaults; pass `labels` to translate. */
@@ -75,8 +75,13 @@ export interface DataTableProps<TData extends RowData> {
    *
    * Rendered in a full-width row beneath its parent. It may contain anything,
    * including another `<DataTable>` — nesting is not limited.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`: whether a
+   * table has detail panels is usually a condition at the call site
+   * (`renderDetail={showDetail ? render : undefined}`), and an optional
+   * property alone would reject that.
    */
-  renderDetail?: (row: TData) => ReactNode
+  renderDetail?: ((row: TData) => ReactNode) | undefined
   labels?: Partial<DataTableLabels>
   /** Forces a theme instead of following the OS setting. */
   theme?: "light" | "dark"
@@ -127,12 +132,12 @@ export function DataTable<TData extends RowData>({
   footer = true,
   virtualize = true,
 }: DataTableProps<TData>) {
-  // Wired up by the virtualised body; accepted now so the prop is stable.
-  void virtualize
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState(false)
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const tableRef = useRef<HTMLTableElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const headRef = useRef<HTMLTableSectionElement>(null)
   const labels = { ...defaultLabels, ...labelOverrides }
   const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 
@@ -183,7 +188,16 @@ export function DataTable<TData extends RowData>({
   ] as const
   const headerRowCount = table.getHeaderGroups().length
   const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
-  const rootStyle: CSSProperties | undefined = height === undefined ? undefined : { height }
+  /*
+   * `--dt-row-height` is what the stylesheet sizes a row with, and the
+   * virtualiser's estimate has to match it exactly — an unmeasured data row
+   * whose real height differs by a pixel drags the scrollbar off by a pixel
+   * per row. Publishing the instance's value here keeps the two in step.
+   */
+  const rootStyle = {
+    ...(height === undefined ? undefined : { height }),
+    "--dt-row-height": `${instance.rowHeight}px`,
+  } as CSSProperties
 
   return (
     <div
@@ -230,7 +244,7 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
 
-      <div className="dt-viewport">
+      <div className="dt-viewport" ref={viewportRef}>
         <table
           ref={tableRef}
           className={classNames("dt-table", striped && "dt-striped")}
@@ -257,7 +271,7 @@ export function DataTable<TData extends RowData>({
             )}
           </colgroup>
 
-          <thead>
+          <thead ref={headRef}>
             {Array.from({ length: headerRowCount }, (_, depth) => {
               const [start, center, end] = headerSections.map((section) =>
                 (section[depth]?.headers ?? [])
@@ -303,18 +317,18 @@ export function DataTable<TData extends RowData>({
             })}
           </thead>
 
-          <tbody>
-            {rows.map((row) => (
-              <BodyRow
-                key={row.id}
-                row={row}
-                fillerAt={fillerAt}
-                labels={labels}
-                renderDetail={renderDetail}
-                onRowClick={onRowClick}
-              />
-            ))}
-          </tbody>
+          <TableBody
+            instance={instance}
+            rows={rows}
+            viewportRef={viewportRef}
+            headRef={headRef}
+            fillerAt={fillerAt}
+            columnCount={leafColumns.length + 1}
+            labels={labels}
+            virtualize={virtualize}
+            renderDetail={renderDetail}
+            onRowClick={onRowClick}
+          />
         </table>
 
         {rows.length === 0 ? (

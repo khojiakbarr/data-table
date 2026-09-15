@@ -234,8 +234,19 @@
   border-bottom: 0;
 }
 
-.dt-striped .dt-tr:nth-child(even) .dt-td {
+/*
+ * Parity comes from the row's position in the data, not from `:nth-child`:
+ * with virtualisation the DOM holds only a window, so the first rendered row
+ * is rarely the first row — and the spacers take child slots of their own.
+ */
+.dt-striped .dt-tr[data-parity="odd"] .dt-td {
   background: var(--dt-row-stripe);
+}
+
+/* Empty rows standing in for the ones outside the rendered window. */
+.dt-spacer > td {
+  padding: 0;
+  border: 0;
 }
 
 .dt-tr:hover .dt-td {

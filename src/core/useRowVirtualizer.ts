@@ -6,6 +6,8 @@ import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 /** A guess for a detail panel until it is measured. */
 const DETAIL_ESTIMATE_PX = 160
 const DEFAULT_OVERSCAN = 8
+/** Rows rendered from the top while the viewport has no size yet. */
+const UNMEASURED_WINDOW = 40
 /** Stable no-op for the disabled path, so `measureElement` does not re-attach its ref every render. */
 const NOOP_MEASURE = () => undefined
 
@@ -47,6 +49,15 @@ export interface RowVirtualizerResult<TRow> {
  * `getRowHeight(row)`, so the scrollbar is exact by construction. Detail
  * panels are the exception and are measured on mount and on resize.
  *
+ * An unmeasured viewport renders a leading window instead of nothing.
+ * virtual-core sizes the scroll element from `offsetHeight`, and with an outer
+ * size of 0 it has no range to compute, so `getVirtualItems()` comes back
+ * empty. That state is real: the first frame before the ResizeObserver reports,
+ * a table inside a `display: none` ancestor, or a test environment that lays
+ * nothing out. Rendering nothing there means a table that is revealed shows
+ * blank until it scrolls, and a jsdom test sees no rows at all. The first
+ * {@link UNMEASURED_WINDOW} items cover a tall viewport and cost little.
+ *
  * Preconditions:
  * - `isDetailOpen` must be referentially stable (e.g. wrapped in
  *   `useCallback`). An inline arrow is a new function every render, which
@@ -73,6 +84,7 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
 }: RowVirtualizerOptions<TRow>): RowVirtualizerResult<TRow> {
   const items = useMemo(() => buildDisplayList(rows, isDetailOpen), [rows, isDetailOpen])
   const scrollMargin = useElementHeight(headRef)
+  useViewportLookup()
 
   // The virtualiser only ever asks for indices within [0, items.length) — the
   // `count` it was given — so `items[index]` below is always in range. The
@@ -118,6 +130,25 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
     }
   }
 
+  /*
+   * `scrollRect` is virtual-core's own record of the scroll element's size,
+   * filled from `offsetWidth`/`offsetHeight` — not `getBoundingClientRect` —
+   * and left null until the element is observed. Either state means no range,
+   * so fall back to a leading window rather than an empty body.
+   */
+  const scrollRect = virtualizer.scrollRect
+  if (!scrollRect || scrollRect.height === 0) {
+    const count = Math.min(items.length, UNMEASURED_WINDOW)
+    let renderedHeight = 0
+    for (let index = 0; index < count; index++) renderedHeight += estimateSize(index)
+    return {
+      items: items.slice(0, count).map((item, index) => ({ item, index })),
+      top: 0,
+      bottom: Math.max(0, virtualizer.getTotalSize() - renderedHeight),
+      measureElement: virtualizer.measureElement,
+    }
+  }
+
   const virtualItems = virtualizer.getVirtualItems()
   const { top, bottom } = spacerSizes(
     virtualItems[0],
@@ -132,6 +163,21 @@ export function useRowVirtualizer<TRow extends { id: string; original: unknown }
     bottom,
     measureElement: virtualizer.measureElement,
   }
+}
+
+/**
+ * Render once more right after mounting, so the viewport can be found.
+ *
+ * The scrolling viewport is an ANCESTOR of the rows, and React attaches a
+ * parent's ref only after its children's layout effects have run. The
+ * virtualiser looks for its scroll element in a layout effect of its own, so
+ * on the first commit it finds null — and, with nothing else to prompt it, it
+ * would never look again. A state change made from a layout effect is flushed
+ * before paint, so the second look costs a render but no visible frame.
+ */
+function useViewportLookup(): void {
+  const [, look] = useState(0)
+  useIsomorphicLayoutEffect(() => look(1), [])
 }
 
 /** The rendered height of an element, kept current with a ResizeObserver when one exists. */

@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import { localStorageLayout } from "./core/persistence"
 import type { TableQuery } from "./core/query"
-import { useDataTable, type DataTableFeatures } from "./useDataTable"
+import { useDataTable, type DataTableFeatures, type TableMode } from "./useDataTable"
 
 /**
  * Server mode: the table describes what it wants (a query) and renders what
@@ -145,6 +145,37 @@ describe("server mode", () => {
     expect(result.current.query.pagination).toEqual({ pageIndex: 7, pageSize: 20 })
   })
 
+  it("sends the user back to the first page when the layout is reset", () => {
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "srv-reset", columns, data: page(0, 50), mode: "server", rowCount: 500,
+        getRowId: (r) => r.id,
+      }),
+    )
+
+    act(() => result.current.table.getColumn("name")!.toggleSorting(false))
+    act(() => result.current.pagination.setPageIndex(5))
+    expect(result.current.query.pagination.pageIndex).toBe(5)
+
+    // Reset replaces the sort order and the page size, the other two inputs to
+    // the query; page six of the old order is page six of nothing.
+    act(() => result.current.resetLayout())
+    expect(result.current.query.sorting).toEqual([])
+    expect(result.current.query.pagination).toEqual({ pageIndex: 0, pageSize: 50 })
+  })
+
+  it("warns when server mode is paired with paging turned off", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    renderHook(() =>
+      useDataTable<Row>({
+        id: "srv-unpaged", columns, data: page(0, 120), mode: "server",
+        pagination: false, getRowId: (r) => r.id,
+      }),
+    )
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("pagination"))
+    warn.mockRestore()
+  })
+
   it("uses the row id for expansion state", () => {
     const { result, rerender } = renderHook(
       ({ data }: { data: Row[] }) =>
@@ -204,5 +235,44 @@ describe("client mode pagination", () => {
     rerender({ data: page(0, 60) }) // rows removed under the user's feet
     expect(result.current.pagination.pageIndex).toBe(1)
     expect(result.current.table.getRowModel().rows).toHaveLength(10)
+  })
+})
+
+/*
+ * The React adapter merges options into the previous object on every render,
+ * so an option that is merely left out keeps the value it had last time.
+ * Anything that depends on a prop must be written on every render, including
+ * when the answer is "nothing".
+ */
+describe("options that follow a prop", () => {
+  it("stops reporting the server's totals after a switch to client mode", () => {
+    const { result, rerender } = renderHook(
+      ({ mode }: { mode: TableMode }) =>
+        useDataTable<Row>({
+          id: "opt1", columns, data: page(0, 120), mode, rowCount: 5000,
+          pagination: { pageSize: 50 }, getRowId: (r) => r.id,
+        }),
+      { initialProps: { mode: "server" as TableMode } },
+    )
+    expect(result.current.table.getRowCount()).toBe(5000)
+
+    rerender({ mode: "client" })
+    expect(result.current.table.getRowCount()).toBe(120)
+    expect(result.current.table.getPageCount()).toBe(3)
+  })
+
+  it("falls back to positional row ids when getRowId is taken away", () => {
+    const { result, rerender } = renderHook(
+      ({ withId }: { withId: boolean }) =>
+        useDataTable<Row>({
+          id: "opt2", columns, data: page(0, 2),
+          ...(withId ? { getRowId: (row: Row) => `custom-${row.id}` } : {}),
+        }),
+      { initialProps: { withId: true } },
+    )
+    expect(result.current.table.getRowModel().rows[0]?.id).toBe("custom-r0")
+
+    rerender({ withId: false })
+    expect(result.current.table.getRowModel().rows[0]?.id).toBe("0")
   })
 })

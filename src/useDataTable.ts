@@ -232,7 +232,12 @@ export function useDataTable<TData extends RowData>({
         ? {}
         : pagination
 
-  const { layout, isCustomised, updateSlice, resetLayout } = useArrangement({
+  const {
+    layout,
+    isCustomised,
+    updateSlice,
+    resetLayout: resetArrangement,
+  } = useArrangement({
     id,
     store,
     initialLayout,
@@ -240,13 +245,18 @@ export function useDataTable<TData extends RowData>({
   })
 
   /*
-   * Last render's client row count. The table has to be built before the count
-   * exists, and `usePagination` runs before that, so a client-mode table can
-   * only be clamped against what the previous render measured — which is
-   * current by the time a user clicks anything. The shrink case that this
-   * misses is corrected below, before paint.
+   * The row count as of the last commit, written below once the table exists.
+   *
+   * The table has to be built before a client-mode count exists, and
+   * `usePagination` runs before that, so the count this render can hand it is
+   * the one the previous render measured. That is enough to derive a page
+   * count from — the shrink case it misses is corrected before paint — but not
+   * to clamp a click against, because by then the table may have been rebuilt
+   * over more rows. Setters read this ref instead, which is current whenever
+   * one of them runs.
    */
-  const clientRowCountRef = useRef<number | undefined>(undefined)
+  const rowCountRef = useRef<number | undefined>(undefined)
+  const getRowCount = useCallback(() => rowCountRef.current, [])
 
   // Stable, so the memoised `pageState` below really is stable.
   const persistPageSize = useCallback(
@@ -258,7 +268,8 @@ export function useDataTable<TData extends RowData>({
     enabled: paginationOptions !== null,
     pageSize: layout.pageSize ?? paginationOptions?.pageSize ?? DEFAULT_PAGE_SIZE,
     pageSizeOptions: paginationOptions?.pageSizeOptions ?? DEFAULT_PAGE_SIZE_OPTIONS,
-    rowCount: isServer ? rowCount : clientRowCountRef.current,
+    rowCount: isServer ? rowCount : rowCountRef.current,
+    getRowCount,
     onPageSizeChange: persistPageSize,
   })
 
@@ -279,11 +290,37 @@ export function useDataTable<TData extends RowData>({
   )
 
   /*
+   * For the same reason, and one more: a reset replaces the sort order *and*
+   * the page size, two of the three inputs to the query, so the page number
+   * the user is on describes a result set that no longer exists. The page is
+   * reset here rather than in `useArrangement`, which does not own it.
+   */
+  const resetLayout = useCallback(() => {
+    resetArrangement()
+    resetPage()
+  }, [resetArrangement, resetPage])
+
+  /*
    * Which rows are open is deliberately NOT part of the layout: it is a
    * transient reading position, not an arrangement the user chose to keep, and
    * restoring it on the next visit would be surprising.
    */
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  /*
+   * Which of the options that follow a prop this render actually states.
+   * `mergeOptions` below withdraws the rest, and needs this: it runs
+   * synchronously inside the `useTable` on the next line but cannot see the
+   * literal being merged in, and the function doing the merging is the
+   * previous render's, so it cannot have closed over them either. Written and
+   * read within the one render rather than carried across renders.
+   */
+  const stated = useRef({ rowId: false, subRows: false, totals: false })
+  stated.current = {
+    rowId: getRowId !== undefined,
+    subRows: getSubRows !== undefined,
+    totals: isServer,
+  }
 
   const table = useTable<DataTableFeatures, TData>({
     features: FEATURES,
@@ -318,10 +355,9 @@ export function useDataTable<TData extends RowData>({
     manualSorting: isServer,
     manualPagination: isServer || paginationOptions === null,
     /*
-     * Both keys are written on every server render rather than omitted when
-     * unknown. The React adapter merges options into the previous object
-     * (`{ ...prev, ...next }`), so a key left out silently keeps its old value —
-     * a total that returned to "unknown" would go on reporting the stale one.
+     * Both totals are written on every server render rather than omitted when
+     * unknown: a total that returned to "unknown" would otherwise go on
+     * reporting the stale one.
      *
      * `pageCount: -1` is TanStack's own word for "unknown". Without it it
      * counts the rows it can see — one page — concludes there is nothing after
@@ -330,6 +366,29 @@ export function useDataTable<TData extends RowData>({
     ...(isServer
       ? { rowCount: rowCount ?? data.length, pageCount: pageState.pageCount ?? -1 }
       : {}),
+    /*
+     * Withdraw the four options above that follow a prop. The adapter merges
+     * each render's options into the previous object (`{ ...prev, ...next }`),
+     * so one left out keeps the value it had last time: a table switched to
+     * client mode would go on reporting the server's totals from
+     * `getRowCount()` and `getPageCount()` — and refusing, in `setPageIndex()`,
+     * to page to rows it is holding — while a `getRowId` that stopped being
+     * supplied would go on keying rows by a record id the host no longer has.
+     *
+     * Deleting rather than writing `undefined`: TanStack types these as
+     * `pageCount?: number`, which under `exactOptionalPropertyTypes` cannot be
+     * given the one value that means "unset".
+     */
+    mergeOptions: (previous, next) => {
+      const merged = { ...previous, ...next }
+      if (!stated.current.rowId) delete merged.getRowId
+      if (!stated.current.subRows) delete merged.getSubRows
+      if (!stated.current.totals) {
+        delete merged.rowCount
+        delete merged.pageCount
+      }
+      return merged
+    },
     /*
      * Same reasoning as `autoResetExpanded`: TanStack would send the user back
      * to page one whenever `data` changes identity, which in server mode is
@@ -386,13 +445,19 @@ export function useDataTable<TData extends RowData>({
     paginationOptions !== null && !isServer
       ? table.getPrePaginatedRowModel().rows.length
       : undefined
-  clientRowCountRef.current = clientRowCount
 
-  // Client mode learns its row count only once the table is built. A user
-  // action is clamped against last render's count, which is current by the
-  // time they act; the one case that is not is the count falling below the
-  // current page (data replaced, rows removed) — fix that before paint.
+  /*
+   * Publish the count the table just produced, then correct the one case the
+   * render could not: a count that fell below the current page (data replaced,
+   * rows removed). Before paint, so the user never sees the empty page — and
+   * after the ref is written, so the clamp inside `setPageIndex` measures
+   * against the new count rather than the one this render was built from.
+   *
+   * A count that grew needs no correction here: the page the user is on still
+   * exists, and their next click reads the same ref.
+   */
   useIsomorphicLayoutEffect(() => {
+    rowCountRef.current = isServer ? rowCount : clientRowCount
     if (isServer || clientRowCount === undefined) return
     const last = Math.max(1, Math.ceil(clientRowCount / pageState.pageSize)) - 1
     if (pageState.pageIndex > last) pageState.setPageIndex(last)
@@ -437,6 +502,20 @@ export function useDataTable<TData extends RowData>({
     warnOnce(
       `useDataTable("${id}"): mode "server" without getRowId keys rows by position; ` +
         `expansion will not follow records across pages.`,
+    )
+  }
+
+  /*
+   * Turning paging off does not stop the query describing a page: `TableQuery`
+   * has no way to say "all of them", so it carries the default size and a
+   * backend written against it answers with 50 rows — with no footer to page
+   * past them and no total to reveal the rest.
+   */
+  if (process.env.NODE_ENV !== "production" && isServer && paginationOptions === null) {
+    warnOnce(
+      `useDataTable("${id}"): mode "server" with pagination turned off still asks for ` +
+        `one page of ${pageState.pageSize} rows, and offers no way to reach the rest. ` +
+        `Leave pagination on in server mode, or page the rows in the server's own query.`,
     )
   }
 

@@ -12,7 +12,20 @@ const setup = (overrides: Partial<Parameters<typeof usePagination>[0]> = {}) => 
     onPageSizeChange,
     ...overrides,
   }
-  const hook = renderHook((p: typeof props) => usePagination(p), { initialProps: props })
+  /*
+   * What a setter sees when it runs: the row count of the latest render, the
+   * way `useDataTable` supplies it from a ref rather than from a value the
+   * callback closed over.
+   */
+  const latest = { rowCount: props.rowCount }
+  const getRowCount = () => latest.rowCount
+  const hook = renderHook(
+    (p: typeof props) => {
+      latest.rowCount = p.rowCount
+      return usePagination({ ...p, getRowCount })
+    },
+    { initialProps: props },
+  )
   return { ...hook, props, onPageSizeChange }
 }
 
@@ -87,6 +100,39 @@ describe("usePagination", () => {
     act(() => result.current.setPageIndex(19))
     rerender({ ...props, rowCount: 120 })
     expect(result.current.pageIndex).toBe(2)
+  })
+
+  it("does not take the user back to an abandoned page when the count changes again", () => {
+    const { result, rerender, props } = setup()
+    act(() => result.current.setPageIndex(19)) // the last page of 1000 rows
+
+    // The host narrows the result set: page 20 is gone, page 2 is the last one.
+    rerender({ ...props, rowCount: 100 })
+    expect(result.current.pageIndex).toBe(1)
+
+    // A different total arrives. Page 2 is still where the user is; page 4 is
+    // a page they last asked for against a total that no longer exists.
+    rerender({ ...props, rowCount: 200 })
+    expect(result.current.pageIndex).toBe(1)
+  })
+
+  it("keeps the page while the row count is unknown, and restores it when it returns", () => {
+    const { result, rerender, props } = setup()
+    act(() => result.current.setPageIndex(19))
+
+    // "Don't know yet" is not a statement that page 20 is gone.
+    rerender({ ...props, rowCount: undefined })
+    expect(result.current.pageIndex).toBe(19)
+    rerender({ ...props, rowCount: 1000 })
+    expect(result.current.pageIndex).toBe(19)
+  })
+
+  it("floors a page size below one to a whole page", () => {
+    // A host sizing pages from a container that has not been measured yet.
+    const { result } = setup({ pageSize: 0, rowCount: 100 })
+    expect(result.current.pageSize).toBe(1)
+    expect(result.current.pageCount).toBe(100)
+    expect(result.current.pageSizeOptions).not.toContain(0)
   })
 
   it("is inert when disabled", () => {

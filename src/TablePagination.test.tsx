@@ -44,6 +44,32 @@ describe("pagination footer", () => {
     expect(screen.getByText("1–50 of 1000")).toBeInTheDocument()
   })
 
+  it("reaches the real last page after the data grows", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<Table count={100} />)
+    expect(screen.getByText("Page 1 of 2")).toBeInTheDocument()
+
+    // A filter cleared, a fetch resolved, "load more": the same table, more rows.
+    rerender(<Table count={500} />)
+    expect(screen.getByText("Page 1 of 10")).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: /last page/i }))
+    expect(screen.getByText("Page 10 of 10")).toBeInTheDocument()
+    expect(screen.getByText("451–500 of 500")).toBeInTheDocument()
+  })
+
+  it("keeps Next moving after the data grows under the last page", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<Table count={100} />)
+    await user.click(screen.getByRole("button", { name: /next page/i })) // page 2 of 2
+
+    rerender(<Table count={500} />)
+    await user.click(screen.getByRole("button", { name: /next page/i }))
+    expect(screen.getByText("Page 3 of 10")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /next page/i }))
+    expect(screen.getByText("Page 4 of 10")).toBeInTheDocument()
+  })
+
   it("changes the page size and keeps the top row in view", async () => {
     const user = userEvent.setup()
     render(<Table />)

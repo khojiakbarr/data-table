@@ -7,19 +7,26 @@ import {
   columnSizingFeature,
   columnVisibilityFeature,
   createCoreRowModel,
+  createPaginatedRowModel,
   createSortedRowModel,
+  rowPaginationFeature,
   rowSortingFeature,
   sortFns,
   tableFeatures,
   useTable,
   type ColumnDef,
   type ColumnSizingState,
+  type PaginationState,
+  type Row,
   type RowData,
+  type Updater,
 } from "@tanstack/react-table"
-import { useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { noLayoutStorage } from "./core/persistence"
+import { buildQuery, queriesEqual, type TableQuery } from "./core/query"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { apply, useArrangement } from "./core/useArrangement"
+import { usePagination } from "./core/usePagination"
 import type { DataTableFeatureFlags, LayoutStorage, TableLayout } from "./types"
 
 /**
@@ -39,12 +46,30 @@ const FEATURES = tableFeatures({
   columnSizingFeature,
   columnVisibilityFeature,
   rowSortingFeature,
+  rowPaginationFeature,
   coreRowModel: createCoreRowModel(),
   sortedRowModel: createSortedRowModel(),
+  paginatedRowModel: createPaginatedRowModel(),
   sortFns,
 })
 
 export type DataTableFeatures = typeof FEATURES
+
+/** Rows per page before the user has chosen one. */
+const DEFAULT_PAGE_SIZE = 50
+/** Page sizes offered in the footer before the caller narrows them. */
+const DEFAULT_PAGE_SIZE_OPTIONS: readonly number[] = [20, 50, 100, 200]
+
+/** How rows are paged; see {@link UseDataTableOptions.pagination}. */
+export interface PaginationOptions {
+  /** Rows per page on first visit; the user's later choice is persisted. Default 50. */
+  pageSize?: number
+  /** Choices offered in the footer. Default [20, 50, 100, 200]. */
+  pageSizeOptions?: readonly number[]
+}
+
+/** Where rows are sorted and paged. */
+export type TableMode = "client" | "server"
 
 export interface UseDataTableOptions<TData extends RowData> {
   /**
@@ -102,6 +127,34 @@ export interface UseDataTableOptions<TData extends RowData> {
    * every row being expandable.
    */
   canExpand?: (row: TData) => boolean
+  /**
+   * Where rows are sorted and paged.
+   *
+   * `"client"` (default): the table sorts and pages `data` itself.
+   * `"server"`: `data` is one page already sorted; the table only describes
+   * what it wants through `onQueryChange` / `query`.
+   */
+  mode?: TableMode
+  /** Total rows across all pages. Server mode only; undefined until known. */
+  rowCount?: number
+  /**
+   * Page the rows. Off by default in client mode, on in server mode. Pass
+   * `true` for the defaults or an object to set the page size and choices.
+   */
+  pagination?: boolean | PaginationOptions
+  /**
+   * Stable identity for a row.
+   *
+   * In server mode rows come and go between pages; without an id, expansion
+   * state belongs to positions instead of records.
+   */
+  getRowId?: (row: TData, index: number, parent?: Row<DataTableFeatures, TData>) => string
+  /** Called with the initial query on mount and after every change to it. */
+  onQueryChange?: (query: TableQuery) => void
+  /** Pixel height of a data row. Default 40; also sets `--dt-row-height`. */
+  rowHeight?: number
+  /** Height for particular rows, known ahead of render. */
+  getRowHeight?: (row: TData) => number
 }
 
 /**
@@ -136,6 +189,13 @@ export function useDataTable<TData extends RowData>({
   direction = "ltr",
   getSubRows,
   canExpand,
+  mode = "client",
+  rowCount,
+  pagination,
+  getRowId,
+  onQueryChange,
+  rowHeight = 40,
+  getRowHeight,
 }: UseDataTableOptions<TData>) {
   const flags: Required<DataTableFeatureFlags> = useMemo(
     () => ({
@@ -157,12 +217,49 @@ export function useDataTable<TData extends RowData>({
     [minColumnWidth, maxColumnWidth],
   )
 
+  const isServer = mode === "server"
+  /*
+   * Paging is opt-in on the client — a short table with a footer nobody needs
+   * is worse than no footer — but implied by server mode, where a page is the
+   * only thing a server can sensibly return.
+   */
+  const paginationOptions: PaginationOptions | null =
+    pagination === false || (pagination === undefined && !isServer)
+      ? null
+      : pagination === true || pagination === undefined
+        ? {}
+        : pagination
+
   const { layout, isCustomised, updateSlice, resetLayout } = useArrangement({
     id,
     store,
     initialLayout,
     columnIds,
   })
+
+  const pageState = usePagination({
+    enabled: paginationOptions !== null,
+    pageSize: layout.pageSize ?? paginationOptions?.pageSize ?? DEFAULT_PAGE_SIZE,
+    pageSizeOptions: paginationOptions?.pageSizeOptions ?? DEFAULT_PAGE_SIZE_OPTIONS,
+    rowCount: isServer ? rowCount : undefined,
+    onPageSizeChange: (size) => updateSlice("pageSize", size),
+  })
+
+  /*
+   * A new sort order makes the current page meaningless — page four of the old
+   * order holds different records under the new one — so sorting sends the
+   * user back to the first page. A data change deliberately does not: in server
+   * mode every fetch is a fresh array, and resetting there would make paging
+   * forward impossible.
+   */
+  const { resetPage } = pageState
+  const updateSorting = useCallback(
+    (updater: Updater<TableLayout["sorting"]>) => {
+      updateSlice("sorting", updater)
+      resetPage()
+    },
+    [updateSlice, resetPage],
+  )
 
   /*
    * Which rows are open is deliberately NOT part of the layout: it is a
@@ -175,7 +272,16 @@ export function useDataTable<TData extends RowData>({
     features: FEATURES,
     data,
     columns,
-    state: { ...layout, expanded },
+    state: {
+      columnOrder: layout.columnOrder,
+      columnVisibility: layout.columnVisibility,
+      columnPinning: layout.columnPinning,
+      columnSizing: layout.columnSizing,
+      sorting: layout.sorting,
+      pagination: { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize },
+      expanded,
+    },
+    ...(getRowId ? { getRowId } : {}),
     ...(getSubRows ? { getSubRows } : {}),
     /*
      * Every row is expandable as far as TanStack is concerned. Whether a
@@ -192,6 +298,20 @@ export function useDataTable<TData extends RowData>({
      * row it just opened. Expansion is this hook's own state; it decides.
      */
     autoResetExpanded: false,
+    manualSorting: isServer,
+    manualPagination: isServer || paginationOptions === null,
+    ...(isServer && rowCount !== undefined ? { rowCount } : {}),
+    /*
+     * Same reasoning as `autoResetExpanded`: TanStack would send the user back
+     * to page one whenever `data` changes identity, which in server mode is
+     * every response to the query that asked for page four.
+     */
+    autoResetPageIndex: false,
+    onPaginationChange: (updater: Updater<PaginationState>) => {
+      const next = apply(updater, { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize })
+      if (next.pageSize !== pageState.pageSize) pageState.setPageSize(next.pageSize)
+      if (next.pageIndex !== pageState.pageIndex) pageState.setPageIndex(next.pageIndex)
+    },
     onExpandedChange: (updater) =>
       setExpanded((prev) => apply(updater, prev) as Record<string, boolean>),
     defaultColumn: {
@@ -210,10 +330,85 @@ export function useDataTable<TData extends RowData>({
     onColumnPinningChange: (updater) => updateSlice("columnPinning", updater),
     onColumnSizingChange: (updater) =>
       updateSlice("columnSizing", updater, (sizing) => normaliseSizing(sizing, table)),
-    onSortingChange: (updater) => updateSlice("sorting", updater),
+    onSortingChange: updateSorting,
   })
 
-  return { table, id, flags, bounds, resetLayout, isCustomised, expanded }
+  /*
+   * In client mode the total is whatever survived filtering, which only the
+   * table knows; in server mode it is `rowCount` and the table never sees the
+   * other pages. Undefined when nothing is being paged.
+   */
+  const clientRowCount =
+    paginationOptions !== null && !isServer
+      ? table.getPrePaginatedRowModel().rows.length
+      : undefined
+  const paginationApi = useMemo(
+    () => ({
+      ...pageState,
+      rowCount: isServer ? rowCount : clientRowCount,
+      pageCount: isServer
+        ? pageState.pageCount
+        : clientRowCount === undefined
+          ? 1
+          : Math.max(1, Math.ceil(clientRowCount / pageState.pageSize)),
+    }),
+    [pageState, isServer, rowCount, clientRowCount],
+  )
+
+  /*
+   * Read and written during render on purpose. The query is the host's fetch
+   * key: a fresh object every render would refetch on every render, and an
+   * effect that rebuilt it would hand out a stale query for one commit first.
+   * Comparing structurally and keeping the previous object gives the host an
+   * identity that changes exactly when the request would.
+   */
+  const queryInputs = {
+    sorting: layout.sorting,
+    pageIndex: pageState.pageIndex,
+    pageSize: pageState.pageSize,
+  }
+  const queryRef = useRef<TableQuery>(buildQuery(queryInputs))
+  const candidate = buildQuery(queryInputs)
+  if (!queriesEqual(candidate, queryRef.current)) queryRef.current = candidate
+  const query = queryRef.current
+
+  // Kept in a ref so an inline `onQueryChange={(q) => …}` does not refire the
+  // effect on every render; the query's own identity is the trigger.
+  const onQueryChangeRef = useRef(onQueryChange)
+  onQueryChangeRef.current = onQueryChange
+  useEffect(() => {
+    onQueryChangeRef.current?.(query)
+  }, [query])
+
+  if (import.meta.env.DEV && isServer && !getRowId) {
+    warnOnce(
+      `useDataTable("${id}"): mode "server" without getRowId keys rows by position; ` +
+        `expansion will not follow records across pages.`,
+    )
+  }
+
+  return {
+    table,
+    id,
+    flags,
+    bounds,
+    resetLayout,
+    isCustomised,
+    expanded,
+    mode,
+    query,
+    pagination: paginationApi,
+    rowHeight,
+    getRowHeight,
+  }
+}
+
+const warned = new Set<string>()
+/** Say a thing once per process; a hook re-runs every render. */
+function warnOnce(message: string): void {
+  if (warned.has(message)) return
+  warned.add(message)
+  console.warn(message)
 }
 
 /**

@@ -68,8 +68,14 @@ export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"
 export { collectColumnFacts, collectFilterKinds, resolveFilterKind } from "./core/filterKinds"
 export type { FilterColumnDefShape, FilterKindSource } from "./core/filterKinds"
-export { collectSearchFields, isSearchableColumn } from "./core/search"
-export type { SearchFieldsResult } from "./core/search"
+export {
+  collectSearchFields,
+  filterFn_dtSearch,
+  isSearchableColumn,
+  rowMatchesSearch,
+  searchNeedle,
+} from "./core/search"
+export type { SearchFieldsResult, SearchNeedle } from "./core/search"
 
 /* Helpers worth borrowing rather than rewriting. */
 export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"

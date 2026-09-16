@@ -3670,16 +3670,18 @@ the two tokens live in different columns.
 
 So ours is a **row-level** predicate: it ignores the `columnId` it is handed, reads every searched
 field off the row itself, and returns the same verdict for every column, which makes TanStack's own
-OR and `break` harmless. Tokenising happens in `resolveFilterValue`, which the table applies once per
-filter rather than once per row.
+OR and `break` harmless. Tokenising happens in `resolveFilterValue`, which the table applies ahead of
+the row loop — `createFilteredRowModel` resolves it once per globally-filterable column — rather than
+once per row.
 
 The one design question the spec leaves open is where the field list comes from, since §5.1 names
 `filterFn_dtSearch` as a module-level value rather than something built per render. It is read from
 the row's own table — `row.table.getAllLeafColumns()` filtered by `column.getCanGlobalFilter()` —
 which is *by construction* the same set `getColumnCanGlobalFilter` answers and the same set TanStack
 itself iterates, so the two can never drift. That lookup is cached against the resolved needle, which
-the table builds once per filter: the list is then computed once per filtering pass rather than once
-per row.
+the table builds before any row is tested — `createFilteredRowModel` resolves the global filter value
+once per globally-filterable column, not once for the whole filter — so the list is computed once per
+searchable column per filtering pass rather than once per row.
 
 One cost to know about and not be surprised by: a row that does **not** match is tested once per
 searchable column, because TanStack only breaks out of its loop on `true`. That is inherent to a
@@ -3806,10 +3808,12 @@ interface SearchableRow {
 /*
  * The field list, cached against the needle the table resolved it for.
  *
- * The needle is built once per filter, before any row is tested, so this
- * computes the list once per filtering pass instead of once per row. Keyed on
- * the needle rather than on the table so a stale list can never outlive the
- * pass that built it, and weakly so neither is held alive by the cache.
+ * Every needle is built before any row is tested — TanStack resolves the
+ * filter value up front, once per globally-filterable column — so this
+ * computes the list once per searchable column per filtering pass instead of
+ * once per row. Keyed on the needle rather than on the table so a stale list
+ * can never outlive the pass that built it, and weakly so neither is held
+ * alive by the cache.
  */
 const fieldsByNeedle = new WeakMap<SearchNeedle, readonly string[]>()
 
@@ -3855,8 +3859,8 @@ export function rowMatchesSearch(row: SearchableRow, needle: SearchNeedle): bool
  * column id it is handed and reads every searched field off the row itself,
  * returning the same verdict whichever column it was asked about.
  *
- * Tokenising happens in `resolveFilterValue`, which the table applies once per
- * filter rather than once per row.
+ * Tokenising happens in `resolveFilterValue`, which the table applies ahead of
+ * the row loop — once per searchable column — rather than once per row.
  */
 export const filterFn_dtSearch = constructFilterFn({
   resolveFilterValue: (text: unknown): SearchNeedle => searchNeedle(text),
@@ -3864,10 +3868,11 @@ export const filterFn_dtSearch = constructFilterFn({
 })
 ```
 
-In `src/index.ts`, replace the search export line added in Task 7
+In `src/index.ts`, replace the two search export lines added in Task 7
 
 ```ts
 export { collectSearchFields, isSearchableColumn } from "./core/search"
+export type { SearchFieldsResult } from "./core/search"
 ```
 
 with
@@ -3880,8 +3885,13 @@ export {
   rowMatchesSearch,
   searchNeedle,
 } from "./core/search"
-export type { SearchNeedle } from "./core/search"
+export type { SearchFieldsResult, SearchNeedle } from "./core/search"
 ```
+
+> **Correction (found while implementing Task 8):** `SearchNeedle` joins Task 7's
+> existing `export type { SearchFieldsResult } …` line rather than adding a second
+> `export type` line for the same module — one value export and one type export per
+> module is what the rest of `src/index.ts` does.
 
 - [ ] **Step 4: Run the checks**
 
@@ -4834,7 +4844,7 @@ Finally, change the `useTableQuery` call's `search` line from `search: NO_SEARCH
 ```
 
 In `src/index.ts`, add the hook beside the other borrowable helpers — immediately after the
-`export type { SearchNeedle } from "./core/search"` line added in Task 8:
+`export type { SearchFieldsResult, SearchNeedle } from "./core/search"` line Task 8 left behind:
 
 ```ts
 export { useDebouncedValue } from "./core/useDebouncedValue"

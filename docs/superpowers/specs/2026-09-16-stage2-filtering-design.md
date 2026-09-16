@@ -470,7 +470,9 @@ compile error.
    **row-level** predicate that ignores the `columnId` it is handed, reads every
    id in `fields` off the row itself, and returns the same verdict for every
    column, so TanStack's own OR/`break` is harmless. Tokenising the needle
-   happens in its `resolveFilterValue`, which the table applies once per filter.
+   happens in its `resolveFilterValue`, which the table applies ahead of the row
+   loop — `createFilteredRowModel` resolves the global filter value once per
+   globally-filterable column — rather than once per row.
 6. **`getColumnCanGlobalFilter` must be stated too**, from `meta.searchable` and
    `column.getIsVisible()`, and `search.fields` is derived from that same
    predicate — otherwise the client searches hidden and unsearchable columns that

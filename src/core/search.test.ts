@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { collectSearchFields, isSearchableColumn } from "./search"
+import { collectSearchFields, isSearchableColumn, rowMatchesSearch, searchNeedle } from "./search"
 
 interface Receipt {
   code: string
@@ -129,5 +129,42 @@ describe("collectSearchFields", () => {
     const result = collectSearchFields<Receipt>([{ accessorKey: "code" }], [], { code: false })
     expect(result.fields).toEqual([])
     expect(result.unresolved).toEqual([])
+  })
+})
+
+describe("searchNeedle", () => {
+  it("lower-cases and splits on whitespace, dropping empties", () => {
+    expect(searchNeedle("  KR-102   Agro ")).toEqual({ tokens: ["kr-102", "agro"] })
+    expect(searchNeedle("")).toEqual({ tokens: [] })
+    expect(searchNeedle(undefined)).toEqual({ tokens: [] })
+  })
+})
+
+describe("rowMatchesSearch", () => {
+  const row = (values: Record<string, unknown>) => ({
+    table: {
+      getAllLeafColumns: () => [
+        { id: "code", getCanGlobalFilter: () => true },
+        { id: "partner", getCanGlobalFilter: () => true },
+        { id: "secret", getCanGlobalFilter: () => false },
+      ],
+    },
+    getValue: (columnId: string) => values[columnId],
+  })
+
+  it("matches every token, and lets different tokens match different columns", () => {
+    const subject = row({ code: "KR-102", partner: "Agro Ltd", secret: "zzz" })
+    expect(rowMatchesSearch(subject, searchNeedle("kr-102 agro"))).toBe(true)
+    expect(rowMatchesSearch(subject, searchNeedle("KR-102 AGRO"))).toBe(true)
+    expect(rowMatchesSearch(subject, searchNeedle("kr-102 temir"))).toBe(false)
+  })
+
+  it("never reads a column the table is not searching", () => {
+    expect(rowMatchesSearch(row({ code: "KR-1", partner: "Agro", secret: "zzz" }), searchNeedle("zzz"))).toBe(false)
+  })
+
+  it("matches every row for an empty needle, and treats a nullish value as empty text", () => {
+    expect(rowMatchesSearch(row({ code: null, partner: undefined }), searchNeedle("  "))).toBe(true)
+    expect(rowMatchesSearch(row({ code: null, partner: undefined }), searchNeedle("a"))).toBe(false)
   })
 })

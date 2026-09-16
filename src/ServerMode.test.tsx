@@ -41,7 +41,7 @@ describe("server mode", () => {
     // this fire twice on mount — harmless for a fetch keyed on the query.
     expect(onQueryChange).toHaveBeenCalledTimes(1)
     expect(onQueryChange.mock.calls[0]?.[0]).toEqual({
-      sorting: [{ id: "name", desc: true }], columnFilters: [], globalFilter: "", grouping: [],
+      sorting: [{ id: "name", desc: true }], filters: [], search: null, grouping: [],
       pagination: { pageIndex: 0, pageSize: 100 },
     })
   })

@@ -198,8 +198,8 @@ actually drives both the row and the token.
 
 Set `mode: "server"` and the table stops sorting and paging: `data` is one
 page, already sorted, and the table tells you what it wants through a
-`TableQuery` — sorting, pagination, and (reserved for later) filters and
-grouping. With TanStack Query:
+`TableQuery` — sorting, filters, quick search, pagination, and (reserved for
+row grouping) `grouping`. With TanStack Query:
 
 ```tsx
 const EMPTY: Receipt[] = [] // stable identity, so an empty page isn't a new `data` array every render
@@ -256,6 +256,150 @@ server mode needs it for the footer anyway — and `loading` while the request
 is out. A shell of your own has to draw the same line: no rows, no error,
 nothing loading and `rowCount === undefined` means the query has not been
 answered yet, not that the answer was empty.
+
+### Filters on the wire
+
+A filter is not a client-side trick that happens to work remotely: it is a value
+you hand to your backend and translate into SQL without interpreting anything.
+
+```json
+{
+  "sorting": [{ "id": "created", "desc": true }],
+  "filters": [
+    { "kind": "number", "field": "amount",  "op": "between",  "from": 1000000, "to": null },
+    { "kind": "date",   "field": "created", "op": "range",    "from": "2026-03-01", "before": "2026-04-01" },
+    { "kind": "text",   "field": "partner", "op": "contains", "value": "agro" },
+    { "kind": "list",   "field": "status",  "op": "in",       "values": ["in_process", "open"] }
+  ],
+  "search": { "text": "KR-102", "fields": ["code", "partner", "status"] },
+  "grouping": [],
+  "pagination": { "pageIndex": 0, "pageSize": 50 }
+}
+```
+
+`filters` is a flat array, implicitly ANDed, and **sorted by `field`** — which is
+why `amount` comes first here rather than the order the user set the filters in.
+Sorting it is what stops a column drag changing the query string and making you
+refetch an identical result set. When cross-column OR eventually ships it will
+arrive as a **new optional field**, never as a change to the element type, so a
+backend written against this shape keeps working.
+
+| Operator | On | Means |
+|---|---|---|
+| `contains` / `notContains` | text | Substring, **case-insensitive** |
+| `equals` / `notEquals` | text | Whole value, **case-insensitive** |
+| `startsWith` / `endsWith` | text | **Case-insensitive** |
+| `eq` `ne` `lt` `lte` `gt` `gte` | number | |
+| `between` | number | **Inclusive on both ends**; `null` is unbounded |
+| `range` | date | `from <= value < before`; either bound may be `null` |
+| `is` | boolean | |
+| `in` / `notIn` | list | |
+| `blank` / `notBlank` | every kind | Nullish or empty, and its complement |
+
+A published operator's meaning never changes; new behaviour gets a new name. Four
+rules are easy to get wrong, and the table itself follows all four.
+
+**All six text operators are case-insensitive**, `equals` included. A backend
+using a case-sensitive collation will return different row counts from client
+mode for the same filter, and your users will report that as a data bug.
+
+**`between` is inclusive on both ends.** AG Grid's number `inRange` is exclusive
+by default, so a backend ported from it will disagree.
+
+**Negated operators never match a blank value.** `notContains`, `notEquals` and
+`notIn` exclude a row whose value is `NULL` or `''`, because that is what
+`NOT (col ILIKE …)` does in SQL, where a comparison against NULL is NULL rather
+than true. The number comparators do the same: a nullish value satisfies none of
+them. `blank` is the operator for reaching those rows, and `blank` / `notBlank`
+partition every row between them:
+
+```sql
+-- blank
+(col IS NULL OR col::text = '')
+-- notBlank
+(col IS NOT NULL AND col::text <> '')
+```
+
+The `IS NOT NULL` guard is not optional — the naive `col <> ''` silently excludes
+every NULL through three-valued logic, and then the two operators no longer
+partition the table. For a non-text column the `''` half is always false and may
+be dropped.
+
+**A date range is half-open**, always: `from` is inclusive, `before` is exclusive.
+One clause covers every case, and it is correct whether the column is a `date` or
+a `timestamptz`:
+
+```sql
+(:from   IS NULL OR created >= :from)
+AND (:before IS NULL OR created <  :before)
+```
+
+The bug this prevents: an inclusive `<= '2026-03-31'` against a timestamp column
+silently drops every row recorded during that last day. The table never emits a
+time or a zone — a day is a day in the user's calendar. If you store instants,
+converting the day boundary into your own zone is your decision to make and to
+document.
+
+**Quick search is AND over tokens, OR over fields.** Split `text` on whitespace;
+every token must appear, case-insensitively, in at least one of `fields` on that
+row; different tokens may match different columns. The naive `contains: text`
+across the fields disagrees with client mode the moment a user types two words.
+
+```ts
+const { text, fields } = query.search!
+where: {
+  AND: [
+    { amount:  { gte: 1000000 } },
+    { created: { gte: new Date("2026-03-01"), lt: new Date("2026-04-01") } },
+    { partner: { contains: "agro", mode: "insensitive" } },
+    { status:  { in: ["in_process", "open"] } },
+    // Every token must hit some field; different tokens may hit different fields.
+    ...text.split(/\s+/).map((token) => ({
+      OR: fields.map((f) => ({ [f]: { contains: token, mode: "insensitive" } })),
+    })),
+  ],
+}
+```
+
+Every text operator carries `mode: "insensitive"`, `equals` included. The
+`new Date("…")` calls are the backend choosing to read a calendar day as UTC
+midnight, which is its prerogative and its decision to document.
+
+`fields` is a list of columns your backend should be prepared to search. Quick
+search over unindexed text columns is a good way to take down a database with
+three characters; mark sensitive or unindexed columns as unsearchable so they
+never reach `fields`.
+
+**The operator vocabulary is closed.** The operators in the table above are the
+whole list, and a condition carrying anything else is dropped rather than
+published — a backend cannot be expected to translate an operator it has never
+seen, and minting one locally would produce a filter that works in client mode
+and silently does nothing in server mode. A host that needs different *matching*
+keeps the vocabulary and changes the client half of it: `columnDef.filterFn`
+accepts a function as well as a name, such a function needs no registration, and
+it receives the column's own `FilterCondition` as its filter value — so it can
+change how `contains` matches without inventing a `matchesRegex`. A host that
+needs something the vocabulary cannot express at all turns the built-in filter
+off for that column with `meta: { filter: false }` and keeps its own control
+beside the table; what reaches `query.filters` is always one of the conditions
+documented here.
+
+**`meta.filter` picks the editor; it does not type the value.** A condition's
+value is not checked against the column's own `TValue`, because `columns` is
+`ColumnDef<…, any>[]` and there is no per-column value type left to check it
+against. `meta: { filter: "number" }` on a text column compiles, and the
+mismatch turns up at runtime as a filter that matches nothing. Declare the kind
+that matches the data; a column that declares nothing has its kind inferred from
+its first non-null value — string → text, number → number, boolean → boolean,
+anything else → text — which is a convenience and not a contract, and is why a
+stored condition is dropped on load when the kind it was built for is no longer
+the kind the column resolves to.
+
+**Build conditions with the exported constructors** — `textCondition`,
+`numberCondition`, `dateCondition`, `booleanCondition`, `listCondition` — and
+never by hand. They fix each condition's key order, sort a list's values and
+return `null` for a condition that constrains nothing, and `instance.query`'s
+identity depends on all three.
 
 ---
 

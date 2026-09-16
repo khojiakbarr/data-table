@@ -1,6 +1,6 @@
 {
   "name": "@khojiakbarr/data-table",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Headless-first React data table: nested column groups, expandable rows, column pinning, resizing, reordering, sorting and per-table persisted layout.",
   "keywords": [
     "accordion",
@@ -36,6 +36,7 @@
     "*.css"
   ],
   "files": [
+    "CHANGELOG.md",
     "dist"
   ],
   "main": "./dist/index.js",

@@ -22,8 +22,9 @@ import {
   type Updater,
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
+import type { FilterCondition } from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
-import type { TableQuery } from "./core/query"
+import type { TableQuery, TableSearch } from "./core/query"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { apply, useArrangement } from "./core/useArrangement"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
@@ -73,6 +74,18 @@ export interface PaginationOptions {
 
 /** Where rows are sorted and paged. */
 export type TableMode = "client" | "server"
+
+/**
+ * Filter state does not exist yet.
+ *
+ * Module constants rather than fresh literals per render, because
+ * `useTableQuery`'s inputs must be identity-stable or every render produces a
+ * new query and a host keyed on it refetches forever. Replaced by the layout
+ * slices when they land; quick search waits longer still, because what reaches
+ * the wire is debounced and needs the resolved search fields.
+ */
+const NO_FILTERS: readonly FilterCondition[] = []
+const NO_SEARCH: TableSearch | null = null
 
 export interface UseDataTableOptions<TData extends RowData> {
   /**
@@ -529,6 +542,8 @@ export function useDataTable<TData extends RowData>({
 
   const query = useTableQuery({
     sorting: layout.sorting,
+    filters: NO_FILTERS,
+    search: NO_SEARCH,
     pageIndex: pageState.pageIndex,
     pageSize: pageState.pageSize,
     onQueryChange,

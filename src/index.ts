@@ -13,7 +13,7 @@ export type {
   TableMode,
   UseDataTableOptions,
 } from "./useDataTable"
-export type { TableQuery } from "./core/query"
+export type { TableQuery, TableSearch } from "./core/query"
 export type { PaginationApi } from "./core/usePagination"
 
 /*
@@ -28,6 +28,39 @@ export { ColumnPanel } from "./components/ColumnPanel"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
 export { TablePagination } from "./components/TablePagination"
 export { SkeletonRows, TableStatus } from "./components/TableStatus"
+
+/*
+ * The filter model. Conditions are built by these constructors and never by
+ * hand: they fix each condition's key order and sort its values, which is what
+ * keeps `instance.query` from changing identity for a filter that did not.
+ */
+export {
+  addDays,
+  booleanCondition,
+  dateCondition,
+  dayChoiceToCondition,
+  isFilterValue,
+  listCondition,
+  numberCondition,
+  rebuildCondition,
+  startOfLocalDay,
+  textCondition,
+  toIsoDay,
+} from "./core/filters"
+export type {
+  BooleanCondition,
+  DateCondition,
+  DayChoice,
+  FilterCondition,
+  FilterKind,
+  FilterModel,
+  FilterValue,
+  FilterValueOption,
+  IsoDay,
+  ListCondition,
+  NumberCondition,
+  TextCondition,
+} from "./core/filters"
 
 export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"

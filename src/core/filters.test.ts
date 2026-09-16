@@ -151,10 +151,38 @@ describe("condition constructors", () => {
       .toEqual({ kind: "date", field: "a", op: "range", from: null, before: "2026-04-01" })
   })
 
-  it("sorts, de-duplicates and drops null from a list's values", () => {
-    const messy = ["open", "closed", "open", null, 10, 9, true] as unknown as (string | number | boolean)[]
+  it("normalises a bound that is missing rather than dropping the whole condition", () => {
+    // A saved view serialised by a backend that omits nulls (Go `omitempty`,
+    // Jackson NON_NULL, protobuf-JSON) round-trips with only the bound it has
+    // — the missing bound must not take the surviving one down with it.
+    const upperOnlyNumber = { kind: "number", field: "a", op: "between", to: 100 } as unknown as FilterCondition
+    expect(rebuildCondition(upperOnlyNumber))
+      .toEqual({ kind: "number", field: "a", op: "between", from: null, to: 100 })
+    const upperOnlyDate = { kind: "date", field: "a", op: "range", before: "2026-04-01" } as unknown as FilterCondition
+    expect(rebuildCondition(upperOnlyDate))
+      .toEqual({ kind: "date", field: "a", op: "range", from: null, before: "2026-04-01" })
+    const lowerOnlyNumber = { kind: "number", field: "a", op: "between", from: 5 } as unknown as FilterCondition
+    expect(rebuildCondition(lowerOnlyNumber))
+      .toEqual({ kind: "number", field: "a", op: "between", from: 5, to: null })
+  })
+
+  it("sorts, de-duplicates and drops null and non-finite numbers from a list's values", () => {
+    const messy = ["open", "closed", "open", null, 10, 9, true, Number.NaN, Number.POSITIVE_INFINITY] as unknown as (
+      | string
+      | number
+      | boolean
+    )[]
     expect(listCondition({ kind: "list", field: "a", op: "in", values: messy }))
       .toEqual({ kind: "list", field: "a", op: "in", values: [true, 9, 10, "closed", "open"] })
+    // NaN/Infinity pass `typeof === "number"`, so a comparator that subtracts
+    // them returns NaN — a comparator result `Array.prototype.sort` treats as
+    // "equal" — and the published order would then depend on tick order.
+    // Both tick orders must therefore stringify identically.
+    const tickOrderA = listCondition({ kind: "list", field: "a", op: "in", values: [3, Number.NaN, 1, 2] })
+    const tickOrderB = listCondition({ kind: "list", field: "a", op: "in", values: [2, 1, Number.NaN, 3] })
+    expect(JSON.stringify(tickOrderA)).toBe(JSON.stringify(tickOrderB))
+    // An all-NaN selection constrains nothing once NaN is dropped.
+    expect(listCondition({ kind: "list", field: "a", op: "in", values: [Number.NaN] })).toBeNull()
   })
 
   it("keeps blank and notBlank on every kind, with no value", () => {
@@ -162,6 +190,23 @@ describe("condition constructors", () => {
       .toEqual({ kind: "list", field: "a", op: "blank" })
     expect(numberCondition({ kind: "number", field: "a", op: "notBlank" }))
       .toEqual({ kind: "number", field: "a", op: "notBlank" })
+  })
+
+  it("returns null for an operator its kind does not declare", () => {
+    // `rebuildCondition` validates `kind` but, without a per-kind allowlist,
+    // no constructor validates `op` — an unknown operator (a stale value from
+    // an older library version, or a miscased one from a JS host) would
+    // otherwise round-trip verbatim as a "canonical" condition.
+    const staleTextOp = { kind: "text", field: "a", op: "regex", value: ".*" } as unknown as FilterCondition
+    expect(rebuildCondition(staleTextOp)).toBeNull()
+    const staleNumberOp = { kind: "number", field: "a", op: "startswith", value: 1 } as unknown as FilterCondition
+    expect(rebuildCondition(staleNumberOp)).toBeNull()
+    const staleDateOp = { kind: "date", field: "a", op: "eq", from: "2026-03-01" } as unknown as FilterCondition
+    expect(rebuildCondition(staleDateOp)).toBeNull()
+    const staleBooleanOp = { kind: "boolean", field: "a", op: "eq", value: true } as unknown as FilterCondition
+    expect(rebuildCondition(staleBooleanOp)).toBeNull()
+    const staleListOp = { kind: "list", field: "a", op: "contains", values: ["x"] } as unknown as FilterCondition
+    expect(rebuildCondition(staleListOp)).toBeNull()
   })
 })
 
@@ -196,5 +241,16 @@ describe("dayChoiceToCondition", () => {
 
   it("returns null when nothing was picked", () => {
     expect(dayChoiceToCondition("created", { mode: "between", from: null, to: null })).toBeNull()
+  })
+
+  it("orders a reversed between pair before making the later day exclusive", () => {
+    // The date editor's two day inputs are independent: a user who fills the
+    // end day first, or types the later day into `from`, still means the
+    // same range. Adding the +1 before ordering put it on the wrong end and
+    // shorted the range by a day at both ends.
+    const forward = dayChoiceToCondition("created", { mode: "between", from: "2026-03-01", to: "2026-03-31" })
+    const reversed = dayChoiceToCondition("created", { mode: "between", from: "2026-03-31", to: "2026-03-01" })
+    expect(reversed).toEqual(forward)
+    expect(reversed).toEqual({ kind: "date", field: "created", op: "range", from: "2026-03-01", before: "2026-04-01" })
   })
 })

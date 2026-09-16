@@ -145,9 +145,18 @@ export function addDays(day: IsoDay, days: number): IsoDay | null {
   return toIsoDay(moved)
 }
 
-/** Whether a value can be a member of a list condition. */
+/**
+ * Whether a value can be a member of a list condition.
+ *
+ * A `number` must also be finite. `NaN`/`Infinity` pass `typeof === "number"`
+ * but `JSON.stringify` serialises them as `null` — the one value list
+ * conditions deliberately drop (see `listCondition`) — and a non-finite pair
+ * makes `compareFilterValues`' subtraction return `NaN`, which the sort spec
+ * treats as "equal", making the published order depend on input order.
+ */
 export function isFilterValue(value: unknown): value is FilterValue {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+  if (typeof value === "number") return Number.isFinite(value)
+  return typeof value === "string" || typeof value === "boolean"
 }
 
 /** A finite number, or null for anything else — including an unbounded end. */
@@ -196,6 +205,26 @@ function compareFilterValues(a: FilterValue, b: FilterValue): number {
 }
 
 /**
+ * The operators `textCondition` accepts.
+ *
+ * `rebuildCondition` validates `kind` but has no way to validate `op` itself —
+ * that has to happen in each constructor, or an unknown operator (a stale
+ * value from an older library version, or a miscased one from a JS host)
+ * round-trips as a "canonical" condition and silently disagrees with
+ * whatever `buildQuery` and the Task 3 filter functions do with it.
+ */
+const TEXT_OPS = new Set<TextCondition["op"]>([
+  "contains",
+  "notContains",
+  "equals",
+  "notEquals",
+  "startsWith",
+  "endsWith",
+  "blank",
+  "notBlank",
+])
+
+/**
  * Build a text condition.
  *
  * Nothing here trusts the declared type: conditions arrive from storage and
@@ -210,6 +239,7 @@ function compareFilterValues(a: FilterValue, b: FilterValue): number {
  */
 export function textCondition(condition: TextCondition): TextCondition | null {
   const { field, op } = condition
+  if (!TEXT_OPS.has(op)) return null
   if (op === "blank" || op === "notBlank") return { kind: "text", field, op }
   const value = "value" in condition ? condition.value : undefined
   // `contains ""` matches every row on the client while `col ILIKE '%%'` is
@@ -217,6 +247,19 @@ export function textCondition(condition: TextCondition): TextCondition | null {
   if (typeof value !== "string" || value === "") return null
   return { kind: "text", field, op, value }
 }
+
+/** The operators `numberCondition` accepts. See `TEXT_OPS`. */
+const NUMBER_OPS = new Set<NumberCondition["op"]>([
+  "eq",
+  "ne",
+  "lt",
+  "lte",
+  "gt",
+  "gte",
+  "between",
+  "blank",
+  "notBlank",
+])
 
 /**
  * Build a number condition.
@@ -226,10 +269,16 @@ export function textCondition(condition: TextCondition): TextCondition | null {
  */
 export function numberCondition(condition: NumberCondition): NumberCondition | null {
   const { field, op } = condition
+  if (!NUMBER_OPS.has(op)) return null
   if (op === "blank" || op === "notBlank") return { kind: "number", field, op }
   if (op === "between") {
-    const given = "from" in condition ? condition : { from: null, to: null }
-    const [from, to] = orderedBounds(finiteOrNull(given.from), finiteOrNull(given.to))
+    // Read each bound independently: a condition serialised by a backend
+    // that omits nulls (Go `omitempty`, Jackson NON_NULL, protobuf-JSON)
+    // carries only the bound it has, and a single `"from" in condition` gate
+    // would discard that surviving bound along with the missing one.
+    const givenFrom = "from" in condition ? finiteOrNull(condition.from) : null
+    const givenTo = "to" in condition ? finiteOrNull(condition.to) : null
+    const [from, to] = orderedBounds(givenFrom, givenTo)
     if (from === null && to === null) return null
     return { kind: "number", field, op: "between", from, to }
   }
@@ -237,6 +286,9 @@ export function numberCondition(condition: NumberCondition): NumberCondition | n
   if (typeof value !== "number" || !Number.isFinite(value)) return null
   return { kind: "number", field, op, value }
 }
+
+/** The operators `dateCondition` accepts. See `TEXT_OPS`. */
+const DATE_OPS = new Set<DateCondition["op"]>(["range", "blank", "notBlank"])
 
 /**
  * Build a date condition.
@@ -246,12 +298,18 @@ export function numberCondition(condition: NumberCondition): NumberCondition | n
  */
 export function dateCondition(condition: DateCondition): DateCondition | null {
   const { field, op } = condition
+  if (!DATE_OPS.has(op)) return null
   if (op === "blank" || op === "notBlank") return { kind: "date", field, op }
-  const given = "from" in condition ? condition : { from: null, before: null }
-  const [from, before] = orderedBounds(isoDayOrNull(given.from), isoDayOrNull(given.before))
+  // Read each bound independently — see the matching comment in `numberCondition`.
+  const givenFrom = "from" in condition ? isoDayOrNull(condition.from) : null
+  const givenBefore = "before" in condition ? isoDayOrNull(condition.before) : null
+  const [from, before] = orderedBounds(givenFrom, givenBefore)
   if (from === null && before === null) return null
   return { kind: "date", field, op: "range", from, before }
 }
+
+/** The operators `booleanCondition` accepts. See `TEXT_OPS`. */
+const BOOLEAN_OPS = new Set<BooleanCondition["op"]>(["is", "blank", "notBlank"])
 
 /**
  * Build a boolean condition.
@@ -261,11 +319,15 @@ export function dateCondition(condition: DateCondition): DateCondition | null {
  */
 export function booleanCondition(condition: BooleanCondition): BooleanCondition | null {
   const { field, op } = condition
+  if (!BOOLEAN_OPS.has(op)) return null
   if (op === "blank" || op === "notBlank") return { kind: "boolean", field, op }
   const value = "value" in condition ? condition.value : undefined
   if (typeof value !== "boolean") return null
   return { kind: "boolean", field, op: "is", value }
 }
+
+/** The operators `listCondition` accepts. See `TEXT_OPS`. */
+const LIST_OPS = new Set<ListCondition["op"]>(["in", "notIn", "blank", "notBlank"])
 
 /**
  * Build a list condition.
@@ -279,6 +341,7 @@ export function booleanCondition(condition: BooleanCondition): BooleanCondition 
  */
 export function listCondition(condition: ListCondition): ListCondition | null {
   const { field, op } = condition
+  if (!LIST_OPS.has(op)) return null
   if (op === "blank" || op === "notBlank") return { kind: "list", field, op }
   const given = "values" in condition && Array.isArray(condition.values) ? condition.values : []
   const values = Array.from(new Set(given)).filter(isFilterValue).sort(compareFilterValues)
@@ -354,9 +417,15 @@ export function dayChoiceToCondition(field: string, choice: DayChoice): DateCond
       return dateCondition({ kind: "date", field, op: "range", from, before: null })
     }
     case "between": {
-      const before = choice.to === null ? null : addDays(choice.to, 1)
-      if (choice.to !== null && before === null) return null
-      return dateCondition({ kind: "date", field, op: "range", from: choice.from, before })
+      // Order the two picked days BEFORE making the later one exclusive: the
+      // date editor's two day inputs are independent, so a user who fills
+      // the end day first hands this a reversed `{ from, to }`. Adding one
+      // day to the raw `to` before ordering put the +1 on the wrong end and
+      // shorted the range by a day at both ends for reversed input.
+      const [first, last] = orderedBounds(isoDayOrNull(choice.from), isoDayOrNull(choice.to))
+      const before = last === null ? null : addDays(last, 1)
+      if (last !== null && before === null) return null
+      return dateCondition({ kind: "date", field, op: "range", from: first, before })
     }
     default:
       return null

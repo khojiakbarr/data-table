@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react"
 import type { Updater } from "@tanstack/react-table"
+import type { FilterKind } from "./filters"
 import { pruneLayout } from "./persistence"
 import { useDebouncedSave } from "./useDebouncedSave"
 import type { LayoutStorage, TableLayout } from "../types"
@@ -16,6 +17,15 @@ export const EMPTY_LAYOUT: TableLayout = {
   // unambiguous.
   search: "",
 }
+
+/**
+ * The slices that hold filter state rather than column arrangement.
+ *
+ * They live in the layout so they persist and reset with it, but they are not
+ * an *arrangement*: a search term must not light up the Columns tab's Reset
+ * link, and with `filtering.persist: false` they must never reach storage.
+ */
+const FILTER_SLICES = new Set<keyof TableLayout>(["filters", "search"])
 
 /** The layout plus what the table knows about where it came from. */
 interface Arrangement {
@@ -38,6 +48,10 @@ export interface UseArrangementOptions {
   initialLayout: Partial<TableLayout> | undefined
   /** Leaf column ids, so a stored layout can be pruned to live columns. */
   columnIds: readonly string[]
+  /** Each column's resolved filter kind, so a stored condition can be checked against it. */
+  filterKinds?: ReadonlyMap<string, FilterKind | false> | undefined
+  /** Keep `filters` and `search` out of storage. Default true. */
+  persistFilters?: boolean
 }
 
 /** TanStack state setters accept a value or an updater function. */
@@ -53,7 +67,14 @@ export function apply<T>(updater: T | ((old: T) => T), current: T): T {
  * which drops changes that leave a slice as it was, so a no-op does not mark
  * the table as customised or trigger a write.
  */
-export function useArrangement({ id, store, initialLayout, columnIds }: UseArrangementOptions) {
+export function useArrangement({
+  id,
+  store,
+  initialLayout,
+  columnIds,
+  filterKinds,
+  persistFilters = true,
+}: UseArrangementOptions) {
   // Read storage once per table id. Re-reading on every render would fight the
   // user: a change is saved, then immediately re-applied from disk.
   //
@@ -64,14 +85,39 @@ export function useArrangement({ id, store, initialLayout, columnIds }: UseArran
   const [arrangement, setArrangement] = useState<Arrangement>(() => {
     const stored = store.load(id)
     return {
-      layout: { ...EMPTY_LAYOUT, ...initialLayout, ...pruneLayout(stored ?? {}, columnIds) },
+      layout: { ...EMPTY_LAYOUT, ...initialLayout, ...pruneLayout(stored ?? {}, columnIds, filterKinds) },
       isCustomised: stored !== null,
       hasUnsavedChanges: false,
     }
   })
   const initialRef = useRef(initialLayout)
 
-  useDebouncedSave(store, id, arrangement.layout, arrangement.hasUnsavedChanges)
+  // Read through a ref so `updateSlice` below stays stable across renders.
+  const persistFiltersRef = useRef(persistFilters)
+  persistFiltersRef.current = persistFilters
+
+  /*
+   * What actually reaches storage.
+   *
+   * With `persist: false` the filter slices are blanked here, at the write
+   * boundary, rather than narrowed out of the object that also feeds
+   * `useTable`: `pruneLayout` runs only on load, and `LayoutStorage.save` is
+   * typed to take a complete layout.
+   *
+   * Held in a ref and compared structurally, the way `useTableQuery` holds its
+   * query: `useDebouncedSave` keys its timer on this object's identity, so a
+   * fresh-but-equal one per keystroke would re-arm the 350 ms save with
+   * identical content — one storage write, or one network request, per pause.
+   */
+  const candidate = persistFilters
+    ? arrangement.layout
+    : { ...arrangement.layout, filters: EMPTY_LAYOUT.filters, search: EMPTY_LAYOUT.search }
+  const persistedRef = useRef<TableLayout | null>(null)
+  if (persistedRef.current === null || !layoutSliceEqual(persistedRef.current, candidate)) {
+    persistedRef.current = candidate
+  }
+
+  useDebouncedSave(store, id, persistedRef.current, arrangement.hasUnsavedChanges)
 
   /**
    * Record a change to one slice of the layout.
@@ -89,10 +135,14 @@ export function useArrangement({ id, store, initialLayout, columnIds }: UseArran
       setArrangement((previous) => {
         const next = normalise(apply(updater, previous.layout[key]))
         if (layoutSliceEqual(next, previous.layout[key])) return previous
+        const isFilterSlice = FILTER_SLICES.has(key)
         return {
           layout: { ...previous.layout, [key]: next },
-          isCustomised: true,
-          hasUnsavedChanges: true,
+          // A search does not make a Reset link appear in the Columns tab for
+          // a reason that has nothing to do with columns.
+          isCustomised: previous.isCustomised || !isFilterSlice,
+          hasUnsavedChanges:
+            previous.hasUnsavedChanges || !isFilterSlice || persistFiltersRef.current,
         }
       })
     },

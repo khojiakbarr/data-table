@@ -500,6 +500,16 @@ never on mount, and never on every frame of a drag.
 mention it. Those references are dropped on load, and columns added since are appended, so
 an old layout never leaves a user with a phantom column or a missing one.
 
+**Filters persist too**, with the rest of the layout, and a stored condition is
+dropped on load when its column is gone, when its shape does not match its
+operator, or when the column's filter kind has changed since. Pass
+`filtering: { persist: false }` to keep filters and the search box out of
+storage entirely, for a table you would rather have every visit start clean;
+nothing is then written for a filter change at all, which matters most for a
+server-backed adapter, where a write is a network request. A filter or a search
+never counts as *customising* the layout either way — the Columns tab's Reset
+link is about columns.
+
 ---
 
 ## Styling
@@ -730,13 +740,14 @@ than rebuilding the same four-state contract against undocumented class names.
 | `mode` | `"client" \| "server"` | `"client"` | `"server"`: `data` is one page, already sorted; the table only describes what it wants. |
 | `rowCount` | `number` | — | Total rows across all pages. Server mode only; undefined until known. |
 | `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
+| `filtering` | `boolean \| FilteringOptions` | on | `{ debounceMs?, persist?, searchFields?, loadValues? }`. `false` turns filtering off. |
 | `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. |
 | `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
 | `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
 | `heightVersion` | `string \| number` | — | Changes when `getRowHeight` starts answering differently, for a change too narrow for the table to sample. See [Large data](#large-data). |
 
-Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, rowHeight, getRowHeight, heightVersion }`.
+Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, rowHeight, getRowHeight, heightVersion }`.
 
 ### `<DataTable />`
 

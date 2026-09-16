@@ -23,7 +23,14 @@ import {
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
 import { deriveColumnId } from "./core/columnIds"
-import type { FilterCondition } from "./core/filters"
+import { collectFilterKinds } from "./core/filterKinds"
+import {
+  pruneFilters,
+  rebuildCondition,
+  type FilterCondition,
+  type FilterModel,
+  type FilterValueOption,
+} from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
 import type { TableQuery, TableSearch } from "./core/query"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
@@ -76,16 +83,33 @@ export interface PaginationOptions {
 /** Where rows are sorted and paged. */
 export type TableMode = "client" | "server"
 
+/** How rows are filtered; see {@link UseDataTableOptions.filtering}. */
+export interface FilteringOptions {
+  /** ms before quick search is published. Default 300. Column filters are never debounced. */
+  debounceMs?: number
+  /** Keep active filters in the saved layout. Default true. */
+  persist?: boolean
+  /** Columns quick search covers. Default: every visible searchable column. */
+  searchFields?: string[]
+  /**
+   * Server-mode source of a values filter's choices. Never called in client mode.
+   *
+   * Written `| undefined` like the hook's other forwarded callbacks, because
+   * `exactOptionalPropertyTypes` otherwise rejects passing one through.
+   */
+  loadValues?:
+    | ((columnId: string, options: { search: string; signal: AbortSignal }) => Promise<FilterValueOption[]>)
+    | undefined
+}
+
 /**
- * Filter state does not exist yet.
+ * Quick search is not published yet.
  *
- * Module constants rather than fresh literals per render, because
- * `useTableQuery`'s inputs must be identity-stable or every render produces a
- * new query and a host keyed on it refetches forever. Replaced by the layout
- * slices when they land; quick search waits longer still, because what reaches
- * the wire is debounced and needs the resolved search fields.
+ * The slice is written on every keystroke, but what reaches the wire is
+ * debounced and needs the resolved search fields, neither of which exists
+ * until the quick-search step. A stable constant until then, so the query's
+ * identity does not churn.
  */
-const NO_FILTERS: readonly FilterCondition[] = []
 const NO_SEARCH: TableSearch | null = null
 
 export interface UseDataTableOptions<TData extends RowData> {
@@ -169,6 +193,11 @@ export interface UseDataTableOptions<TData extends RowData> {
    * `true` for the defaults or an object to set the page size and choices.
    */
   pagination?: boolean | PaginationOptions
+  /**
+   * Filtering: quick search and per-column filters. On by default. Pass
+   * `false` to turn it off, or an object to configure it.
+   */
+  filtering?: boolean | FilteringOptions
   /**
    * Stable identity for a row.
    *
@@ -255,6 +284,7 @@ export function useDataTable<TData extends RowData>({
   mode = "client",
   rowCount,
   pagination,
+  filtering,
   getRowId,
   onQueryChange,
   rowHeight = 40,
@@ -294,6 +324,20 @@ export function useDataTable<TData extends RowData>({
         ? {}
         : pagination
 
+  const filteringOptions: FilteringOptions | null =
+    filtering === false ? null : filtering === true || filtering === undefined ? {} : filtering
+  // A boolean rather than the object above, which is a fresh `{}` on every
+  // render for the two shorthand forms and would break the memo below.
+  const filteringEnabled = filteringOptions !== null
+
+  /*
+   * Resolved from the column definitions and the data rather than from the
+   * table, which does not exist yet: a stored layout is pruned on the very
+   * first render, and pruning is where a condition whose kind no longer
+   * matches its column has to be dropped.
+   */
+  const filterKinds = useMemo(() => collectFilterKinds(columns, data), [columns, data])
+
   const {
     layout,
     isCustomised,
@@ -304,6 +348,8 @@ export function useDataTable<TData extends RowData>({
     store,
     initialLayout,
     columnIds,
+    filterKinds,
+    persistFilters: filteringOptions?.persist ?? true,
   })
 
   /*
@@ -361,6 +407,30 @@ export function useDataTable<TData extends RowData>({
     resetArrangement()
     resetPage()
   }, [resetArrangement, resetPage])
+
+  /*
+   * Filters and search change the result set exactly as sorting does, so both
+   * go back to the first page. Every public mutator goes through one of these
+   * two, so there is no path that changes the result set without resetting the
+   * page — TanStack's own post-filter reset is unavailable here because
+   * `autoResetPageIndex: false` is set for good server-mode reasons, and on
+   * page 40 of 100 typing three characters would otherwise land the user on
+   * page 3 of 3 of the results.
+   */
+  const updateFilters = useCallback(
+    (updater: Updater<TableLayout["filters"]>) => {
+      updateSlice("filters", updater)
+      resetPage()
+    },
+    [updateSlice, resetPage],
+  )
+  const updateSearch = useCallback(
+    (text: string) => {
+      updateSlice("search", text)
+      resetPage()
+    },
+    [updateSlice, resetPage],
+  )
 
   /*
    * Which rows are open is deliberately NOT part of the layout: it is a
@@ -543,12 +613,66 @@ export function useDataTable<TData extends RowData>({
 
   const query = useTableQuery({
     sorting: layout.sorting,
-    filters: NO_FILTERS,
+    filters: layout.filters,
     search: NO_SEARCH,
     pageIndex: pageState.pageIndex,
     pageSize: pageState.pageSize,
     onQueryChange,
   })
+
+  const setCondition = useCallback(
+    (condition: FilterCondition) => {
+      // An editor that constrains nothing clears the column, because the
+      // constructor returns null for it.
+      const built = rebuildCondition(condition)
+      updateFilters((current) => {
+        const rest = current.filter((existing) => existing.field !== condition.field)
+        return built === null ? rest : [...rest, built]
+      })
+    },
+    [updateFilters],
+  )
+  const clearColumn = useCallback(
+    (columnId: string) =>
+      updateFilters((current) => current.filter((existing) => existing.field !== columnId)),
+    [updateFilters],
+  )
+  const clearAll = useCallback(() => {
+    updateFilters([])
+    updateSearch("")
+  }, [updateFilters, updateSearch])
+  const setModel = useCallback(
+    (model: FilterModel) => {
+      /*
+       * Untrusted input — a URL, a host's own store, a hand-written literal —
+       * so it is held to the same rules as a stored layout, and every
+       * surviving condition is re-run through its constructor. Without the
+       * re-run a condition assembled in a different key order would stringify
+       * differently from an identical one the editors built, and the
+       * no-spurious-refetch story would have a hole in it reachable through
+       * the very API recommended for URL round-trips.
+       */
+      updateFilters(pruneFilters(model.filters ?? [], columnIds, filterKinds))
+      updateSearch(typeof model.search === "string" ? model.search : "")
+    },
+    [updateFilters, updateSearch, columnIds, filterKinds],
+  )
+
+  const filteringApi = useMemo(
+    () => ({
+      enabled: filteringEnabled,
+      conditions: layout.filters as readonly FilterCondition[],
+      search: layout.search,
+      isFiltered: layout.filters.length > 0 || layout.search.trim() !== "",
+      setCondition,
+      clearColumn,
+      clearAll,
+      setSearch: updateSearch,
+      getModel: (): FilterModel => ({ filters: [...layout.filters], search: layout.search }),
+      setModel,
+    }),
+    [filteringEnabled, layout.filters, layout.search, setCondition, clearColumn, clearAll, updateSearch, setModel],
+  )
 
   /*
    * `process.env.NODE_ENV` and not `import.meta.env.DEV`: this library is built
@@ -606,6 +730,7 @@ export function useDataTable<TData extends RowData>({
     mode,
     query,
     pagination: paginationApi,
+    filtering: filteringApi,
     rowHeight,
     getRowHeight,
     heightVersion,

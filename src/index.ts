@@ -9,6 +9,7 @@ export { useDataTable } from "./useDataTable"
 export type {
   DataTableFeatures,
   DataTableInstance,
+  FilteringOptions,
   PaginationOptions,
   TableMode,
   UseDataTableOptions,

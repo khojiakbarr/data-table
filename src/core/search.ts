@@ -188,17 +188,13 @@ function matchesFields(tokens: readonly string[], fields: readonly string[], row
  * caching it against the needle, so this is safe to call with a needle built
  * and kept around by the caller — memoised across renders, reused for many
  * rows, even reused after the table's searchable columns changed. Each call
- * answers against the row's *current* `getCanGlobalFilter` set, matching
- * `filterFn_dtSearch`'s in-pipeline behaviour rather than a snapshot of it.
+ * answers against the row's *current* `getCanGlobalFilter` set.
  *
- * `filterFn_dtSearch` itself does not call this: it uses a private, needle-
- * cached variant that skips recomputing the field list once per row (see
- * below) because it alone can prove the needle it was handed cannot outlive
- * the single filtering pass that built it — TanStack calls
- * `resolveFilterValue` fresh, once per globally-filterable column, before
- * that column's row loop runs (`createFilteredRowModel.js`). This exported
- * function has no such guarantee about a needle a caller hands it, so it
- * makes no such assumption.
+ * `filterFn_dtSearch` delegates here too for any needle it cannot prove is
+ * its own — see `matchesSearchCached` — so this is also what makes a needle
+ * built with `searchNeedle` and handed straight to `filterFn_dtSearch`,
+ * outside the table, safe: it is never stale, only ever slower than the
+ * table's own in-pipeline cache.
  *
  * @param row - The row under test.
  * @param needle - The resolved search text.
@@ -209,29 +205,51 @@ export function rowMatchesSearch(row: SearchableRow, needle: SearchNeedle): bool
   return matchesFields(needle.tokens, searchFieldsForRow(row), row)
 }
 
+/**
+ * Marks a needle that `filterFn_dtSearch`'s own `resolveFilterValue` minted.
+ *
+ * TanStack calls `resolveFilterValue` fresh, once per globally-filterable
+ * column, before that column's row loop runs (`createFilteredRowModel.js`),
+ * so a branded needle really cannot outlive the single filtering pass that
+ * built it. Nothing outside this module can produce the brand — the public
+ * `searchNeedle` never sets it — so a needle a caller mints with
+ * `searchNeedle` and hands to `filterFn_dtSearch` directly, or memoises and
+ * reuses across renders, can never be mistaken for one whose cached field
+ * list is still fresh. That is what actually closes the invariant rather
+ * than merely asserting it: see `matchesSearchCached`.
+ */
+const PASS: unique symbol = Symbol("dt-search-pass")
+
+/** A {@link SearchNeedle} branded by `filterFn_dtSearch.resolveFilterValue`. */
+type PassNeedle = SearchNeedle & { readonly [PASS]: true }
+
+/** Type guard for {@link PassNeedle}. */
+function isPassNeedle(needle: SearchNeedle): needle is PassNeedle {
+  return PASS in needle
+}
+
 /*
  * The field list, cached against the needle the table resolved it for.
  *
- * Private to this module's own `filterFn_dtSearch.filter` below — never
- * exposed through `rowMatchesSearch`. Every needle reaching this cache was
- * just minted by `resolveFilterValue` for one globally-filterable column and
- * is used only across that column's row loop within one filtering pass
- * (`createFilteredRowModel.js` calls `resolveFilterValue` fresh per column,
- * ahead of that column's loop), so keying on its identity here — and only
- * here — really can never outlive the pass that built it. Weakly, so neither
+ * Private to this module's own `matchesSearchCached` below, and only ever
+ * populated for a `PassNeedle` — see `isPassNeedle` — so keying on identity
+ * here really can never outlive the pass that built it. Weakly, so neither
  * needle nor field list is held alive by the cache.
  */
-const fieldsByNeedle = new WeakMap<SearchNeedle, readonly string[]>()
+const fieldsByNeedle = new WeakMap<PassNeedle, readonly string[]>()
 
 /**
  * `rowMatchesSearch`'s matching rule, with the per-column field lookup cached
  * against the needle for the duration of one filtering pass.
  *
- * Only ever called by `filterFn_dtSearch.filter` below, where the needle's
- * one-pass lifetime is guaranteed by TanStack rather than assumed — see the
- * comment on `fieldsByNeedle`.
+ * Only a `PassNeedle` — one `filterFn_dtSearch.resolveFilterValue` itself
+ * minted — is allowed to use that cache. Any other `SearchNeedle` (built with
+ * the public `searchNeedle` and handed to `filterFn_dtSearch` directly,
+ * outside the table) delegates to `rowMatchesSearch`, which always re-reads
+ * the row's currently-searched columns instead of trusting a cached list.
  */
 function matchesSearchCached(row: SearchableRow, needle: SearchNeedle): boolean {
+  if (!isPassNeedle(needle)) return rowMatchesSearch(row, needle)
   if (needle.tokens.length === 0) return true
   let fields = fieldsByNeedle.get(needle)
   if (fields === undefined) {
@@ -252,9 +270,16 @@ function matchesSearchCached(row: SearchableRow, needle: SearchNeedle): boolean 
  * returning the same verdict whichever column it was asked about.
  *
  * Tokenising happens in `resolveFilterValue`, which the table applies ahead of
- * the row loop — once per searchable column — rather than once per row.
+ * the row loop — once per searchable column — rather than once per row. A
+ * needle built any other way (the public `searchNeedle`, called directly)
+ * still filters correctly if handed to this function outside the table; it
+ * just does not carry the brand `resolveFilterValue` mints here, so it never
+ * touches the per-pass field-list cache — see `matchesSearchCached`.
  */
 export const filterFn_dtSearch = constructFilterFn({
-  resolveFilterValue: (text: unknown): SearchNeedle => searchNeedle(text),
+  resolveFilterValue: (text: unknown): SearchNeedle => {
+    const needle: PassNeedle = { ...searchNeedle(text), [PASS]: true }
+    return needle
+  },
   filter: (_dataValue: unknown, needle: SearchNeedle, row) => matchesSearchCached(row, needle),
 })

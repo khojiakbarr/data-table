@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest"
-import { collectSearchFields, isSearchableColumn, rowMatchesSearch, searchNeedle } from "./search"
+import { collectSearchFields, filterFn_dtSearch, isSearchableColumn, rowMatchesSearch, searchNeedle } from "./search"
+
+/**
+ * A minimal stub satisfying what `rowMatchesSearch` and `filterFn_dtSearch`
+ * actually read off a row: `table.getAllLeafColumns()` for the searched
+ * column set, and `getValue` for each field's text. Shared by the
+ * `rowMatchesSearch` and `filterFn_dtSearch` suites below rather than
+ * duplicated between them.
+ */
+const row = (values: Record<string, unknown>) => ({
+  table: {
+    getAllLeafColumns: () => [
+      { id: "code", getCanGlobalFilter: () => true },
+      { id: "partner", getCanGlobalFilter: () => true },
+      { id: "secret", getCanGlobalFilter: () => false },
+    ],
+  },
+  getValue: (columnId: string) => values[columnId],
+})
 
 interface Receipt {
   code: string
@@ -141,17 +159,6 @@ describe("searchNeedle", () => {
 })
 
 describe("rowMatchesSearch", () => {
-  const row = (values: Record<string, unknown>) => ({
-    table: {
-      getAllLeafColumns: () => [
-        { id: "code", getCanGlobalFilter: () => true },
-        { id: "partner", getCanGlobalFilter: () => true },
-        { id: "secret", getCanGlobalFilter: () => false },
-      ],
-    },
-    getValue: (columnId: string) => values[columnId],
-  })
-
   it("matches every token, and lets different tokens match different columns", () => {
     const subject = row({ code: "KR-102", partner: "Agro Ltd", secret: "zzz" })
     expect(rowMatchesSearch(subject, searchNeedle("kr-102 agro"))).toBe(true)
@@ -189,5 +196,52 @@ describe("rowMatchesSearch", () => {
 
     partnerSearchable = false
     expect(rowMatchesSearch(subject, needle)).toBe(false)
+  })
+})
+
+describe("filterFn_dtSearch", () => {
+  /**
+   * Call the filter the way TanStack's own `constructFilterFn` docblock
+   * prescribes for a direct, out-of-table call — the same shape
+   * `filterFn.test.ts`'s `matches` helper uses for `filterFn_dt`.
+   *
+   * The row stub is not a full TanStack `Row`, only what the predicate
+   * actually reads (`table.getAllLeafColumns` and `getValue`); `as never` is
+   * how `filterFn.test.ts`'s sibling test reaches the same real code path
+   * without constructing one.
+   */
+  const call = (subject: ReturnType<typeof row>, columnId: string, text: string): boolean =>
+    filterFn_dtSearch(subject as never, columnId, filterFn_dtSearch.resolveFilterValue?.(text) ?? text, () => undefined)
+
+  it("returns the same row-level verdict whichever column it is asked about", () => {
+    const subject = row({ code: "KR-102", partner: "Agro Ltd", secret: "zzz" })
+    expect(call(subject, "code", "kr-102 agro")).toBe(true)
+    expect(call(subject, "partner", "kr-102 agro")).toBe(true) // ignores the columnId it is handed
+    expect(call(subject, "code", "zzz")).toBe(false) // never reads a non-searched column
+  })
+
+  it("never returns a stale verdict for a needle built with searchNeedle and handed to it directly, bypassing resolveFilterValue", () => {
+    // Reproduces the review finding on Task 8's round-1 fix: a host that
+    // mints a needle with the public `searchNeedle` — as its own JSDoc
+    // invites — and calls the exported `filterFn_dtSearch` with it directly,
+    // skipping `resolveFilterValue`, must not read a field list cached
+    // before a column stopped being searched. Only a needle
+    // `resolveFilterValue` mints itself may use that per-pass cache.
+    let partnerSearchable = true
+    const subject = {
+      table: {
+        getAllLeafColumns: () => [
+          { id: "code", getCanGlobalFilter: () => true },
+          { id: "partner", getCanGlobalFilter: () => partnerSearchable },
+        ],
+      },
+      getValue: (columnId: string) => ({ code: "KR-1", partner: "Agro Ltd" } as Record<string, unknown>)[columnId],
+    }
+    const needle = searchNeedle("agro")
+
+    expect(filterFn_dtSearch(subject as never, "code", needle, () => undefined)).toBe(true)
+
+    partnerSearchable = false
+    expect(filterFn_dtSearch(subject as never, "code", needle, () => undefined)).toBe(false)
   })
 })

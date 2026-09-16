@@ -35,7 +35,6 @@ import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
 import {
   pruneFilters,
-  rebuildCondition,
   type FilterCondition,
   type FilterModel,
   type FilterValueOption,
@@ -44,7 +43,7 @@ import { noLayoutStorage } from "./core/persistence"
 import type { TableQuery, TableSearch } from "./core/query"
 import { collectSearchFields, filterFn_dtSearch } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
-import { apply, useArrangement } from "./core/useArrangement"
+import { apply, layoutSliceEqual, useArrangement } from "./core/useArrangement"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
 import { usePagination, type PaginationApi } from "./core/usePagination"
 import { useTableQuery } from "./core/useTableQuery"
@@ -535,20 +534,42 @@ export function useDataTable<TData extends RowData>({
    * text. `filteringOptions` itself is not a dependency: it is a fresh `{}` per
    * render for the two shorthand forms, and only this member is read.
    */
+  const resolvedSearchFieldsRef = useRef<string[]>([])
   const resolvedSearchFields = useMemo(() => {
-    if (!filteringEnabled) return []
-    const declared = filteringOptions?.searchFields
-    if (declared) return [...declared].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-    const { fields, unresolved } = collectSearchFields(columns, data, layout.columnVisibility)
-    // A column with nothing declared and no sampled value yet stays included
-    // rather than dropped — see the Task 7 review correction next to
-    // `collectSearchFields`'s own definition. Folding `unresolved` into
-    // exclusion (treating `collectSearchFields` as returning a bare
-    // `string[]`, which is what an earlier draft of this task did) empties
-    // `resolvedSearchFields` on a server-mode table's first render, before
-    // `data` has arrived, and makes a nullable text column's inclusion depend
-    // on which page happens to be loaded.
-    return [...fields, ...unresolved].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    const next = (() => {
+      if (!filteringEnabled) return []
+      const declared = filteringOptions?.searchFields
+      if (declared) return [...declared].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      const { fields, unresolved } = collectSearchFields(columns, data, layout.columnVisibility)
+      // A column with nothing declared and no sampled value yet stays included
+      // rather than dropped — see the Task 7 review correction next to
+      // `collectSearchFields`'s own definition. Folding `unresolved` into
+      // exclusion (treating `collectSearchFields` as returning a bare
+      // `string[]`, which is what an earlier draft of this task did) empties
+      // `resolvedSearchFields` on a server-mode table's first render, before
+      // `data` has arrived, and makes a nullable text column's inclusion depend
+      // on which page happens to be loaded.
+      return [...fields, ...unresolved].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    })()
+    /*
+     * `filteringOptions?.searchFields` is a fresh array for the natural inline
+     * call form `filtering: { searchFields: [...] }` — the options object is
+     * an object literal, so this memo's own dependency changes identity every
+     * render even when the resolved list is byte-identical. That churn would
+     * otherwise reach `columnFilters` below (whose second dependency this is)
+     * and, through it, `createFilteredRowModel`'s reference-equality memo
+     * deps: every unrelated host re-render would re-filter, re-sort and
+     * re-paginate, and feed a fresh `rows` array into `useRowVirtualizer`,
+     * forcing a re-measure of every virtual item. Held in a ref and compared
+     * structurally — the same ref-plus-structural-compare idiom
+     * `useArrangement` uses for `persistedRef` — so the identity this hook
+     * hands out changes only when the resolved fields actually do.
+     */
+    if (layoutSliceEqual(resolvedSearchFieldsRef.current, next)) {
+      return resolvedSearchFieldsRef.current
+    }
+    resolvedSearchFieldsRef.current = next
+    return next
   }, [filteringEnabled, filteringOptions?.searchFields, columns, data, layout.columnVisibility])
 
   /*
@@ -582,11 +603,19 @@ export function useDataTable<TData extends RowData>({
   /*
    * `column.setFilterValue(condition)` keeps working for a host driving the
    * table through TanStack's own API: the value *is* the condition, so the
-   * entries map straight back to conditions — through `rebuildCondition`, the
-   * same validation `setModel` runs, since this input is no more trusted.
-   * Left unwired, the default updater would write to an atom that the
-   * controlled `state.columnFilters` overrides, and `setFilterValue` would
-   * silently do nothing.
+   * entries map straight back to conditions — through `pruneFilters`, the same
+   * gate `setModel` and `setCondition` run, since this input is no more
+   * trusted. Without it, this path is how a condition no editor could reach
+   * gets onto `state.columnFilters` and `query.filters` and stays there: an
+   * unknown column id (`table.setColumnFilters([{ id: "ghost", … }])`), a
+   * condition whose kind no longer matches the column's resolved kind
+   * (including a column declared `meta: { filter: false }`, for which
+   * `resolveFilterKind` returns `false`), or two entries for the same field —
+   * exactly the stranded-filter case `pruneFilters` exists to prevent,
+   * reachable here too because TanStack's own `setColumnFilters` passes an
+   * unknown id straight through. Left unwired entirely, the default updater
+   * would write to an atom that the controlled `state.columnFilters`
+   * overrides, and `setFilterValue` would silently do nothing.
    */
   const updateFiltersFromTanStack = useCallback(
     (updater: Updater<ColumnFiltersState>) => {
@@ -595,15 +624,15 @@ export function useDataTable<TData extends RowData>({
           id: condition.field,
           value: condition,
         }))
-        return apply(updater, before).flatMap((entry) => {
+        const candidates = apply(updater, before).flatMap((entry) => {
           const value = entry.value as FilterCondition
           if (typeof value !== "object" || value === null) return []
-          const built = rebuildCondition({ ...value, field: entry.id })
-          return built === null ? [] : [built]
+          return [{ ...value, field: entry.id }]
         })
+        return pruneFilters(candidates, columnIds, filterKinds)
       })
     },
-    [updateFilters],
+    [updateFilters, columnIds, filterKinds],
   )
 
   const table = useTable<DataTableFeatures, TData>({

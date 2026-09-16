@@ -44,6 +44,21 @@ const setup = (id: string, mode: "client" | "server" = "client") =>
     }),
   )
 
+interface SecretRow {
+  id: string
+  name: string
+  secret: string
+}
+const secretHelper = createColumnHelper<DataTableFeatures, SecretRow>()
+const secretColumns = [
+  secretHelper.accessor("name", { header: "Name", size: 100 }),
+  secretHelper.accessor("secret", { header: "Secret", size: 100, meta: { filter: false } }),
+]
+const secretData: SecretRow[] = [
+  { id: "r0", name: "Agro", secret: "alpha" },
+  { id: "r1", name: "Temir", secret: "beta" },
+]
+
 interface Node {
   id: string
   name: string
@@ -134,6 +149,87 @@ describe("client-side filtering", () => {
     expect(result.current.table.getColumn("tag")!.getFacetedUniqueValues()).toEqual(
       new Map([["open", 2], ["closed", 1]]),
     )
+  })
+
+  it("keeps the columnFilters projection identity when searchFields is a fresh literal each render", () => {
+    // The natural call form `filtering: { searchFields: [...] }` hands the
+    // hook a fresh options object, and a fresh `searchFields` array inside it,
+    // on every render — the inline literal below re-runs on every call of
+    // this hook body, exactly like a host's own JSX. `resolvedSearchFields`
+    // must not let that identity churn reach `columnFilters`, which
+    // `createFilteredRowModel` compares by reference.
+    const { result, rerender } = renderHook(() =>
+      useDataTable<Row>({
+        id: "c9",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        filtering: { searchFields: ["name", "tag"] },
+      }),
+    )
+    act(() =>
+      result.current.filtering.setCondition({ kind: "number", field: "amount", op: "gt", value: 200 }),
+    )
+    const beforeFilters = result.current.table.state.columnFilters
+    const beforeRows = result.current.table.getRowModel().rows
+
+    rerender()
+
+    expect(result.current.table.state.columnFilters).toBe(beforeFilters)
+    expect(result.current.table.getRowModel().rows).toBe(beforeRows)
+  })
+
+  it("recomputes the filtered rows when the column a global filter matched is hidden", () => {
+    // This is the behaviour `resolvedSearchFields` being a dependency of
+    // `columnFilters` exists for: hiding the only column a global filter
+    // matched changes which columns are searched, and the row model must
+    // recompute even though `columnFilters` and `globalFilter` themselves did
+    // not change.
+    const { result } = setup("c10")
+    act(() => result.current.table.setGlobalFilter("temir"))
+    expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r1"])
+
+    act(() => result.current.table.getColumn("name")!.toggleVisibility(false))
+
+    expect(result.current.table.getColumn("name")!.getCanGlobalFilter()).toBe(false)
+    expect(result.current.table.getRowModel().rows).toEqual([])
+  })
+
+  it("rejects a wrong-kind condition identically through setCondition and column.setFilterValue", () => {
+    // "amount" resolves to the "number" kind by sampling; a "text" condition
+    // on it must be rejected by both entry points, not just the dedicated one.
+    const wrongKind: FilterCondition = { kind: "text", field: "amount", op: "contains", value: "1" }
+
+    const viaSetCondition = setup("c11")
+    act(() => viaSetCondition.result.current.filtering.setCondition(wrongKind))
+    expect(viaSetCondition.result.current.filtering.conditions).toEqual([])
+
+    const viaColumn = setup("c12")
+    act(() => viaColumn.result.current.table.getColumn("amount")!.setFilterValue(wrongKind))
+    expect(viaColumn.result.current.filtering.conditions).toEqual([])
+    expect(viaColumn.result.current.table.state.columnFilters).toEqual([])
+  })
+
+  it("rejects a condition on a column declared meta: { filter: false } through column.setFilterValue", () => {
+    // The stranded-filter case `pruneFilters` exists to prevent: unwired, this
+    // would narrow the client rows, land in `filtering.conditions` and
+    // `query.filters`, and only be dropped on the next mount by
+    // `pruneLayout`/`pruneFilters` — a filter the library declares impossible
+    // working until reload.
+    const { result } = renderHook(() =>
+      useDataTable<SecretRow>({
+        id: "c13",
+        columns: secretColumns,
+        data: secretData,
+        getRowId: (row) => row.id,
+      }),
+    )
+    const condition: FilterCondition = { kind: "text", field: "secret", op: "contains", value: "alpha" }
+
+    act(() => result.current.table.getColumn("secret")!.setFilterValue(condition))
+
+    expect(result.current.filtering.conditions).toEqual([])
+    expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r0", "r1"])
   })
 
   it("keeps a parent whose only match is a descendant, and its expansion", () => {

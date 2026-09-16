@@ -25,7 +25,8 @@ describe("server mode", () => {
     localStorage.clear()
     localStorageLayout().save("srv", {
       columnOrder: [], columnVisibility: {}, columnPinning: { start: [], end: [] },
-      columnSizing: {}, sorting: [{ id: "name", desc: true }], pageSize: 100,
+      columnSizing: {}, sorting: [{ id: "name", desc: true }], filters: [], search: "",
+      pageSize: 100,
     })
     const onQueryChange = vi.fn<(query: TableQuery) => void>()
 

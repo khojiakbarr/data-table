@@ -11,6 +11,10 @@ export const EMPTY_LAYOUT: TableLayout = {
   columnPinning: { start: [], end: [] },
   columnSizing: {},
   sorting: [],
+  filters: [],
+  // Also what an absent global filter means to TanStack, so the off state is
+  // unambiguous.
+  search: "",
 }
 
 /** The layout plus what the table knows about where it came from. */

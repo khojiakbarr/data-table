@@ -431,3 +431,52 @@ export function dayChoiceToCondition(field: string, choice: DayChoice): DateCond
       return null
   }
 }
+
+/**
+ * Drop conditions a table can no longer honour, and rebuild the rest.
+ *
+ * Shared by `pruneLayout` and `filtering.setModel`, which take the same kind of
+ * untrusted input: a condition on a column that no longer exists, of an unknown
+ * kind, with a shape its operator does not carry, or whose kind disagrees with
+ * the column's currently resolved kind. The last of those is reachable with no
+ * host code change at all, because a column with no declared `meta.filter` has
+ * its kind inferred from data — and a mismatched condition would run a
+ * substring test against a numeric accessor and send `ILIKE` for an integer
+ * column, which is an error in Postgres.
+ *
+ * **At most one condition survives per `field`, and it is the last one.** The
+ * model is one condition per column, and the projection into
+ * `state.columnFilters` is the only writer of `ColumnFilter.id` — so two
+ * conditions on one field would become two entries sharing an id, which the
+ * filtered row model applies both of while every editor, which looks a column's
+ * condition up by `field`, shows only the first. That is the same "40 rows out
+ * of 10 000 and no way to find out why" a stranded filter produces, and a
+ * duplicate could never round-trip back out of the projection anyway.
+ *
+ * @param filters - Conditions as they came out of storage or from a host.
+ * @param knownColumnIds - Column ids the table currently defines.
+ * @param filterKinds - Each column's resolved filter kind; `false` where
+ *   filtering is off for it. Omitted, the kind check is skipped.
+ * @returns The conditions worth keeping, one per column, each rebuilt in
+ *   canonical form.
+ */
+export function pruneFilters(
+  filters: readonly FilterCondition[],
+  knownColumnIds: readonly string[],
+  filterKinds?: ReadonlyMap<string, FilterKind | false> | undefined,
+): FilterCondition[] {
+  const known = new Set(knownColumnIds)
+  const kept = new Map<string, FilterCondition>()
+  for (const condition of filters) {
+    if (typeof condition !== "object" || condition === null) continue
+    if (!known.has(condition.field)) continue
+    const resolved = filterKinds?.get(condition.field)
+    if (resolved !== undefined && resolved !== condition.kind) continue
+    const rebuilt = rebuildCondition(condition)
+    if (rebuilt === null) continue
+    // A repeated field overwrites in place, so the result keeps the order the
+    // fields first appeared in and is a function of the input alone.
+    kept.set(condition.field, rebuilt)
+  }
+  return [...kept.values()]
+}

@@ -1,3 +1,4 @@
+import type { FilterCondition, FilterValueOption, FilterKind } from "./core/filters"
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -18,8 +19,28 @@ export interface TableLayout {
   columnPinning: ColumnPinningState
   columnSizing: ColumnSizingState
   sorting: SortingState
+  /** One condition per filtered column, implicitly ANDed. */
+  filters: FilterCondition[]
+  /** Quick search, raw as the user typed it; `""` when off. */
+  search: string
   /** Rows per page the user chose. Absent until they change it. */
   pageSize?: number
+}
+
+/**
+ * Per-column filter configuration, read from `columnDef.meta`.
+ *
+ * Every member is written `?: T | undefined` because the repo runs
+ * `exactOptionalPropertyTypes` and `meta: { filter: isNumeric ? "number" : undefined }`
+ * is the natural call site.
+ */
+export interface DataTableColumnMeta {
+  /** Which editor this column gets. `false` turns filtering off for it. */
+  filter?: FilterKind | false | undefined
+  /** Whether quick search covers this column. Default true for text-ish columns. */
+  searchable?: boolean | undefined
+  /** Fixed choices for a list filter; shown without counts. */
+  values?: FilterValueOption[] | undefined
 }
 
 /**

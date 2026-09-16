@@ -42,6 +42,7 @@ export {
   isFilterValue,
   listCondition,
   numberCondition,
+  pruneFilters,
   rebuildCondition,
   startOfLocalDay,
   textCondition,
@@ -64,6 +65,8 @@ export type {
 
 export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"
+export { collectFilterKinds, resolveFilterKind } from "./core/filterKinds"
+export type { FilterColumnDefShape, FilterKindSource } from "./core/filterKinds"
 
 /* Helpers worth borrowing rather than rewriting. */
 export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"
@@ -85,6 +88,7 @@ export { buildDisplayList, displayItemKey, spacerSizes } from "./core/virtualRow
 export type { DisplayItem, SpacerSizes } from "./core/virtualRows"
 
 export type {
+  DataTableColumnMeta,
   DataTableFeatureFlags,
   DataTableLabels,
   LayoutStorage,

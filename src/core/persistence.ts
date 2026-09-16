@@ -1,3 +1,4 @@
+import { pruneFilters, type FilterKind } from "./filters"
 import type { LayoutStorage, TableLayout } from "../types"
 
 /**
@@ -88,11 +89,17 @@ export function noLayoutStorage(): LayoutStorage {
  *
  * @param stored - Layout as it came out of storage.
  * @param knownColumnIds - Column IDs the table currently defines.
+ * @param filterKinds - Each column's resolved filter kind; `false` where
+ *   filtering is off for it. Optional because `pruneLayout` is a public export —
+ *   omitted, a stored condition is still checked for an unknown column, an
+ *   unknown kind and a shape its operator does not carry, but not against the
+ *   column's current kind. {@link useDataTable} always passes it.
  * @returns The layout with unknown column references removed.
  */
 export function pruneLayout(
   stored: Partial<TableLayout>,
   knownColumnIds: readonly string[],
+  filterKinds?: ReadonlyMap<string, FilterKind | false> | undefined,
 ): Partial<TableLayout> {
   const known = new Set(knownColumnIds)
   const keepKeys = <TValue,>(
@@ -131,6 +138,15 @@ export function pruneLayout(
   if (stored.sorting) {
     pruned.sorting = stored.sorting.filter((entry) => known.has(entry.id))
   }
+
+  // Without this a deleted column's filter stays active forever with no UI able
+  // to reach it: 40 rows out of 10 000 and no way to find out why.
+  if (stored.filters) {
+    pruned.filters = pruneFilters(stored.filters, knownColumnIds, filterKinds)
+  }
+  // `pruneLayout` rebuilds from recognised keys, so a slice it does not copy is
+  // a slice that never comes back from storage.
+  if (typeof stored.search === "string") pruned.search = stored.search
 
   if (typeof stored.pageSize === "number" && Number.isFinite(stored.pageSize) && stored.pageSize > 0) {
     pruned.pageSize = stored.pageSize

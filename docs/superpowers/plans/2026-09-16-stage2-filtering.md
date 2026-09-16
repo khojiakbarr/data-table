@@ -1952,6 +1952,16 @@ git push origin khojiakbar
 
 ### Task 5: Layout slices, the per-column kind resolver, and pruning
 
+> **Shipped, with one correction.** The id derivation written inline below was wrong for a nested
+> `accessorKey` and for a header-derived id: TanStack's `constructColumn` computes
+> `columnDef.id ?? accessorKey.replaceAll(".", "_") ?? (typeof header === "string" ? header : undefined)`,
+> so `"partner.name"` has the live id `"partner_name"` and a lookup by the dotted key silently missed.
+> It was extracted to `deriveColumnId` in `src/core/columnIds.ts` (commit `755e157`) and both
+> `collectFilterKinds` and `collectLeafIds` now call it. The id derivation in the snippets below has
+> been corrected to match; the shipped `src/core/filterKinds.ts` is authoritative for the rest.
+> **Anything later in this plan that needs a column id calls `deriveColumnId` — never another inline
+> copy.**
+
 **Files:**
 - Create: `src/core/filterKinds.ts`
 - Modify: `src/types.ts`
@@ -2047,9 +2057,14 @@ describe("collectFilterKinds", () => {
     expect(kinds.has("money")).toBe(false)
   })
 
-  it("reads a dotted accessorKey as a path, the way TanStack does", () => {
+  it("keys a dotted accessorKey the way TanStack's constructColumn does, but still reads it as a path", () => {
+    // TanStack's `constructColumn` computes a live column's id as
+    // `accessorKey.replaceAll(".", "_")`, so `"partner.name"` has live id
+    // `"partner_name"` — the map must be keyed the same way, or a stored
+    // condition on this column can never be found again.
     const kinds = collectFilterKinds<Receipt>([{ accessorKey: "partner.name" }], rows)
-    expect(kinds.get("partner.name")).toBe("text")
+    expect(kinds.get("partner_name")).toBe("text")
+    expect(kinds.has("partner.name")).toBe(false)
   })
 
   it("prefers an accessorFn and an explicit meta over inference", () => {
@@ -2302,10 +2317,11 @@ export interface FilterColumnDefShape<TData> {
 /**
  * Every leaf column's resolved filter kind.
  *
- * Mirrors `collectLeafIds`' own id resolution so the map lines up with the ids
- * a stored layout holds. Only the first few rows are sampled: inference needs
- * one non-null value, and walking a 100 000-row array per column on every
- * mount to find one is not worth the accuracy.
+ * Mirrors `collectLeafIds`' own id resolution (both derive it the way
+ * TanStack's `constructColumn` does — see {@link deriveColumnId}) so the map
+ * lines up with the ids a stored layout holds. Only the first few rows are
+ * sampled: inference needs one non-null value, and walking a 100 000-row array
+ * per column on every mount to find one is not worth the accuracy.
  *
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
@@ -2322,12 +2338,7 @@ export function collectFilterKinds<TData>(
         walk(def.columns)
         return
       }
-      const id =
-        typeof def.id === "string"
-          ? def.id
-          : typeof def.accessorKey === "string"
-            ? def.accessorKey
-            : String(index)
+      const id = deriveColumnId(def, index)
       const read = valueReader(def)
       kinds.set(id, resolveFilterKind({
         meta: def.meta,
@@ -3312,9 +3323,15 @@ describe("collectSearchFields", () => {
     expect(fields).toEqual(["amount", "code"])
   })
 
-  it("drops a hidden column and reads a dotted accessorKey as a path", () => {
+  it("drops a hidden column and derives a dotted accessorKey's id the way TanStack does", () => {
+    // `constructColumn` gives `"partner.name"` the live id `"partner_name"`,
+    // so that is what `columnVisibility` is keyed by and what `search.fields`
+    // has to carry: a list built from the dotted key would silently miss the
+    // visibility flag and name a column the table does not have. Only the
+    // *value* is read through the dots, by `valueReader`.
     expect(collectSearchFields<Receipt>([{ accessorKey: "partner.name" }, { accessorKey: "code" }], rows, { code: false }))
-      .toEqual(["partner.name"])
+      .toEqual(["partner_name"])
+    expect(collectSearchFields<Receipt>([{ accessorKey: "partner.name" }], rows, { partner_name: false })).toEqual([])
   })
 })
 ```
@@ -3361,10 +3378,11 @@ export function collectFilterKinds<TData>(
  * — once per consumer — is how the two would drift apart about which id a
  * column has.
  *
- * Mirrors `collectLeafIds`' own id resolution so the map lines up with the ids
- * a stored layout holds. Only the first few rows are sampled: inference needs
- * one non-null value, and walking a 100 000-row array per column on every mount
- * to find one is not worth the accuracy.
+ * Ids come from {@link deriveColumnId} — the one place this library derives an
+ * id the way TanStack's `constructColumn` does — so the map lines up with the
+ * live columns and with the ids a stored layout holds. Only the first few rows
+ * are sampled: inference needs one non-null value, and walking a 100 000-row
+ * array per column on every mount to find one is not worth the accuracy.
  *
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
@@ -3381,12 +3399,7 @@ export function collectColumnFacts<TData>(
         walk(def.columns)
         return
       }
-      const id =
-        typeof def.id === "string"
-          ? def.id
-          : typeof def.accessorKey === "string"
-            ? def.accessorKey
-            : String(index)
+      const id = deriveColumnId(def, index)
       const read = valueReader(def)
       facts.set(id, {
         meta: def.meta,
@@ -3400,7 +3413,18 @@ export function collectColumnFacts<TData>(
 }
 ```
 
-`valueReader`, `SAMPLE_ROWS` and `firstNonNull` below it are unchanged and stay where they are.
+`valueReader`, `SAMPLE_ROWS` and `firstNonNull` below it are unchanged and stay where they are, and
+`deriveColumnId` needs no new import — `filterKinds.ts` already imports it from `./columnIds`.
+
+**Do not re-derive an id here.** `deriveColumnId` (`src/core/columnIds.ts`) is the single place this
+library reproduces TanStack's `constructColumn` rule — `columnDef.id ?? accessorKey.replaceAll(".",
+"_") ?? (typeof header === "string" ? header : undefined)` — and both earlier copies of that block,
+in `collectFilterKinds` and in `collectLeafIds`, were silently wrong for a nested `accessorKey` and
+for a header-derived id until they were routed through it. A third copy here would miss the same way
+twice over: `collectSearchFields` looks its `visibility` flag up by id, and the ids it returns go
+onto the wire as `search.fields` while the client-side predicate reads the live `column.id` — so a
+`"partner.name"` column would be searched client-side but named `"partner.name"` to a backend, which
+is the one thing §3.3 promises cannot happen.
 
 Create `src/core/search.ts`:
 

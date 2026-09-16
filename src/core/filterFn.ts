@@ -74,31 +74,59 @@ function blankResolved(op: "blank" | "notBlank"): ResolvedCondition {
  * @returns The condition with its needle, bounds and value set prepared.
  */
 export function resolveCondition(condition: FilterCondition): ResolvedCondition {
+  // A filter value reaches this from `state.columnFilters`, which any host can
+  // write through TanStack's own `setFilterValue` — table-core auto-removes
+  // only `undefined` and `""`, so a `null` (or any other non-object) lands
+  // here and must fail open rather than throw on `condition.kind`.
+  if (typeof condition !== "object" || condition === null) return { kind: "always" }
   switch (condition.kind) {
-    case "text":
-      if (!("value" in condition)) return blankResolved(condition.op)
-      return { kind: "text", op: condition.op, needle: String(condition.value).toLowerCase() }
-    case "number":
-      if ("value" in condition) return { kind: "number", op: condition.op, value: condition.value }
-      if (!("from" in condition)) return blankResolved(condition.op)
-      return {
-        kind: "numberRange",
-        min: condition.from ?? Number.NEGATIVE_INFINITY,
-        max: condition.to ?? Number.POSITIVE_INFINITY,
+    case "text": {
+      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
+      // Branch on `op` — the actual discriminant — before reading `value`: a
+      // condition serialised by a backend that omits nulls (Go `omitempty`,
+      // Jackson NON_NULL, protobuf-JSON) can carry a valued op with its
+      // `value` key dropped, and that must fail open, not silently become a
+      // blank filter. See the matching comment in `textCondition`.
+      if (!("value" in condition) || typeof condition.value !== "string") return { kind: "always" }
+      return { kind: "text", op: condition.op, needle: condition.value.toLowerCase() }
+    }
+    case "number": {
+      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
+      if (condition.op === "between") {
+        // Read each bound independently — a bound whose key was dropped in
+        // serialisation is unbounded, not a blank filter. See the matching
+        // comment in `numberCondition`.
+        const from = "from" in condition && typeof condition.from === "number" ? condition.from : null
+        const to = "to" in condition && typeof condition.to === "number" ? condition.to : null
+        return {
+          kind: "numberRange",
+          min: from ?? Number.NEGATIVE_INFINITY,
+          max: to ?? Number.POSITIVE_INFINITY,
+        }
       }
-    case "date":
-      if (!("from" in condition)) return blankResolved(condition.op)
+      if (!("value" in condition) || typeof condition.value !== "number") return { kind: "always" }
+      return { kind: "number", op: condition.op, value: condition.value }
+    }
+    case "date": {
+      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
+      // A bound whose key was dropped in serialisation is unbounded, not a
+      // blank filter: see the matching comment in `dateCondition`.
       return {
         kind: "date",
-        from: condition.from === null ? null : startOfLocalDay(condition.from),
-        before: condition.before === null ? null : startOfLocalDay(condition.before),
+        from: "from" in condition && condition.from !== null ? startOfLocalDay(condition.from) : null,
+        before: "before" in condition && condition.before !== null ? startOfLocalDay(condition.before) : null,
       }
-    case "boolean":
-      if (!("value" in condition)) return blankResolved(condition.op)
+    }
+    case "boolean": {
+      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
+      if (!("value" in condition) || typeof condition.value !== "boolean") return { kind: "always" }
       return { kind: "boolean", value: condition.value }
-    case "list":
-      if (!("values" in condition)) return blankResolved(condition.op)
+    }
+    case "list": {
+      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
+      if (!("values" in condition) || !Array.isArray(condition.values)) return { kind: "always" }
       return { kind: "list", negated: condition.op === "notIn", values: new Set(condition.values) }
+    }
     default:
       // Unreachable through the constructors, which are the only way to build a
       // condition. Failing open is the safe direction: a condition nobody can

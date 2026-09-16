@@ -2,7 +2,7 @@ import type { Row } from "@tanstack/react-table"
 import { afterEach, describe, expect, it } from "vitest"
 import { filterFn_dt, isBlankValue, resolveCondition } from "./filterFn"
 import type { DataTableFeatures } from "../useDataTable"
-import type { FilterCondition } from "./filters"
+import { startOfLocalDay, type FilterCondition } from "./filters"
 
 /**
  * `filterFn_dt` is a TanStack filter function: it is handed a row and reads the
@@ -46,6 +46,13 @@ describe("filterFn_dt — text", () => {
     expect(matches({ kind: "text", field, op: "endsWith", value: "ROL" }, "Gallaorol")).toBe(true)
     expect(matches({ kind: "text", field, op: "notContains", value: "agro" }, "Temir")).toBe(true)
     expect(matches({ kind: "text", field, op: "notEquals", value: "agro" }, "Temir")).toBe(true)
+    // The rejecting half of each pair: a `return true` mutation on
+    // `notContains`/`notEquals`, or pointing `startsWith`/`endsWith` at the
+    // plain substring test, would pass the assertions above unnoticed.
+    expect(matches({ kind: "text", field, op: "notContains", value: "agro" }, "Gallaorol agro")).toBe(false)
+    expect(matches({ kind: "text", field, op: "notEquals", value: "agro" }, "Agro")).toBe(false)
+    expect(matches({ kind: "text", field, op: "startsWith", value: "ROL" }, "Gallaorol")).toBe(false)
+    expect(matches({ kind: "text", field, op: "endsWith", value: "GAL" }, "Gallaorol")).toBe(false)
   })
 
   it("never matches a blank value, negated operators included", () => {
@@ -85,6 +92,15 @@ describe("filterFn_dt — number", () => {
     expect(matches({ kind: "number", field, op: "lte", value: 10 }, 10)).toBe(true)
     expect(matches({ kind: "number", field, op: "gt", value: 10 }, 11)).toBe(true)
     expect(matches({ kind: "number", field, op: "gte", value: 10 }, 10)).toBe(true)
+    // The boundary each comparator must reject — without these, weakening
+    // `lt`/`gt` to `<=`/`>=` and `eq` to `>=` still passes every assertion
+    // above.
+    expect(matches({ kind: "number", field, op: "lt", value: 10 }, 10)).toBe(false)
+    expect(matches({ kind: "number", field, op: "gt", value: 10 }, 10)).toBe(false)
+    expect(matches({ kind: "number", field, op: "lte", value: 10 }, 11)).toBe(false)
+    expect(matches({ kind: "number", field, op: "gte", value: 10 }, 9)).toBe(false)
+    expect(matches({ kind: "number", field, op: "eq", value: 10 }, 11)).toBe(false)
+    expect(matches({ kind: "number", field, op: "ne", value: 10 }, 10)).toBe(false)
   })
 
   it("never matches a nullish value with any comparator", () => {
@@ -191,5 +207,51 @@ describe("resolveCondition", () => {
       kind: "blank",
       negated: true,
     })
+  })
+
+  it("fails open on a non-object condition instead of throwing", () => {
+    // Reachable from a host: table-core's own auto-remove strips only
+    // `undefined` and `""`, so `column.setFilterValue(null)` (or a stored
+    // layout whose value was serialised as null) reaches here as `null`.
+    expect(resolveCondition(null as unknown as FilterCondition)).toEqual({ kind: "always" })
+    expect(matches(null as unknown as FilterCondition, "anything")).toBe(true)
+    expect(matches(null as unknown as FilterCondition, null)).toBe(true)
+  })
+
+  it("treats a bound with a key dropped by serialisation as unbounded, not blank", () => {
+    // A backend that omits nulls (Go `omitempty`, Jackson NON_NULL,
+    // protobuf-JSON) publishes only the bound it has. The dropped bound must
+    // not turn the whole condition into "match only blank rows".
+    const dateFromDropped = { kind: "date", field: "v", op: "range", before: "2026-04-01" } as FilterCondition
+    expect(resolveCondition(dateFromDropped)).toEqual({
+      kind: "date",
+      from: null,
+      before: startOfLocalDay("2026-04-01"),
+    })
+    expect(matches(dateFromDropped, "2026-03-15")).toBe(true)
+    expect(matches(dateFromDropped, null)).toBe(false)
+
+    const numberToDropped = { kind: "number", field: "v", op: "between", to: 20 } as FilterCondition
+    expect(resolveCondition(numberToDropped)).toEqual({
+      kind: "numberRange",
+      min: Number.NEGATIVE_INFINITY,
+      max: 20,
+    })
+    expect(matches(numberToDropped, 5)).toBe(true)
+  })
+
+  it("fails open when a valued op's own value key was dropped by serialisation", () => {
+    // A missing `value`/`values` must not silently become "match only blank
+    // rows" either — it constrains nothing, the same as an unreadable kind.
+    expect(resolveCondition({ kind: "text", field: "v", op: "contains" } as FilterCondition)).toEqual({
+      kind: "always",
+    })
+    expect(resolveCondition({ kind: "boolean", field: "v", op: "is" } as FilterCondition)).toEqual({
+      kind: "always",
+    })
+    expect(resolveCondition({ kind: "list", field: "v", op: "in" } as FilterCondition)).toEqual({
+      kind: "always",
+    })
+    expect(matches({ kind: "text", field: "v", op: "contains" } as FilterCondition, "anything")).toBe(true)
   })
 })

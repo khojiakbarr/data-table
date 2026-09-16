@@ -1,4 +1,6 @@
 import {
+  columnFacetingFeature,
+  columnFilteringFeature,
   columnOrderingFeature,
   createExpandedRowModel,
   rowExpandingFeature,
@@ -7,14 +9,20 @@ import {
   columnSizingFeature,
   columnVisibilityFeature,
   createCoreRowModel,
+  createFacetedRowModel,
+  createFacetedUniqueValues,
+  createFilteredRowModel,
   createPaginatedRowModel,
   createSortedRowModel,
+  globalFilteringFeature,
   rowPaginationFeature,
   rowSortingFeature,
   sortFns,
   tableFeatures,
   useTable,
   type ColumnDef,
+  type ColumnFiltersState,
+  type ColumnMeta,
   type ColumnSizingState,
   type PaginationState,
   type Row,
@@ -23,22 +31,30 @@ import {
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
 import { deriveColumnId } from "./core/columnIds"
+import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
 import {
   pruneFilters,
+  rebuildCondition,
   type FilterCondition,
   type FilterModel,
   type FilterValueOption,
 } from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
 import type { TableQuery, TableSearch } from "./core/query"
+import { collectSearchFields, filterFn_dtSearch } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { apply, useArrangement } from "./core/useArrangement"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
 import { usePagination, type PaginationApi } from "./core/usePagination"
 import { useTableQuery } from "./core/useTableQuery"
 import { warnOnce } from "./core/warnOnce"
-import type { DataTableFeatureFlags, LayoutStorage, TableLayout } from "./types"
+import type {
+  DataTableColumnMeta,
+  DataTableFeatureFlags,
+  LayoutStorage,
+  TableLayout,
+} from "./types"
 
 /**
  * The feature set this library composes.
@@ -58,10 +74,45 @@ const FEATURES = tableFeatures({
   columnVisibilityFeature,
   rowSortingFeature,
   rowPaginationFeature,
+  /*
+   * `globalFilteringFeature` REQUIRES `columnFilteringFeature` — the compiler
+   * says so through `FeatureSlotPrereqs` — so quick search cannot ship alone.
+   * The faceting slots are composed here too, though nothing reads them until
+   * the values editors land: the feature set is composed once, so
+   * `DataTableFeatures` widens once rather than twice.
+   */
+  columnFilteringFeature,
+  globalFilteringFeature,
+  columnFacetingFeature,
   coreRowModel: createCoreRowModel(),
   sortedRowModel: createSortedRowModel(),
   paginatedRowModel: createPaginatedRowModel(),
+  filteredRowModel: createFilteredRowModel(),
+  facetedRowModel: createFacetedRowModel(),
+  facetedUniqueValues: createFacetedUniqueValues(),
   sortFns,
+  /*
+   * One registered function, not the deprecated bulk `filterFns` export, which
+   * puts every built-in in the bundle. Registering a name also narrows the
+   * legal `columnDef.filterFn` strings to the keys here, which is why
+   * `defaultColumn` below has to state `filterFn: "dt"`.
+   */
+  filterFns: { dt: filterFn_dt },
+  /*
+   * Claims TanStack's per-table `columnMeta` slot, which is what makes
+   * `meta: { filter: "number" }` type-checked with no generic reaching the
+   * host. The slot REPLACES the global `ColumnMeta` interface rather than
+   * extending it, so declaring `DataTableColumnMeta` alone would silently
+   * delete the fields of any host who declaration-merges `ColumnMeta` today —
+   * their own `meta` key would become an excess-property error. The
+   * intersection keeps that merge working.
+   *
+   * The `any` arguments are deliberate and unavoidable: the slot sits inside
+   * the call whose `typeof` *is* `DataTableFeatures`, so naming that type here
+   * would be circular.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  columnMeta: {} as DataTableColumnMeta & ColumnMeta<any, any, any>,
 })
 
 export type DataTableFeatures = typeof FEATURES
@@ -476,6 +527,85 @@ export function useDataTable<TData extends RowData>({
     totals: isServer,
   }
 
+  /*
+   * The one list quick search covers: `searchFields` if the host supplied it,
+   * otherwise every visible, searchable, accessor-backed column. It is used
+   * twice — as `getColumnCanGlobalFilter` below, and as `search.fields` on the
+   * wire — so the client and a backend search the same columns for the same
+   * text. `filteringOptions` itself is not a dependency: it is a fresh `{}` per
+   * render for the two shorthand forms, and only this member is read.
+   */
+  const resolvedSearchFields = useMemo(() => {
+    if (!filteringEnabled) return []
+    const declared = filteringOptions?.searchFields
+    if (declared) return [...declared].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    const { fields, unresolved } = collectSearchFields(columns, data, layout.columnVisibility)
+    // A column with nothing declared and no sampled value yet stays included
+    // rather than dropped — see the Task 7 review correction next to
+    // `collectSearchFields`'s own definition. Folding `unresolved` into
+    // exclusion (treating `collectSearchFields` as returning a bare
+    // `string[]`, which is what an earlier draft of this task did) empties
+    // `resolvedSearchFields` on a server-mode table's first render, before
+    // `data` has arrived, and makes a nullable text column's inclusion depend
+    // on which page happens to be loaded.
+    return [...fields, ...unresolved].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+  }, [filteringEnabled, filteringOptions?.searchFields, columns, data, layout.columnVisibility])
+
+  /*
+   * `filters` is the first layout slice whose shape is not already TanStack's,
+   * so it is the first that cannot be passed straight through.
+   *
+   * Memoised because `createFilteredRowModel` compares its memo deps by
+   * reference and a controlled state slice is read back verbatim: a fresh array
+   * per render would re-filter every row on every unrelated host re-render. It
+   * runs in server mode too — the filtered row model is inert there, but
+   * `column.getIsFiltered()` still reads the slice, and that is what marks a
+   * filtered header. `condition.field` is authoritative: this is the only
+   * writer of `ColumnFilter.id`, so the two can never disagree.
+   *
+   * `resolvedSearchFields` is the second dependency, and it is not decoration.
+   * `createFilteredRowModel` memoises on exactly three things — the core row
+   * model, `columnFilters` and `globalFilter` — while `getColumnCanGlobalFilter`
+   * below is a function of the resolved field list. Hiding a column while a
+   * search is active changes which columns are searched and changes none of
+   * those three, so without this the filtered row model would not recompute:
+   * the client would go on matching a hidden column that `search.fields` on the
+   * wire had already dropped, which is the exact divergence §3.3 states the
+   * predicate to prevent. The list is itself memoised, so an unrelated
+   * re-render still gets the same array back and the identity holds.
+   */
+  const columnFilters = useMemo<ColumnFiltersState>(
+    () => layout.filters.map((condition) => ({ id: condition.field, value: condition })),
+    [layout.filters, resolvedSearchFields],
+  )
+
+  /*
+   * `column.setFilterValue(condition)` keeps working for a host driving the
+   * table through TanStack's own API: the value *is* the condition, so the
+   * entries map straight back to conditions — through `rebuildCondition`, the
+   * same validation `setModel` runs, since this input is no more trusted.
+   * Left unwired, the default updater would write to an atom that the
+   * controlled `state.columnFilters` overrides, and `setFilterValue` would
+   * silently do nothing.
+   */
+  const updateFiltersFromTanStack = useCallback(
+    (updater: Updater<ColumnFiltersState>) => {
+      updateFilters((current) => {
+        const before: ColumnFiltersState = current.map((condition) => ({
+          id: condition.field,
+          value: condition,
+        }))
+        return apply(updater, before).flatMap((entry) => {
+          const value = entry.value as FilterCondition
+          if (typeof value !== "object" || value === null) return []
+          const built = rebuildCondition({ ...value, field: entry.id })
+          return built === null ? [] : [built]
+        })
+      })
+    },
+    [updateFilters],
+  )
+
   const table = useTable<DataTableFeatures, TData>({
     features: FEATURES,
     data,
@@ -486,6 +616,7 @@ export function useDataTable<TData extends RowData>({
       columnPinning: layout.columnPinning,
       columnSizing: layout.columnSizing,
       sorting: layout.sorting,
+      columnFilters,
       pagination: { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize },
       expanded,
     },
@@ -507,6 +638,40 @@ export function useDataTable<TData extends RowData>({
      */
     autoResetExpanded: false,
     manualSorting: isServer,
+    /*
+     * Written unconditionally on every render, as a plain boolean, so the
+     * option merge can never carry a stale value — it needs no `mergeOptions`
+     * branch, which exists only for the four options this hook *omits*.
+     *
+     * It turns off the filtered row model, not the filter state:
+     * `column.getIsFiltered()` reads `state.columnFilters` directly and keeps
+     * working, which is what drives the header marker in server mode.
+     */
+    manualFiltering: isServer,
+    /*
+     * Defaults to false, which for tree data hides a matching child whenever
+     * its parent fails the filter — a filtered tree would show nothing for a
+     * term only leaves contain. Expansion survives a filter change with no
+     * work: it is keyed by row id and `autoResetExpanded: false` is already set.
+     */
+    filterFromLeafRows: getSubRows !== undefined,
+    /*
+     * Stated, because the default is `"auto"` — one whole-string substring test
+     * applied once per searchable column with that column's id, ORed with a
+     * break on the first true. That cannot express "tokens may match different
+     * columns": searching `KR-102 agro` would look for the literal string
+     * inside one column at a time. Ours is a row-level predicate that ignores
+     * the column id it is handed, so TanStack's own OR and break are harmless.
+     */
+    globalFilterFn: filterFn_dtSearch,
+    /*
+     * Stated too. TanStack's own default applies a value-type heuristic as a
+     * gate *underneath* the flags rather than as a default a host can override,
+     * and never consults visibility at all — so without this a hidden column
+     * would go on being searched client-side while `search.fields` omitted it,
+     * and the two modes would search different columns for the same text.
+     */
+    getColumnCanGlobalFilter: (column) => resolvedSearchFields.includes(column.id),
     manualPagination: isServer || paginationOptions === null,
     /*
      * Both totals are written on every server render rather than omitted when
@@ -575,6 +740,17 @@ export function useDataTable<TData extends RowData>({
       size: defaultColumnWidth,
       minSize: minColumnWidth,
       maxSize: maxColumnWidth,
+      /*
+       * `columnFilteringFeature` defaults every column to `filterFn: "auto"`,
+       * which resolves a built-in *name* through the very registry narrowed to
+       * `{ dt }` above. Every lookup would miss, `column_getFilterFn` would
+       * return undefined, and `createFilteredRowModel` would skip that filter
+       * entirely — every row passing, with one dev-console warning and nothing
+       * else. TanStack merges the feature default first, then this, then a
+       * host's own column def, so this sets the default without taking the
+       * escape hatch away.
+       */
+      filterFn: "dt",
     },
     enableSorting: flags.sorting,
     enableColumnResizing: flags.resizing,
@@ -588,6 +764,7 @@ export function useDataTable<TData extends RowData>({
     onColumnSizingChange: (updater) =>
       updateSlice("columnSizing", updater, (sizing) => normaliseSizing(sizing, table)),
     onSortingChange: updateSorting,
+    onColumnFiltersChange: updateFiltersFromTanStack,
   })
 
   /*

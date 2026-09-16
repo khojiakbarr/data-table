@@ -4474,9 +4474,15 @@ pnpm vitest run src/ClientFiltering.test.tsx
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **359 tests** (350 plus 9). Every earlier test must still pass: composing the
-features widens `DataTableFeatures`, and a break there would show up in `DataTable.test.tsx` and
-`ServerMode.test.tsx` first.
+`pnpm test` must report **9 more tests than the count at HEAD before this task**. Every earlier test
+must still pass: composing the features widens `DataTableFeatures`, and a break there would show up
+in `DataTable.test.tsx` and `ServerMode.test.tsx` first.
+
+**Read every absolute total in this plan as a delta, not an equality.** The chain's numbers were
+written against the original task chain; the review rounds on Tasks 1-8 added regression tests the
+chain never counted, so the real totals run ahead of the printed ones — this task ran 404 → 413
+where the plan says 350 → 359, an offset of +54 that every later task inherits. Count before, count
+after, and check the difference.
 
 - [ ] **Step 5: Commit**
 

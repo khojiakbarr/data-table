@@ -1,0 +1,73 @@
+/*
+ * shadcn/ui preset — for hosts whose shadcn variables hold HSL channel
+ * triplets (pre-Tailwind-v4 format), where a variable is read as
+ * `hsl(var(--x))`. Import AFTER the base stylesheet:
+ *
+ *   import "@khojiakbarr/data-table/styles.css"
+ *   import "@khojiakbarr/data-table/themes/shadcn-hsl.css"
+ *
+ * Dark mode is the host's: shadcn swaps its variables on `.dark`, so the same
+ * `hsl(var(--x))` reference below resolves to the right colour in either
+ * mode without this file needing its own `prefers-color-scheme` branch.
+ *
+ * Scope: `.dt-root:not([data-dt-theme])` matches only an UNPINNED table —
+ * `[data-dt-theme]` is an attribute-presence check, so it excludes both
+ * `theme="light"` and `theme="dark"` (not just one of them). A pinned table
+ * is left entirely to the base sheet's own `[data-dt-theme="dark"]` rule (or
+ * its plain, light-by-default rule), exactly as the README's `theme` prop
+ * documentation promises — passing `theme` opts a table back out of this
+ * preset. Mapping the pinned branches to the same shadcn variables here
+ * would make `theme` a no-op.
+ *
+ * Specificity: one class plus one attribute selector, (0,2,0) — matching the
+ * base sheet's own maximum (its `[data-dt-theme="dark"]` / dark-media rules),
+ * which is what lets this single rule beat the base sheet's default `.dt-root
+ * {}` in every OS mode without a duplicated `@media` block. The trade-off: a
+ * plain host override loaded after this file, `.dt-root { --dt-accent: red }`,
+ * is only (0,1,0) and no longer wins. Repeating the class once,
+ * `.dt-root.dt-root { --dt-accent: red }`, only TIES this rule's own (0,2,0)
+ * rather than beating it — and a tie is broken by whichever stylesheet loads
+ * last, so that override wins only if the host's CSS happens to come after
+ * this file's. Repeat it once more, `.dt-root.dt-root.dt-root { --dt-accent:
+ * red }` (0,3,0), to beat this rule outright regardless of load order; it
+ * also keeps matching a table that pins its theme, unlike
+ * `.dt-root:not([data-dt-theme])` — so one host rule covers every table on
+ * the page.
+ *
+ * Only tokens shadcn has an equivalent for are mapped. The sizing tokens are
+ * deliberately left to the base sheet: re-declaring its own values here would
+ * add no colour and quietly cost hosts the ability to change a height or an
+ * indent with a plain `.dt-root {}` rule.
+ */
+
+.dt-root:not([data-dt-theme]) {
+  --dt-bg: hsl(var(--background));
+  --dt-fg: hsl(var(--foreground));
+  --dt-muted-fg: hsl(var(--muted-foreground));
+  --dt-border: hsl(var(--border));
+  --dt-radius: var(--radius);
+
+  --dt-header-bg: hsl(var(--muted));
+  --dt-header-fg: hsl(var(--muted-foreground));
+
+  --dt-row-hover: hsl(var(--accent));
+  --dt-row-stripe: color-mix(in srgb, hsl(var(--muted)) 50%, hsl(var(--background)));
+
+  --dt-accent: hsl(var(--primary));
+  --dt-accent-fg: hsl(var(--primary-foreground));
+  /* Accent printed as text (.dt-link, the active sort direction) has no
+     dedicated shadcn variable; --primary is shadcn's own recommended
+     text-on-background accent, same as a plain link colour would use. */
+  --dt-accent-text: hsl(var(--primary));
+  --dt-resize-handle: hsl(var(--border));
+  --dt-resize-handle-active: hsl(var(--primary));
+  --dt-drop-indicator: hsl(var(--primary));
+  --dt-focus-ring: hsl(var(--ring));
+
+  --dt-pin-shadow-start: 6px 0 6px -6px hsl(var(--foreground) / 0.25);
+  --dt-pin-shadow-end: -6px 0 6px -6px hsl(var(--foreground) / 0.25);
+
+  --dt-detail-bg: hsl(var(--muted) / 0.5);
+
+  --dt-font: var(--font-sans, inherit);
+}

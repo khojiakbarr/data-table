@@ -3,7 +3,7 @@ import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
-import { useDataTable, type DataTableFeatures } from "./useDataTable"
+import { useDataTable, type DataTableFeatures, type DataTableInstance } from "./useDataTable"
 
 /**
  * One invariant, checked after every rearrangement: the `<colgroup>` must have
@@ -75,6 +75,8 @@ const columns = [
   helper.accessor("status", { header: "Status", size: 130 }),
 ]
 
+let latest: DataTableInstance<Row> | null = null
+
 function Table() {
   const instance = useDataTable({
     id: "alignment",
@@ -82,25 +84,45 @@ function Table() {
     columns,
     initialLayout: { columnPinning: { start: ["code"], end: ["status"] } },
   })
+  latest = instance
   return <DataTable instance={instance} />
 }
 
+/*
+ * The filler column is left out on both sides: it is not a column, carries no
+ * width and heads no data.
+ */
+const colsOf = (container: HTMLElement) => [
+  ...container.querySelectorAll<HTMLElement>("colgroup col:not(.dt-col-filler)"),
+]
+const cellsOf = (container: HTMLElement) => [
+  ...container.querySelectorAll<HTMLElement>("tbody tr td:not(.dt-td-filler)"),
+]
+
 /** Column widths as declared, and the cells they are supposed to size. */
 function readAlignment(container: HTMLElement) {
-  const cols = [...container.querySelectorAll("colgroup col")].map((col) =>
-    (col as HTMLElement).style.width,
-  )
-  const cells = [...container.querySelectorAll("tbody tr td")].map(
-    (cell) => cell.textContent?.trim() ?? "",
-  )
-  return { cols, cells }
+  return {
+    cols: colsOf(container).map((col) => col.style.width),
+    cells: cellsOf(container).map((cell) => cell.textContent?.trim() ?? ""),
+  }
 }
 
-/** The invariant itself. */
+/**
+ * The invariant itself: one `<col>` per cell, the same column in each
+ * position, and every `<col>` carrying that column's own width.
+ */
 function expectAligned(container: HTMLElement) {
-  const { cols, cells } = readAlignment(container)
+  const cols = colsOf(container)
+  const cells = cellsOf(container)
   expect(cols, `${cols.length} <col> for ${cells.length} cells`).toHaveLength(cells.length)
-  expect(new Set(cols.map((_, index) => index)).size).toBe(cols.length)
+
+  const colIds = cols.map((col) => col.dataset.columnId)
+  expect(cells.map((cell) => cell.dataset.columnId)).toEqual(colIds)
+
+  const table = latest!.table
+  expect(cols.map((col) => col.style.width)).toEqual(
+    colIds.map((id) => `${table.getColumn(id!)!.getSize()}px`),
+  )
 }
 
 const openMenu = async (user: ReturnType<typeof userEvent.setup>, name: RegExp) => {

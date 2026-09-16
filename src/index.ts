@@ -9,8 +9,12 @@ export { useDataTable } from "./useDataTable"
 export type {
   DataTableFeatures,
   DataTableInstance,
+  PaginationOptions,
+  TableMode,
   UseDataTableOptions,
 } from "./useDataTable"
+export type { TableQuery } from "./core/query"
+export type { PaginationApi } from "./core/usePagination"
 
 /*
  * The shell's own parts. Exported so a different layout can reuse the pieces
@@ -22,14 +26,27 @@ export { HeaderMenu } from "./components/HeaderMenu"
 export type { HeaderMenuPosition } from "./components/HeaderMenu"
 export { ColumnPanel } from "./components/ColumnPanel"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
+export { TablePagination } from "./components/TablePagination"
+export { SkeletonRows, TableStatus } from "./components/TableStatus"
 
 /* Helpers worth borrowing rather than rewriting. */
-export { pinnedStyle, renderedLeafColumns } from "./core/pinning"
+export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"
+export type { HeaderPinning } from "./core/pinning"
 export { dropSideAt, moveColumn } from "./core/reorder"
 export type { DropSide } from "./core/reorder"
-export { measureColumnWidth } from "./core/autosize"
+export { measureColumnWidth, measureHeaderWidth } from "./core/autosize"
 export type { AutosizeBounds } from "./core/autosize"
+export { useAutosize } from "./core/useAutosize"
+export type { AutosizeActions } from "./core/useAutosize"
+export { clampColumnWidth, columnBounds } from "./core/sizing"
+export type { ColumnBounds } from "./core/sizing"
 export { localStorageLayout, noLayoutStorage, pruneLayout } from "./core/persistence"
+export { useRowVirtualizer } from "./core/useRowVirtualizer"
+export type { RowVirtualizerOptions, RowVirtualizerResult, RenderedItem } from "./core/useRowVirtualizer"
+export { useUnboundedViewport } from "./core/useUnboundedViewport"
+export type { UnboundedViewportOptions } from "./core/useUnboundedViewport"
+export { buildDisplayList, displayItemKey, spacerSizes } from "./core/virtualRows"
+export type { DisplayItem, SpacerSizes } from "./core/virtualRows"
 
 export type {
   DataTableFeatureFlags,

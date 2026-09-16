@@ -83,8 +83,22 @@ describe("pruneLayout", () => {
     expect(pruned.columnSizing).toEqual({ a: 120 })
   })
 
+  it("drops a width that is not a positive finite number", () => {
+    const damaged = {
+      columnSizing: { a: Number.NaN, b: "abc" as unknown as number, c: 0, d: 120 },
+    }
+    const pruned = pruneLayout(damaged, ["a", "b", "c", "d"])
+    expect(pruned.columnSizing).toEqual({ d: 120 })
+  })
+
   it("drops sorting on a removed column", () => {
     const pruned = pruneLayout(layout, ["a", "c"])
     expect(pruned.sorting).toEqual([])
+  })
+
+  it("keeps a positive page size and drops anything else", () => {
+    expect(pruneLayout({ pageSize: 100 }, ["a"]).pageSize).toBe(100)
+    expect(pruneLayout({ pageSize: 0 }, ["a"]).pageSize).toBeUndefined()
+    expect(pruneLayout({ pageSize: "x" as unknown as number }, ["a"]).pageSize).toBeUndefined()
   })
 })

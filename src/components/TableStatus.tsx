@@ -1,0 +1,92 @@
+import type { DataTableLabels } from "../types"
+
+interface TableStatusProps {
+  loading: boolean
+  error: unknown
+  onRetry?: (() => void) | undefined
+  labels: DataTableLabels
+}
+
+/**
+ * What sits at the top of the viewport while rows are on their way or failed.
+ *
+ * Error beats loading, loading beats empty — the same precedence AG Grid uses.
+ * Rendered by `<DataTable>` above its viewport; exported so a shell of your
+ * own can reuse it instead of rebuilding the same three states. `.dt-error`,
+ * `.dt-progress` and the `.dt-menu-button` retry are the class names its own
+ * stylesheet targets — restyle through them rather than duplicating the markup.
+ */
+export function TableStatus({ loading, error, onRetry, labels }: TableStatusProps) {
+  if (error !== undefined && error !== null) {
+    const message = errorMessage(error)
+    return (
+      <div className="dt-error" role="alert">
+        <span>{message ? `${labels.loadFailed}: ${message}` : labels.loadFailed}</span>
+        {onRetry ? (
+          <button type="button" className="dt-menu-button" onClick={onRetry}>
+            {labels.retry}
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+  if (loading) return <div className="dt-progress" role="progressbar" aria-label={labels.loading} />
+  return null
+}
+
+/**
+ * Placeholder rows while the first page loads.
+ *
+ * @param widths - Rendered column widths, in order, filler included (0 for the filler).
+ * @param count - How many skeleton rows to render.
+ */
+interface SkeletonRowsProps {
+  widths: number[]
+  count: number
+}
+
+/**
+ * Placeholder rows while the first page loads.
+ *
+ * `<DataTable>` renders it in place of `<TableBody>` for as long as
+ * `awaitingFirstPage` holds. Exported for a shell of your own: give it the
+ * same `<tbody>` slot, the visible columns' widths in render order (0 for a
+ * filler column, to keep it blank), and a row count — `Math.min(pageSize, 8)`
+ * is what the built-in shell caps it at, so a page size in the thousands
+ * does not render thousands of skeleton rows.
+ */
+export function SkeletonRows({ widths, count }: SkeletonRowsProps) {
+  return (
+    <tbody>
+      {Array.from({ length: count }, (_, rowIndex) => (
+        <tr key={rowIndex} className="dt-skeleton-row" aria-hidden="true">
+          {widths.map((width, cellIndex) => (
+            <td key={cellIndex} className="dt-td">
+              {width > 0 ? <span className="dt-skeleton" style={{ width: `${40 + ((rowIndex * 7 + cellIndex * 13) % 45)}%` }} /> : null}
+            </td>
+          ))}
+        </tr>
+      ))}
+    </tbody>
+  )
+}
+
+/**
+ * Renders an unknown thrown value as display text.
+ *
+ * @param error - Whatever was thrown or passed as the `error` prop.
+ * @returns The `Error#message`, the string itself, or a `String(error)`
+ *   fallback. `String()` itself can throw — for an object created with
+ *   `Object.create(null)` (no prototype, so no inherited `toString`) or one
+ *   whose own `toString` throws — so that fallback is wrapped in a try/catch
+ *   and falls back to `""` rather than crashing the render.
+ */
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === "string") return error
+  try {
+    return String(error)
+  } catch {
+    return ""
+  }
+}

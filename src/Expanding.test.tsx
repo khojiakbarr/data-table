@@ -90,6 +90,21 @@ describe("expandable rows", () => {
     expect(screen.getByTestId("detail")).toHaveTextContent("Detail for Row one")
   })
 
+  it("stays open when the host hands the table a new data array every render", async () => {
+    // `data: items.slice(...)` inline is common; TanStack would otherwise
+    // collapse every row the moment the toggle's own re-render rebuilt it.
+    function Unstable() {
+      const instance = useDataTable({ id: "unstable", data: flat.map((row) => ({ ...row })), columns })
+      return <DataTable instance={instance} renderDetail={() => <div data-testid="detail" />} />
+    }
+    const user = userEvent.setup()
+    render(<Unstable />)
+
+    await user.click(screen.getAllByRole("button", { name: /expand row/i })[0] as HTMLElement)
+
+    expect(screen.getByTestId("detail")).toBeInTheDocument()
+  })
+
   it("closes the panel again", async () => {
     const user = userEvent.setup()
     render(<WithDetail />)

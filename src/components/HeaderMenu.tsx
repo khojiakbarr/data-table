@@ -1,5 +1,6 @@
 import type { Column, RowData } from "@tanstack/react-table"
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 
@@ -10,6 +11,9 @@ import type { DataTableFeatureFlags, DataTableLabels } from "../types"
  * visibility — so the Columns panel can stay a plain list of what is shown and
  * in what order.
  */
+
+/** Smallest gap kept between the menu and the edge of the window. */
+const VIEWPORT_MARGIN_PX = 8
 
 export interface HeaderMenuPosition {
   x: number
@@ -36,6 +40,7 @@ export function HeaderMenu<TData extends RowData>({
   onClose,
 }: HeaderMenuProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
+  const placement = useClampedPlacement(ref, position)
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -71,7 +76,7 @@ export function HeaderMenu<TData extends RowData>({
       ref={ref}
       role="menu"
       aria-label={labels.columnActions}
-      style={{ left: position.x, top: position.y }}
+      style={{ left: placement.x, top: placement.y }}
     >
       {flags.sorting && column.getCanSort() ? (
         <>
@@ -141,7 +146,7 @@ export function HeaderMenu<TData extends RowData>({
         </>
       ) : null}
 
-      {flags.resizing ? (
+      {flags.resizing && column.getCanResize() ? (
         <>
           <button type="button" role="menuitem" className="dt-menu-item" onClick={run(onAutosize)}>
             {labels.autosize}
@@ -178,4 +183,39 @@ export function HeaderMenu<TData extends RowData>({
       ) : null}
     </div>
   )
+}
+
+/**
+ * Where to put the menu so that all of it is on screen.
+ *
+ * It opens at the pointer or under the ⋮ button, and for the last column that
+ * is usually within a menu's width of the window edge. The menu is laid out
+ * once at the requested spot, measured, and moved before paint.
+ *
+ * @param ref - The menu element.
+ * @param requested - Where the caller wants the menu's top-left corner.
+ * @returns The corner to render at.
+ */
+function useClampedPlacement(
+  ref: React.RefObject<HTMLDivElement | null>,
+  requested: HeaderMenuPosition,
+): HeaderMenuPosition {
+  const [placement, setPlacement] = useState(requested)
+
+  useIsomorphicLayoutEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const { width, height } = element.getBoundingClientRect()
+    setPlacement({
+      x: clampToViewport(requested.x, width, window.innerWidth),
+      y: clampToViewport(requested.y, height, window.innerHeight),
+    })
+  }, [ref, requested])
+
+  return placement
+}
+
+function clampToViewport(start: number, size: number, viewport: number): number {
+  const furthest = viewport - size - VIEWPORT_MARGIN_PX
+  return Math.max(VIEWPORT_MARGIN_PX, Math.min(start, furthest))
 }

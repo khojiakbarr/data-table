@@ -113,8 +113,14 @@ export function pruneLayout(
   const visibility = keepKeys(stored.columnVisibility)
   if (visibility) pruned.columnVisibility = visibility
 
+  // A width that is not a finite positive number ends up as `width: NaN` on a
+  // <col> and on the table itself; better to fall back to the declared size.
   const sizing = keepKeys(stored.columnSizing)
-  if (sizing) pruned.columnSizing = sizing
+  if (sizing) {
+    pruned.columnSizing = Object.fromEntries(
+      Object.entries(sizing).filter(([, width]) => Number.isFinite(width) && width > 0),
+    )
+  }
 
   if (stored.columnPinning) {
     pruned.columnPinning = {
@@ -124,6 +130,10 @@ export function pruneLayout(
   }
   if (stored.sorting) {
     pruned.sorting = stored.sorting.filter((entry) => known.has(entry.id))
+  }
+
+  if (typeof stored.pageSize === "number" && Number.isFinite(stored.pageSize) && stored.pageSize > 0) {
+    pruned.pageSize = stored.pageSize
   }
 
   return pruned

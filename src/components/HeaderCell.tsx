@@ -1,20 +1,35 @@
 import type { Header, RowData } from "@tanstack/react-table"
 import { flexRender } from "@tanstack/react-table"
-import { useState, type CSSProperties, type DragEvent } from "react"
+import {
+  useState,
+  type CSSProperties,
+  type DragEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type TouchEvent,
+} from "react"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
-import { pinnedStyle } from "../core/pinning"
+import { classNames } from "../core/classNames"
+import { headerPinning, leafColumnsOf } from "../core/pinning"
 import { dropSideAt, type DropSide } from "../core/reorder"
+import { clampColumnWidth } from "../core/sizing"
 
 /**
  * One header cell: the sort control, the drag target for reordering, and the
  * resize handle, on top of the sticky positioning a pinned column needs.
  *
  * These three interactions share an element and must not trigger each other.
- * The resize handle stops propagation so dragging it never starts a column
- * drag, and `draggable` is switched off for the duration of a resize so the
- * browser's drag machinery stays out of the way.
+ * The resize handle cancels the mousedown default so the browser never starts
+ * a native drag of the header underneath it, `draggable` is switched off for
+ * the duration of a resize, and a drag that does start from one of the
+ * buttons is refused at `dragstart` — which fires on the draggable `<th>`,
+ * never on the button itself.
  */
+
+/** Keyboard resize: one arrow press, and one with Shift held. */
+const KEY_STEP_PX = 10
+const KEY_COARSE_STEP_PX = 50
 
 interface HeaderCellProps<TData extends RowData> {
   header: Header<DataTableFeatures, TData, unknown>
@@ -25,6 +40,8 @@ interface HeaderCellProps<TData extends RowData> {
   /** Open the per-column action menu at a viewport position. */
   onOpenMenu: (at: { x: number; y: number }) => void
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
+  /** Fit a leaf column to its content. A group's handle fits each of its leaves. */
+  onAutosize: (columnId: string) => void
 }
 
 export function HeaderCell<TData extends RowData>({
@@ -34,15 +51,17 @@ export function HeaderCell<TData extends RowData>({
   sticky,
   onReorder,
   onOpenMenu,
+  onAutosize,
 }: HeaderCellProps<TData>) {
   const { column } = header
   const [dropSide, setDropSide] = useState<DropSide | null>(null)
   const [isDragging, setIsDragging] = useState(false)
 
   /**
-   * A group header spans several leaf columns. Sorting, resizing and reordering
-   * all act on a single column, so none of them apply here — a group's width is
-   * the sum of its children's.
+   * A group header spans several leaf columns. Sorting and reordering act on
+   * a single column, so neither applies here. Resizing does: TanStack's
+   * handler snapshots every leaf under the header and scales each by the same
+   * percentage, which is how AG Grid treats a group's edge too.
    *
    * The test is on the COLUMN, not on `header.subHeaders`: a leaf column that
    * sits above its natural depth is rendered by a spanning placeholder header,
@@ -51,10 +70,11 @@ export function HeaderCell<TData extends RowData>({
    */
   const isGroup = column.columns.length > 0
 
-  const pinned = column.getIsPinned()
+  const pinning = headerPinning(header)
+  const pinned = pinning.side
   const canSort = flags.sorting && !isGroup && column.getCanSort()
-  const canResize = flags.resizing && !isGroup && column.getCanResize()
-  const canDrag = flags.reordering && !isGroup && !column.getIsPinned()
+  const canResize = flags.resizing && column.getCanResize()
+  const canDrag = flags.reordering && !isGroup && !pinned
   const isResizing = column.getIsResizing()
   const sorted = column.getIsSorted()
 
@@ -62,6 +82,12 @@ export function HeaderCell<TData extends RowData>({
     sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none"
 
   const handleDragStart = (event: DragEvent<HTMLTableCellElement>) => {
+    // `dragstart` is dispatched at the draggable ancestor, so this is the only
+    // place a drag that began on the kebab or the resize handle can be refused.
+    if ((event.target as HTMLElement).closest(".dt-resizer, .dt-kebab")) {
+      event.preventDefault()
+      return
+    }
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData("text/plain", column.id)
     setIsDragging(true)
@@ -83,19 +109,54 @@ export function HeaderCell<TData extends RowData>({
     if (draggedId && draggedId !== column.id) onReorder(draggedId, column.id, side)
   }
 
-  const className = [
+  const startResize = (event: MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    // The owning document, so a table in a popped-out window resizes there.
+    header.getResizeHandler(event.currentTarget.ownerDocument)(event)
+  }
+
+  const handleResizerMouseDown = (event: MouseEvent<HTMLButtonElement>) => {
+    // Only the primary button resizes. Its default action — focusing the
+    // button, starting a text selection or a native drag of the header — is
+    // unwanted in every case.
+    if (event.button !== 0) return
+    event.preventDefault()
+    startResize(event)
+  }
+
+  /** Fit this column, or every leaf of this group, to its content. */
+  const fit = () => leafColumnsOf(header).forEach((leaf) => onAutosize(leaf.id))
+
+  const handleResizerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      fit()
+      return
+    }
+    if (isGroup) return
+    // "Outward" is the direction the handle sits on: right in LTR, left in RTL.
+    const rtl = column.table.options.columnResizeDirection === "rtl"
+    const outward = rtl ? "ArrowLeft" : "ArrowRight"
+    const inward = rtl ? "ArrowRight" : "ArrowLeft"
+    const step = event.shiftKey ? KEY_COARSE_STEP_PX : KEY_STEP_PX
+    const delta = event.key === outward ? step : event.key === inward ? -step : 0
+    if (delta === 0) return
+    event.preventDefault()
+    const width = clampColumnWidth(column, column.getSize() + delta)
+    column.table.setColumnSizing((previous) => ({ ...previous, [column.id]: width }))
+  }
+
+  const className = classNames(
     "dt-th",
-    isGroup ? "dt-th-group" : "",
-    pinned ? "dt-pinned" : "",
-    pinnedEdgeClass(header),
-    isResizing ? "dt-resizing" : "",
-    canDrag ? "dt-draggable" : "",
-    isDragging ? "dt-dragging" : "",
-    dropSide === "start" ? "dt-drop-start" : "",
-    dropSide === "end" ? "dt-drop-end" : "",
-  ]
-    .filter(Boolean)
-    .join(" ")
+    isGroup && "dt-th-group",
+    pinned && "dt-pinned",
+    pinning.isInnerEdge && (pinned === "start" ? "dt-pinned-start-last" : "dt-pinned-end-first"),
+    isResizing && "dt-resizing",
+    canDrag && "dt-draggable",
+    isDragging && "dt-dragging",
+    dropSide === "start" && "dt-drop-start",
+    dropSide === "end" && "dt-drop-end",
+  )
 
   /**
    * No width here: column widths come from the <colgroup>, which is the only
@@ -106,7 +167,7 @@ export function HeaderCell<TData extends RowData>({
     ...(sticky
       ? { top: `calc(var(--dt-header-height) * ${header.depth - 1})` }
       : {}),
-    ...pinnedStyle(column),
+    ...pinning.style,
   }
 
   const label = flexRender(column.columnDef.header, header.getContext())
@@ -121,6 +182,7 @@ export function HeaderCell<TData extends RowData>({
       rowSpan={header.rowSpan > 1 ? header.rowSpan : undefined}
       className={className}
       style={style}
+      data-column-id={column.id}
       aria-sort={canSort ? ariaSort : undefined}
       draggable={canDrag && !isResizing}
       onDragStart={canDrag ? handleDragStart : undefined}
@@ -139,9 +201,9 @@ export function HeaderCell<TData extends RowData>({
               onOpenMenu({ x: event.clientX, y: event.clientY })
             }
       }
-      title={canDrag ? labels.dragHint : undefined}
     >
-      <div className="dt-th-inner">
+      {/* The tooltip lives on the label area so the buttons keep their own. */}
+      <div className="dt-th-inner" title={canDrag ? labels.dragHint : undefined}>
         {canSort ? (
           <button
             type="button"
@@ -164,6 +226,7 @@ export function HeaderCell<TData extends RowData>({
         <button
           type="button"
           className="dt-kebab"
+          title={labels.columnActions}
           aria-label={`${columnName}: ${labels.columnActions}`}
           aria-haspopup="menu"
           onClick={(event) => {
@@ -171,7 +234,6 @@ export function HeaderCell<TData extends RowData>({
             const rect = event.currentTarget.getBoundingClientRect()
             onOpenMenu({ x: rect.left, y: rect.bottom + 2 })
           }}
-          onDragStart={(event) => event.preventDefault()}
         >
           <svg width="3" height="13" viewBox="0 0 3 13" aria-hidden="true" fill="currentColor">
             <circle cx="1.5" cy="2" r="1.3" />
@@ -185,33 +247,16 @@ export function HeaderCell<TData extends RowData>({
         <button
           type="button"
           className="dt-resizer"
+          title={labels.resizeColumn}
           aria-label={`${columnName}: ${labels.resizeColumn}`}
-          onMouseDown={(event) => {
-            event.stopPropagation()
-            header.getResizeHandler()(event)
-          }}
-          onTouchStart={(event) => {
-            event.stopPropagation()
-            header.getResizeHandler()(event)
-          }}
-          onDragStart={(event) => event.preventDefault()}
-          onDoubleClick={() => column.resetSize()}
+          onMouseDown={handleResizerMouseDown}
+          onTouchStart={startResize}
+          onDoubleClick={fit}
+          onKeyDown={handleResizerKeyDown}
         />
       ) : null}
     </th>
   )
-}
-
-/** Only the inner edge of a pinned group casts a shadow over scrolling cells. */
-function pinnedEdgeClass<TData extends RowData>(
-  header: Header<DataTableFeatures, TData, unknown>,
-): string {
-  const pinned = header.column.getIsPinned()
-  if (!pinned) return ""
-  const group = header.column.table.getPinnedLeafColumns(pinned)
-  const index = header.column.getPinnedIndex()
-  if (pinned === "start") return index === group.length - 1 ? "dt-pinned-start-last" : ""
-  return index === 0 ? "dt-pinned-end-first" : ""
 }
 
 function sortActionLabel(

@@ -92,6 +92,52 @@ describe("useDebouncedSave", () => {
     expect(saves[0]?.columnSizing).toEqual({ a: 240 })
   })
 
+  it("keeps waiting through re-renders that only swap the adapter object", () => {
+    // The documented usage builds the adapter inline, so every render of the
+    // host passes a new object. That must not restart the wait.
+    const saves: TableLayout[] = []
+    const adapter = (): LayoutStorage => ({
+      load: () => null,
+      save: (_id, layout) => void saves.push(layout),
+      clear: () => undefined,
+    })
+    const view = render(<Harness storage={adapter()} layout={layoutAt(100)} />)
+    const changed = layoutAt(180)
+
+    view.rerender(<Harness storage={adapter()} layout={changed} />)
+    for (let tick = 0; tick < 5; tick += 1) {
+      vi.advanceTimersByTime(100)
+      view.rerender(<Harness storage={adapter()} layout={changed} />)
+    }
+
+    expect(saves).toHaveLength(1)
+    expect(saves[0]?.columnSizing).toEqual({ a: 180 })
+  })
+
+  it("forgets a pending write when it is disabled, instead of flushing it", () => {
+    const { storage, saves } = makeStorage()
+    const view = render(<Harness storage={storage} layout={layoutAt(100)} />)
+
+    view.rerender(<Harness storage={storage} layout={layoutAt(180)} />)
+    // A reset inside the window: the reset layout is not a user change.
+    view.rerender(<Harness storage={storage} layout={layoutAt(100)} enabled={false} />)
+    vi.advanceTimersByTime(400)
+    view.unmount()
+
+    expect(saves).toHaveLength(0)
+  })
+
+  it("flushes when the page is hidden", () => {
+    const { storage, saves } = makeStorage()
+    const view = render(<Harness storage={storage} layout={layoutAt(100)} />)
+
+    view.rerender(<Harness storage={storage} layout={layoutAt(180)} />)
+    window.dispatchEvent(new Event("pagehide"))
+
+    expect(saves).toHaveLength(1)
+    expect(saves[0]?.columnSizing).toEqual({ a: 180 })
+  })
+
   it("collapses a whole drag into a single write", () => {
     const { storage, saves } = makeStorage()
     const view = render(<Harness storage={storage} layout={layoutAt(100)} />)

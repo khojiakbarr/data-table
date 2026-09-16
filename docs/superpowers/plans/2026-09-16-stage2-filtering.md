@@ -3501,6 +3501,102 @@ export function collectSearchFields<TData>(
 }
 ```
 
+> **Correction (found in review of Task 7):** the snippet above makes `fields` a
+> function of *whichever rows happen to be sampled*, not of the searchable set
+> alone, and its own JSDoc claimed otherwise. A column with no declared
+> `meta.searchable` and no sampled value (`sampleValue === undefined` — no rows
+> yet, or every sampled row is null for that column) fell through to `false`
+> exactly like a column positively known not to be text — the two are
+> indistinguishable in the returned `string[]`. Two host-visible failure modes
+> follow once this is wired in Task 9's `resolvedSearchFields`: (1) a
+> server-mode table mounted with a restored search term publishes `search:
+> null` on its first query, because `data` is `[]` and every column reads as
+> unsearchable, then a second query fires once rows land; (2) paging in server
+> mode recomputes `fields` from each page's own rows, so a nullable text column
+> null across one page's *sampled* rows (only the first `SAMPLE_ROWS = 20`, per
+> `filterKinds.ts`) but not another's silently narrows or widens `fields` page
+> to page — different columns searched for the same text, so page 2 can repeat
+> or drop rows relative to page 1, and `useTableQuery` (Task 9) re-announces on
+> every change with nothing to dampen an A/B/A oscillation.
+>
+> Fixed the way `collectFilterKinds` already handles the identical ambiguity —
+> by not guessing. `collectSearchFields` now returns `{ fields: string[],
+> unresolved: string[] }`: `unresolved` holds the ids of visible,
+> accessor-backed columns with nothing declared and nothing sampled, kept out
+> of `fields` without being folded into a `false` that claims certainty. Use
+> this shape instead of the bare `string[]` above:
+>
+> ```ts
+> /**
+>  * {@link collectSearchFields}'s answer: what it could resolve, and what it could not.
+>  */
+> export interface SearchFieldsResult {
+>   /** Leaf column ids known to be searched, sorted. */
+>   fields: string[]
+>   /**
+>    * Visible, accessor-backed leaf ids with no declared `meta.searchable` and
+>    * no sampled value to infer one from, sorted. Neither in `fields` nor
+>    * excluded from it — unresolved, not `false`.
+>    */
+>   unresolved: string[]
+> }
+>
+> export function collectSearchFields<TData>(
+>   columns: readonly FilterColumnDefShape<TData>[],
+>   rows: readonly TData[],
+>   visibility: Record<string, boolean>,
+> ): SearchFieldsResult {
+>   const fields: string[] = []
+>   const unresolved: string[] = []
+>   for (const [id, facts] of collectColumnFacts(columns, rows)) {
+>     const visible = visibility[id] ?? true
+>     if (!facts.hasAccessor || !visible) continue
+>     if (facts.meta?.searchable === undefined && facts.sampleValue === undefined) {
+>       unresolved.push(id)
+>       continue
+>     }
+>     if (isSearchableColumn(facts, visible)) fields.push(id)
+>   }
+>   return { fields: fields.sort(compareIds), unresolved: unresolved.sort(compareIds) }
+> }
+> ```
+>
+> (`compareIds` is the same `(a, b) => (a < b ? -1 : a > b ? 1 : 0)` inlined
+> above, factored out since it is now used twice in the file.) `isSearchableColumn`
+> is unchanged — it still returns a plain boolean and still reads an unsampled
+> column as `false`, because a single column in isolation has no better answer
+> to give; only the aggregate walk can tell "no evidence yet" apart from
+> "evidence of not being text", so that is where the distinction has to live.
+>
+> **Task 9's `resolvedSearchFields` must consume the new shape**, not treat
+> `collectSearchFields(...)` as a `string[]`. Replace that memo's inference
+> branch with:
+>
+> ```ts
+> const { fields, unresolved } = collectSearchFields(columns, data, layout.columnVisibility)
+> return [...fields, ...unresolved].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+> ```
+>
+> i.e. keep including an id while it stays unresolved, rather than dropping it —
+> which is what fixes both failure modes above: an empty first fetch no longer
+> excludes every column, and a column merely null within one page's sample
+> stays included instead of narrowing that page's search. The cost is the
+> opposite, rarer edge: a Date or boolean column can read as included on a page
+> where its sample happens to be all-null. A server-mode host that wants a
+> field list that never depends on which page is loaded should declare
+> `meta.searchable` on the columns it cares about, or pass
+> `filtering.searchFields` outright — both already bypass inference entirely.
+> Document this in the "Which columns `fields` holds" paragraph Task 10 adds to
+> the README.
+>
+> `search.test.ts` gains four tests pinning this: an empty-`rows` call reports
+> its accessor-backed columns as `unresolved` rather than absent from both
+> lists; a column null across a 20-row sample (with a real value only past
+> `SAMPLE_ROWS`, showing the cap is respected) stays `unresolved`; an explicit
+> `meta.searchable: false` stays out of both `fields` and `unresolved`, since it
+> is a definite answer, not an ambiguous one; and a hidden column is excluded
+> from `unresolved` the same way it already was from `fields`.
+
 In `src/index.ts`, replace the `filterKinds` export line added in Task 5
 
 ```ts
@@ -3517,7 +3613,13 @@ and immediately after the `export type { FilterColumnDefShape, FilterKindSource 
 
 ```ts
 export { collectSearchFields, isSearchableColumn } from "./core/search"
+export type { SearchFieldsResult } from "./core/search"
 ```
+
+> **Correction (found in review of Task 7):** the `SearchFieldsResult` type
+> export is new with the `{ fields, unresolved }` shape above and was not in
+> the original snippet — add it alongside the value export, not as a
+> replacement of it.
 
 - [ ] **Step 4: Run the checks**
 
@@ -3532,6 +3634,15 @@ treat those as a floor, not an equality, and diff the count before/after this ta
 `filterKinds.test.ts`'s existing tests (nine, as of the review rounds that added the
 "omits an undeclared column…" regression test — see the Step 3 correction above) must still pass
 unchanged — the refactor is behaviour-preserving, and that is what proves it.
+
+> **Correction (found in review of Task 7):** a review round on Task 7 itself
+> added four more regression tests to `search.test.ts` (see the Step 3
+> correction above) pinning the `unresolved` distinction, plus one more to
+> `isSearchableColumn`'s own suite documenting that it still answers `false`
+> for an unsampled column — the ambiguity is resolved one level up, in
+> `collectSearchFields`, not inside the per-column predicate. Treat "5 more
+> tests" above as this task's original floor and expect 5 further on top of it
+> once these review fixes are applied.
 
 - [ ] **Step 5: Commit**
 
@@ -4173,7 +4284,16 @@ last two lines are `    totals: isServer,` and `  }`, and immediately **before**
     if (!filteringEnabled) return []
     const declared = filteringOptions?.searchFields
     if (declared) return [...declared].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-    return collectSearchFields(columns, data, layout.columnVisibility)
+    const { fields, unresolved } = collectSearchFields(columns, data, layout.columnVisibility)
+    // A column with nothing declared and no sampled value yet stays included
+    // rather than dropped — see the Task 7 review correction next to
+    // `collectSearchFields`'s own definition. Folding `unresolved` into
+    // exclusion (treating `collectSearchFields` as returning a bare
+    // `string[]`, which is what an earlier draft of this task did) empties
+    // `resolvedSearchFields` on a server-mode table's first render, before
+    // `data` has arrived, and makes a nullable text column's inclusion depend
+    // on which page happens to be loaded.
+    return [...fields, ...unresolved].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
   }, [filteringEnabled, filteringOptions?.searchFields, columns, data, layout.columnVisibility])
 
   /*

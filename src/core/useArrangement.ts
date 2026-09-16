@@ -18,6 +18,12 @@ export const EMPTY_LAYOUT: TableLayout = {
   search: "",
 }
 
+/** A layout slice that holds filter state rather than column arrangement. */
+type FilterSlice = "filters" | "search"
+
+/** Every other layout slice: the arrangement proper. */
+type ArrangementSlice = Exclude<keyof TableLayout, FilterSlice>
+
 /**
  * The slices that hold filter state rather than column arrangement.
  *
@@ -25,7 +31,30 @@ export const EMPTY_LAYOUT: TableLayout = {
  * an *arrangement*: a search term must not light up the Columns tab's Reset
  * link, and with `filtering.persist: false` they must never reach storage.
  */
-const FILTER_SLICES = new Set<keyof TableLayout>(["filters", "search"])
+const FILTER_SLICES = new Set<keyof TableLayout>(["filters", "search"] satisfies FilterSlice[])
+
+/**
+ * Every other slice: what the table means by an *arrangement*.
+ *
+ * Written out as an object literal, because `satisfies Record<…>` is what
+ * makes an omission a compile error — and an omission is exactly what went
+ * wrong when this list was `Object.keys(EMPTY_LAYOUT)`: `pageSize` is optional
+ * and so absent there, yet it is persisted, pruned and reset like any other
+ * arrangement. A layout whose only change was rows-per-page came back from
+ * storage reading as *not* customised, and the Columns tab's Reset link
+ * disappeared on reload for a layout `resetLayout` would still have changed.
+ *
+ * `Object.keys` then flattens it to the list the loops want; its return is
+ * typed `string[]` however narrow its argument, so the key type is restated.
+ */
+const ARRANGEMENT_SLICES = Object.keys({
+  columnOrder: true,
+  columnVisibility: true,
+  columnPinning: true,
+  columnSizing: true,
+  sorting: true,
+  pageSize: true,
+} satisfies Record<ArrangementSlice, true>) as ArrangementSlice[]
 
 /** The layout plus what the table knows about where it came from. */
 interface Arrangement {
@@ -50,6 +79,16 @@ export interface UseArrangementOptions {
   columnIds: readonly string[]
   /** Each column's resolved filter kind, so a stored condition can be checked against it. */
   filterKinds?: ReadonlyMap<string, FilterKind | false> | undefined
+  /**
+   * Whether the filtering feature exists for this table at all.
+   *
+   * `false` keeps the filter slices empty on load — `initialLayout`'s and
+   * storage's alike — so a table with no filter surfaces cannot publish a
+   * condition nothing is able to clear. Mutation is gated at its own choke
+   * point (`updateFilters` / `updateSearch` in `useDataTable`), which is the
+   * only other way filter state reaches the layout. Default true.
+   */
+  filteringEnabled?: boolean
   /** Keep `filters` and `search` out of storage. Default true. */
   persistFilters?: boolean
 }
@@ -73,8 +112,17 @@ export function useArrangement({
   initialLayout,
   columnIds,
   filterKinds,
+  filteringEnabled = true,
   persistFilters = true,
 }: UseArrangementOptions) {
+  /*
+   * Whether any filter state may survive a visit. With the feature off there
+   * is none to keep, whatever `persistFilters` says — and reading the two
+   * flags separately is how `filtering: false` used to restore stored filters
+   * it had just refused to seed.
+   */
+  const keepFilters = filteringEnabled && persistFilters
+
   // Read storage once per table id. Re-reading on every render would fight the
   // user: a change is saved, then immediately re-applied from disk.
   //
@@ -84,18 +132,22 @@ export function useArrangement({
   // ids silently reorders every column that is not in it.
   const [arrangement, setArrangement] = useState<Arrangement>(() => {
     const stored = store.load(id)
-    // `initialLayout` is a hand-written literal — a host's own default, or a
-    // URL a caller pre-parsed — so it gets the same treatment a stored layout
-    // does: `filters` is pruned and rebuilt in canonical key order (or an
-    // unknown-column condition would reach the wire forever, and a
-    // differently-ordered one would give `instance.query` a fresh identity on
-    // the user's first click), and a non-string `search` cannot reach
-    // `.trim()` in `filtering.isFiltered`.
-    const seeded = { ...EMPTY_LAYOUT, ...initialLayout }
-    seeded.filters = pruneFilters(seeded.filters, columnIds, filterKinds)
-    if (typeof seeded.search !== "string") seeded.search = ""
+    const seeded = seedLayout(initialLayout, columnIds, filterKinds, filteringEnabled)
     const storedOrEmpty = stored ?? {}
-    const layout = { ...seeded, ...pruneLayout(storedOrEmpty, columnIds, filterKinds) }
+    const storedPruned = pruneLayout(storedOrEmpty, columnIds, filterKinds)
+    if (!keepFilters) {
+      /*
+       * The read half of the opt-out. Enforcing it on the write side alone
+       * left a table that already had filter state in storage restoring it on
+       * every mount and never able to shed it: nothing rewrites that entry
+       * unless a *column* also changes, so `persist: false` added in a later
+       * release — or wired to a user preference — did nothing at all for every
+       * returning user.
+       */
+      delete storedPruned.filters
+      delete storedPruned.search
+    }
+    const layout = { ...seeded, ...storedPruned }
     /*
      * The "nothing arranged" baseline to compare each slice against — not
      * `seeded` itself, because `pruneLayout` does more than filter to known
@@ -112,18 +164,17 @@ export function useArrangement({
      * would only coincidentally differ.
      */
     const naturalStored: Partial<TableLayout> = {}
-    if ("columnOrder" in storedOrEmpty) naturalStored.columnOrder = seeded.columnOrder
-    if ("columnVisibility" in storedOrEmpty) naturalStored.columnVisibility = seeded.columnVisibility
-    if ("columnPinning" in storedOrEmpty) naturalStored.columnPinning = seeded.columnPinning
-    if ("columnSizing" in storedOrEmpty) naturalStored.columnSizing = seeded.columnSizing
-    if ("sorting" in storedOrEmpty) naturalStored.sorting = seeded.sorting
+    for (const key of ARRANGEMENT_SLICES) {
+      if (key in storedOrEmpty) copySlice(naturalStored, seeded, key)
+    }
     const naturalLayout = { ...seeded, ...pruneLayout(naturalStored, columnIds, filterKinds) }
     return {
       layout,
       // A saved search or filter must not make the Columns tab offer a Reset
-      // on the next visit either — only the arrangement slices count.
-      isCustomised: (Object.keys(EMPTY_LAYOUT) as (keyof TableLayout)[]).some(
-        (key) => !FILTER_SLICES.has(key) && !layoutSliceEqual(layout[key], naturalLayout[key]),
+      // on the next visit either — only the arrangement slices count, which
+      // is what `ARRANGEMENT_SLICES` is.
+      isCustomised: ARRANGEMENT_SLICES.some(
+        (key) => !layoutSliceEqual(layout[key], naturalLayout[key]),
       ),
       hasUnsavedChanges: false,
     }
@@ -131,23 +182,24 @@ export function useArrangement({
   const initialRef = useRef(initialLayout)
 
   // Read through a ref so `updateSlice` below stays stable across renders.
-  const persistFiltersRef = useRef(persistFilters)
-  persistFiltersRef.current = persistFilters
+  const keepFiltersRef = useRef(keepFilters)
+  keepFiltersRef.current = keepFilters
 
   /*
    * What actually reaches storage.
    *
-   * With `persist: false` the filter slices are blanked here, at the write
-   * boundary, rather than narrowed out of the object that also feeds
-   * `useTable`: `pruneLayout` runs only on load, and `LayoutStorage.save` is
-   * typed to take a complete layout.
+   * When the filter slices are opted out — `persist: false`, or `filtering:
+   * false`, which implies it — they are blanked here, at the write boundary,
+   * rather than narrowed out of the object that also feeds `useTable`:
+   * `pruneLayout` runs only on load, and `LayoutStorage.save` is typed to take
+   * a complete layout.
    *
    * Held in a ref and compared structurally, the way `useTableQuery` holds its
    * query: `useDebouncedSave` keys its timer on this object's identity, so a
    * fresh-but-equal one per keystroke would re-arm the 350 ms save with
    * identical content — one storage write, or one network request, per pause.
    */
-  const candidate = persistFilters
+  const candidate = keepFilters
     ? arrangement.layout
     : { ...arrangement.layout, filters: EMPTY_LAYOUT.filters, search: EMPTY_LAYOUT.search }
   const persistedRef = useRef<TableLayout | null>(null)
@@ -180,7 +232,7 @@ export function useArrangement({
           // a reason that has nothing to do with columns.
           isCustomised: previous.isCustomised || !isFilterSlice,
           hasUnsavedChanges:
-            previous.hasUnsavedChanges || !isFilterSlice || persistFiltersRef.current,
+            previous.hasUnsavedChanges || !isFilterSlice || keepFiltersRef.current,
         }
       })
     },
@@ -189,25 +241,70 @@ export function useArrangement({
 
   const resetLayout = useCallback(() => {
     store.clear(id)
-    // Same normalisation as the mount initialiser above, and for the same
-    // reason: `initialRef.current` is the same untrusted hand-written literal,
-    // and without it a reset would re-introduce whatever unvalidated
-    // conditions the mount-time prune above was written to keep out.
-    const seeded = { ...EMPTY_LAYOUT, ...initialRef.current }
-    seeded.filters = pruneFilters(seeded.filters, columnIds, filterKinds)
-    if (typeof seeded.search !== "string") seeded.search = ""
     setArrangement({
-      layout: seeded,
+      layout: seedLayout(initialRef.current, columnIds, filterKinds, filteringEnabled),
       isCustomised: false,
       hasUnsavedChanges: false,
     })
-  }, [store, id, columnIds, filterKinds])
+  }, [store, id, columnIds, filterKinds, filteringEnabled])
 
   return { layout: arrangement.layout, isCustomised: arrangement.isCustomised, updateSlice, resetLayout }
 }
 
 /** What {@link useArrangement} returns: the layout, its provenance flag, and the two ways to change it. */
 export type UseArrangementResult = ReturnType<typeof useArrangement>
+
+/**
+ * The declared starting layout, normalised.
+ *
+ * `initialLayout` is a hand-written literal — a host's own default, or a URL a
+ * caller pre-parsed — so it gets the same treatment a stored layout does:
+ * `filters` is pruned and rebuilt in canonical key order (or an unknown-column
+ * condition would reach the wire forever, and a differently-ordered one would
+ * give `instance.query` a fresh identity on the user's first click), and a
+ * non-string `search` cannot reach `.trim()` in `filtering.isFiltered`. With
+ * filtering off both slices are blanked outright: a condition declared there
+ * would otherwise be published by a table that has no surface able to clear it.
+ *
+ * Shared by the mount initialiser and `resetLayout`, which restore the same
+ * literal and so must reject exactly the same conditions.
+ *
+ * @param initialLayout - The caller's declared layout, or undefined.
+ * @param columnIds - Leaf column ids a condition may name.
+ * @param filterKinds - Each column's resolved filter kind, when known.
+ * @param filteringEnabled - Whether filter state is allowed at all.
+ * @returns A complete layout, safe to publish.
+ */
+function seedLayout(
+  initialLayout: Partial<TableLayout> | undefined,
+  columnIds: readonly string[],
+  filterKinds: ReadonlyMap<string, FilterKind | false> | undefined,
+  filteringEnabled: boolean,
+): TableLayout {
+  const seeded = { ...EMPTY_LAYOUT, ...initialLayout }
+  seeded.filters = filteringEnabled ? pruneFilters(seeded.filters, columnIds, filterKinds) : []
+  if (!filteringEnabled || typeof seeded.search !== "string") seeded.search = ""
+  return seeded
+}
+
+/**
+ * Copy one slice across, keeping the key's own type.
+ *
+ * A loop over a union of keys cannot write `target[key] = source[key]`
+ * directly — the write slot narrows to `never` — while one generic key at a
+ * time is exact.
+ *
+ * @param target - Layout being built.
+ * @param source - Layout to read the slice from.
+ * @param key - Which slice.
+ */
+function copySlice<TKey extends keyof TableLayout>(
+  target: Partial<TableLayout>,
+  source: TableLayout,
+  key: TKey,
+): void {
+  target[key] = source[key]
+}
 
 /**
  * Structural equality for a layout slice.

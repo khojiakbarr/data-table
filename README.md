@@ -504,11 +504,18 @@ an old layout never leaves a user with a phantom column or a missing one.
 dropped on load when its column is gone, when its shape does not match its
 operator, or when the column's filter kind has changed since. Pass
 `filtering: { persist: false }` to keep filters and the search box out of
-storage entirely, for a table you would rather have every visit start clean;
-nothing is then written for a filter change at all, which matters most for a
-server-backed adapter, where a write is a network request. A filter or a search
-never counts as *customising* the layout either way — the Columns tab's Reset
-link is about columns.
+storage entirely, for a table you would rather have every visit start clean:
+nothing is then written for a filter change at all — which matters most for a
+server-backed adapter, where a write is a network request — and anything an
+earlier visit had already stored is dropped on load rather than restored. A
+filter or a search never counts as *customising* the layout either way — the
+Columns tab's Reset link is about columns.
+
+**`filtering: false` turns the feature off, not just its surfaces.** No filter
+state enters the layout at all: nothing is restored from storage, nothing is
+taken from `initialLayout`, `query.filters` stays empty, and the mutators on
+`instance.filtering` do nothing. That is what stops a table you disabled from
+going on asking its backend for a filtered page nothing on screen can clear.
 
 ---
 

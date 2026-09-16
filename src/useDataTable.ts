@@ -26,7 +26,6 @@ import { deriveColumnId } from "./core/columnIds"
 import { collectFilterKinds } from "./core/filterKinds"
 import {
   pruneFilters,
-  rebuildCondition,
   type FilterCondition,
   type FilterModel,
   type FilterValueOption,
@@ -349,6 +348,13 @@ export function useDataTable<TData extends RowData>({
     initialLayout,
     columnIds,
     filterKinds,
+    /*
+     * Both, and not `persist` alone: `filteringOptions?.persist ?? true` reads
+     * `true` for `filtering: false` — `null?.persist` is `undefined` — so the
+     * two are combined where they are read, and `filtering: false` implies
+     * `persist: false` there rather than here.
+     */
+    filteringEnabled,
     persistFilters: filteringOptions?.persist ?? true,
   })
 
@@ -416,20 +422,36 @@ export function useDataTable<TData extends RowData>({
    * `autoResetPageIndex: false` is set for good server-mode reasons, and on
    * page 40 of 100 typing three characters would otherwise land the user on
    * page 3 of 3 of the results.
+   *
+   * Being the one path every mutator takes also makes them the whole mutation
+   * boundary for `filtering: false`, and gating them is what makes that option
+   * mean "off" rather than "the surfaces are hidden but the state still
+   * ships": without it a table a host had disabled went on publishing whatever
+   * was already in `query.filters`, with nothing left on screen able to clear
+   * it. The load half — `initialLayout` and storage — is `useArrangement`'s.
    */
   const updateFilters = useCallback(
     (updater: Updater<TableLayout["filters"]>) => {
+      if (!filteringEnabled) return
       updateSlice("filters", updater)
       resetPage()
     },
-    [updateSlice, resetPage],
+    [filteringEnabled, updateSlice, resetPage],
   )
   const updateSearch = useCallback(
     (text: string) => {
-      updateSlice("search", text)
+      if (!filteringEnabled) return
+      /*
+       * Coerced once here rather than at each caller: `setSearch` is this
+       * function verbatim and `setModel` takes the same untrusted input, while
+       * `filtering.isFiltered` calls `.trim()` on whatever lands in the slice —
+       * so a number from a JS host used to take the table down on every
+       * subsequent render.
+       */
+      updateSlice("search", typeof text === "string" ? text : "")
       resetPage()
     },
-    [updateSlice, resetPage],
+    [filteringEnabled, updateSlice, resetPage],
   )
 
   /*
@@ -622,15 +644,29 @@ export function useDataTable<TData extends RowData>({
 
   const setCondition = useCallback(
     (condition: FilterCondition) => {
-      // An editor that constrains nothing clears the column, because the
-      // constructor returns null for it.
-      const built = rebuildCondition(condition)
+      /*
+       * The same gate `setModel` and a stored layout go through, rather than
+       * the condition's own constructor alone: a column the table does not
+       * define, and a kind that no longer matches the column, are how a
+       * condition no editor could reach used to get onto `query.filters` and
+       * stay there — the stranded-filter case `pruneFilters` exists to
+       * prevent, arriving through the mutator instead of through storage. An
+       * editor that constrains nothing comes back empty too, and clears the
+       * column.
+       */
+      const [built] = pruneFilters([condition], columnIds, filterKinds)
+      // `pruneFilters` reads a malformed entry without dereferencing it, so
+      // the field being cleared is read just as carefully.
+      const field =
+        built?.field ??
+        (typeof condition === "object" && condition !== null ? condition.field : undefined)
+      if (field === undefined) return
       updateFilters((current) => {
-        const rest = current.filter((existing) => existing.field !== condition.field)
-        return built === null ? rest : [...rest, built]
+        const rest = current.filter((existing) => existing.field !== field)
+        return built === undefined ? rest : [...rest, built]
       })
     },
-    [updateFilters],
+    [updateFilters, columnIds, filterKinds],
   )
   const clearColumn = useCallback(
     (columnId: string) =>
@@ -653,7 +689,9 @@ export function useDataTable<TData extends RowData>({
        * the very API recommended for URL round-trips.
        */
       updateFilters(pruneFilters(model.filters ?? [], columnIds, filterKinds))
-      updateSearch(typeof model.search === "string" ? model.search : "")
+      // `updateSearch` is where a non-string is coerced, for every caller at
+      // once; a second check here would be the same rule written twice.
+      updateSearch(model.search)
     },
     [updateFilters, updateSearch, columnIds, filterKinds],
   )

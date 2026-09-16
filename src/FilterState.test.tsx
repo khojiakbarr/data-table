@@ -3,7 +3,8 @@ import { act, renderHook } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { localStorageLayout } from "./core/persistence"
 import type { FilterCondition } from "./core/filters"
-import { useDataTable, type DataTableFeatures } from "./useDataTable"
+import type { TableLayout } from "./types"
+import { useDataTable, type DataTableFeatures, type UseDataTableOptions } from "./useDataTable"
 
 /**
  * Filter state: where it lives, what it resets, and what it persists.
@@ -32,7 +33,13 @@ const data: Row[] = Array.from({ length: 300 }, (_, index) => ({
 const contains: FilterCondition = { kind: "text", field: "name", op: "contains", value: "7" }
 const over: FilterCondition = { kind: "number", field: "amount", op: "gt", value: 100 }
 
-const setup = (id: string, options: { persist?: boolean } = {}) =>
+interface SetupOptions {
+  persist?: boolean
+  filtering?: UseDataTableOptions<Row>["filtering"]
+  initialLayout?: Partial<TableLayout>
+}
+
+const setup = (id: string, options: SetupOptions = {}) =>
   renderHook(() =>
     useDataTable<Row>({
       id,
@@ -42,8 +49,16 @@ const setup = (id: string, options: { persist?: boolean } = {}) =>
       getRowId: (row) => row.id,
       storage: localStorageLayout(),
       ...(options.persist === undefined ? {} : { filtering: { persist: options.persist } }),
+      ...(options.filtering === undefined ? {} : { filtering: options.filtering }),
+      ...(options.initialLayout === undefined ? {} : { initialLayout: options.initialLayout }),
     }),
   )
+
+/** The layout as it actually reached storage, so a write can be asserted on. */
+const storedLayout = (id: string): Partial<TableLayout> | null => {
+  const raw = localStorage.getItem(`data-table:layout:${id}`)
+  return raw === null ? null : (JSON.parse(raw) as { layout: Partial<TableLayout> }).layout
+}
 
 beforeEach(() => localStorage.clear())
 afterEach(() => vi.useRealTimers())
@@ -115,6 +130,43 @@ describe("filter mutators", () => {
   it("counts a whitespace-only search as no search", () => {
     const { result } = setup("f7")
     act(() => result.current.filtering.setSearch("   "))
+    expect(result.current.filtering.isFiltered).toBe(false)
+  })
+
+  it("setCondition drops a condition on a column the table does not define", () => {
+    // Regression: `setCondition` ran only the condition's own constructor, so
+    // a field no editor can reach was published on `query.filters` forever —
+    // the stranded-filter case `pruneFilters` exists to prevent, arriving
+    // through the mutator instead of through storage.
+    const { result } = setup("f21")
+    const ghost: FilterCondition = { kind: "text", field: "ghost", op: "contains", value: "x" }
+
+    act(() => result.current.filtering.setCondition(ghost))
+
+    expect(result.current.filtering.conditions).toEqual([])
+    expect(result.current.query.filters).toEqual([])
+  })
+
+  it("setCondition drops a condition whose kind does not match the column", () => {
+    // A text condition on a numeric column is `ILIKE` on an integer column at
+    // the other end — an error, not a narrower result set.
+    const { result } = setup("f22")
+    const textOnNumber = { kind: "text", field: "amount", op: "contains", value: "1" } as FilterCondition
+
+    act(() => result.current.filtering.setCondition(textOnNumber))
+
+    expect(result.current.filtering.conditions).toEqual([])
+  })
+
+  it("setSearch coerces a non-string to empty instead of breaking every later render", () => {
+    // `filtering.isFiltered` calls `.trim()` on the slice; a JS host — or a
+    // cast — reaching `setSearch` with a number used to take the whole table
+    // down on the very next render.
+    const { result } = setup("f24")
+
+    act(() => result.current.filtering.setSearch(7 as unknown as string))
+
+    expect(result.current.filtering.search).toBe("")
     expect(result.current.filtering.isFiltered).toBe(false)
   })
 })
@@ -226,6 +278,94 @@ describe("persistence", () => {
     expect(second.result.current.isCustomised).toBe(false)
   })
 
+  it("persist: false sheds filters that an earlier visit had already stored", () => {
+    // Regression: `persist: false` was enforced on the write side only, so a
+    // table that already had filters in storage restored them on every mount
+    // and could never shed them — the option a host adds in a later release,
+    // or wires to a user preference, did nothing for every returning user.
+    vi.useFakeTimers()
+    const first = setup("f25")
+    act(() => first.result.current.filtering.setCondition(contains))
+    act(() => first.result.current.filtering.setSearch("kr"))
+    act(() => vi.advanceTimersByTime(400))
+    first.unmount()
+    vi.useRealTimers()
+
+    const second = setup("f25", { persist: false })
+
+    expect(second.result.current.filtering.conditions).toEqual([])
+    expect(second.result.current.filtering.search).toBe("")
+    expect(second.result.current.query.filters).toEqual([])
+  })
+
+  it("counts a stored page size as a customised layout on the next mount", () => {
+    // Regression: the mount-time derivation iterated `EMPTY_LAYOUT`'s keys,
+    // which have no `pageSize` — so the Reset link was there before a reload
+    // and gone after it, for a layout `resetLayout` would still change.
+    vi.useFakeTimers()
+    const first = setup("f26")
+    act(() => first.result.current.pagination.setPageSize(200))
+    act(() => vi.advanceTimersByTime(400))
+    expect(first.result.current.isCustomised).toBe(true)
+    first.unmount()
+    vi.useRealTimers()
+
+    const second = setup("f26")
+
+    expect(second.result.current.pagination.pageSize).toBe(200)
+    expect(second.result.current.isCustomised).toBe(true)
+  })
+
+  it("persist: false writes a column change without the filter state alongside it", () => {
+    // The write-boundary half of `persist: false`: a *column* change is worth
+    // saving, and the filter slices must not ride along with it.
+    vi.useFakeTimers()
+    const { result, unmount } = setup("f27", { persist: false })
+    act(() => result.current.filtering.setCondition(contains))
+    act(() => result.current.filtering.setSearch("kr"))
+    act(() => result.current.table.getColumn("amount")!.toggleVisibility(false))
+
+    act(() => vi.advanceTimersByTime(400))
+
+    expect(storedLayout("f27")).toMatchObject({
+      columnVisibility: { amount: false },
+      filters: [],
+      search: "",
+    })
+    unmount()
+    vi.useRealTimers()
+  })
+
+  it("persist: false does not let a later search cancel a pending column save", () => {
+    // `useDebouncedSave` drops the pending layout the moment `enabled` goes
+    // false, so a filter change that reset `hasUnsavedChanges` would throw
+    // away the column change that was still waiting out its 350 ms.
+    vi.useFakeTimers()
+    const { result, unmount } = setup("f28", { persist: false })
+    act(() => result.current.table.getColumn("amount")!.toggleVisibility(false))
+    act(() => vi.advanceTimersByTime(100))
+
+    act(() => result.current.filtering.setSearch("kr"))
+    act(() => vi.advanceTimersByTime(400))
+
+    expect(storedLayout("f28")).toMatchObject({ columnVisibility: { amount: false } })
+    unmount()
+    vi.useRealTimers()
+  })
+
+  it("keeps the layout customised when a search follows a column change", () => {
+    // Only the arrangement slices set the flag, but none of them may clear it
+    // either: a search after a column change used to make the Columns tab's
+    // Reset link disappear.
+    const { result } = setup("f29")
+    act(() => result.current.table.getColumn("amount")!.toggleVisibility(false))
+    expect(result.current.isCustomised).toBe(true)
+
+    act(() => result.current.filtering.setSearch("kr"))
+
+    expect(result.current.isCustomised).toBe(true)
+  })
+
   it("is on by default and off when filtering is false", () => {
     const enabled = setup("f14")
     expect(enabled.result.current.filtering.enabled).toBe(true)
@@ -277,6 +417,72 @@ describe("persistence", () => {
 
     expect(second.result.current.filtering.conditions).toEqual([over])
     expect(second.result.current.query.filters).toEqual([over])
+  })
+})
+
+describe("filtering: false", () => {
+  /*
+   * Regression, all four: `filtering: false` used to flip nothing but the
+   * `enabled` flag. A host that shipped it to turn the feature off kept
+   * sending stale stored filters to its backend forever, with no surface able
+   * to clear them.
+   */
+
+  it("restores no filter state from storage and publishes none", () => {
+    vi.useFakeTimers()
+    const first = setup("f30")
+    act(() => first.result.current.filtering.setCondition(contains))
+    act(() => first.result.current.filtering.setSearch("kr"))
+    act(() => vi.advanceTimersByTime(400))
+    first.unmount()
+    vi.useRealTimers()
+
+    const second = setup("f30", { filtering: false })
+
+    expect(second.result.current.filtering.conditions).toEqual([])
+    expect(second.result.current.filtering.search).toBe("")
+    expect(second.result.current.filtering.isFiltered).toBe(false)
+    expect(second.result.current.query.filters).toEqual([])
+  })
+
+  it("ignores filter state in a hand-written initialLayout", () => {
+    const { result } = setup("f31", {
+      filtering: false,
+      initialLayout: { filters: [contains], search: "kr" },
+    })
+
+    expect(result.current.filtering.conditions).toEqual([])
+    expect(result.current.filtering.search).toBe("")
+    expect(result.current.query.filters).toEqual([])
+  })
+
+  it("makes every mutator inert rather than writing state no surface can reach", () => {
+    const { result } = setup("f32", { filtering: false })
+
+    act(() => result.current.filtering.setCondition(contains))
+    act(() => result.current.filtering.setSearch("kr"))
+    act(() => result.current.filtering.setModel({ filters: [over], search: "kr" }))
+
+    expect(result.current.filtering.conditions).toEqual([])
+    expect(result.current.filtering.search).toBe("")
+    expect(result.current.query.filters).toEqual([])
+  })
+
+  it("keeps filter state out of storage even beside a column change", () => {
+    vi.useFakeTimers()
+    const { result, unmount } = setup("f33", { filtering: false })
+    act(() => result.current.filtering.setCondition(contains))
+    act(() => result.current.table.getColumn("amount")!.toggleVisibility(false))
+
+    act(() => vi.advanceTimersByTime(400))
+
+    expect(storedLayout("f33")).toMatchObject({
+      columnVisibility: { amount: false },
+      filters: [],
+      search: "",
+    })
+    unmount()
+    vi.useRealTimers()
   })
 })
 

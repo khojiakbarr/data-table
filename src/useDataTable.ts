@@ -603,12 +603,12 @@ export function useDataTable<TData extends RowData>({
   /*
    * `column.setFilterValue(condition)` keeps working for a host driving the
    * table through TanStack's own API: the value *is* the condition, so the
-   * entries map straight back to conditions — through `pruneFilters`, the same
-   * gate `setModel` and `setCondition` run, since this input is no more
-   * trusted. Without it, this path is how a condition no editor could reach
-   * gets onto `state.columnFilters` and `query.filters` and stays there: an
-   * unknown column id (`table.setColumnFilters([{ id: "ghost", … }])`), a
-   * condition whose kind no longer matches the column's resolved kind
+   * touched entry maps straight back to a condition — through `pruneFilters`,
+   * the same gate `setModel` and `setCondition` run, since this input is no
+   * more trusted. Without it, this path is how a condition no editor could
+   * reach gets onto `state.columnFilters` and `query.filters` and stays
+   * there: an unknown column id (`table.setColumnFilters([{ id: "ghost", … }])`),
+   * a condition whose kind no longer matches the column's resolved kind
    * (including a column declared `meta: { filter: false }`, for which
    * `resolveFilterKind` returns `false`), or two entries for the same field —
    * exactly the stranded-filter case `pruneFilters` exists to prevent,
@@ -616,20 +616,63 @@ export function useDataTable<TData extends RowData>({
    * unknown id straight through. Left unwired entirely, the default updater
    * would write to an atom that the controlled `state.columnFilters`
    * overrides, and `setFilterValue` would silently do nothing.
+   *
+   * Only the entry (or entries) TanStack actually changed are re-validated —
+   * the rest are folded back in as the already-canonical condition, exactly
+   * like `setCondition` does for the rest of the list. `filterKinds` is
+   * re-derived from `data` (see the memo above) and can drift between
+   * renders: a column with no declared `meta.filter` infers its kind from
+   * sampled data, so it can read as unresolved on an empty first render and
+   * resolve once data arrives. Running every entry, touched or not, back
+   * through `pruneFilters` on every write means a condition set while a
+   * column's kind was still unresolved gets silently re-judged — and
+   * possibly dropped — the next time an unrelated column's filter changes,
+   * with no error and a trigger ("which page happened to load first") the
+   * user has no way to correlate with the action. `setCondition` already
+   * gives untouched conditions this guarantee; an entry counts as untouched
+   * here when TanStack hands back the very same `value` reference it was
+   * given, which is what `column_setFilterValue` does for every column but
+   * the one it is changing.
    */
   const updateFiltersFromTanStack = useCallback(
     (updater: Updater<ColumnFiltersState>) => {
       updateFilters((current) => {
+        const beforeById = new Map(current.map((condition) => [condition.field, condition]))
         const before: ColumnFiltersState = current.map((condition) => ({
           id: condition.field,
           value: condition,
         }))
-        const candidates = apply(updater, before).flatMap((entry) => {
+
+        const order: string[] = []
+        const seenIds = new Set<string>()
+        const touchedFields = new Set<string>()
+        const touchedCandidates: FilterCondition[] = []
+        for (const entry of apply(updater, before)) {
+          if (seenIds.has(entry.id)) continue
+          seenIds.add(entry.id)
+          order.push(entry.id)
+          const priorCondition = beforeById.get(entry.id)
+          if (priorCondition !== undefined && entry.value === priorCondition) continue
+          touchedFields.add(entry.id)
           const value = entry.value as FilterCondition
-          if (typeof value !== "object" || value === null) return []
-          return [{ ...value, field: entry.id }]
+          if (typeof value === "object" && value !== null) {
+            touchedCandidates.push({ ...value, field: entry.id })
+          }
+        }
+
+        const prunedTouched = new Map(
+          pruneFilters(touchedCandidates, columnIds, filterKinds).map((condition) => [
+            condition.field,
+            condition,
+          ]),
+        )
+        // A touched field that `pruneFilters` drops is gone — never fall
+        // back to its prior condition, or an invalidated write would restore
+        // the stale value it was meant to replace.
+        return order.flatMap((id) => {
+          const kept = touchedFields.has(id) ? prunedTouched.get(id) : beforeById.get(id)
+          return kept === undefined ? [] : [kept]
         })
-        return pruneFilters(candidates, columnIds, filterKinds)
       })
     },
     [updateFilters, columnIds, filterKinds],

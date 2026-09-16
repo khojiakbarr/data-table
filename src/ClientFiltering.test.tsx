@@ -232,6 +232,48 @@ describe("client-side filtering", () => {
     expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r0", "r1"])
   })
 
+  it("agrees with setCondition when writing an unrelated column while a stored condition's kind has drifted", () => {
+    /*
+     * "amount" declares no `meta.filter`, so on an empty first render (async
+     * data, or a layout just restored from storage) its kind is unresolved
+     * and `pruneFilters` skips the kind check — the "text" condition below
+     * survives even though "amount" will infer to "number" once real data
+     * arrives. Writing a different column afterwards must not re-judge it:
+     * `column.setFilterValue` used to run the WHOLE filter list back through
+     * `pruneFilters` on every write, so the now-mismatched "amount" condition
+     * was silently dropped the moment "name" was touched — while
+     * `filtering.setCondition` kept it, because it only ever validates the
+     * one entry being written. The two documented ways to write a condition
+     * must agree.
+     */
+    const staleAmount: FilterCondition = { kind: "text", field: "amount", op: "contains", value: "0" }
+
+    const build = () =>
+      renderHook(
+        (props: { rows: Row[] }) =>
+          useDataTable<Row>({ id: "drift", columns, data: props.rows, getRowId: (row) => row.id }),
+        { initialProps: { rows: [] as Row[] } },
+      )
+
+    const viaColumn = build()
+    act(() => viaColumn.result.current.filtering.setCondition(staleAmount))
+    viaColumn.rerender({ rows: data })
+    act(() => viaColumn.result.current.table.getColumn("name")!.setFilterValue(contains))
+
+    const viaSetCondition = build()
+    act(() => viaSetCondition.result.current.filtering.setCondition(staleAmount))
+    viaSetCondition.rerender({ rows: data })
+    act(() => viaSetCondition.result.current.filtering.setCondition(contains))
+
+    expect(viaColumn.result.current.filtering.conditions).toEqual(
+      viaSetCondition.result.current.filtering.conditions,
+    )
+    expect(viaColumn.result.current.filtering.conditions).toEqual(
+      expect.arrayContaining([staleAmount, contains]),
+    )
+    expect(viaColumn.result.current.filtering.conditions).toHaveLength(2)
+  })
+
   it("keeps a parent whose only match is a descendant, and its expansion", () => {
     const { result } = renderHook(() =>
       useDataTable<Node>({

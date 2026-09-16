@@ -119,6 +119,12 @@ export interface SearchNeedle {
 /**
  * Split the search text into the tokens a row must satisfy.
  *
+ * The returned needle is plain, immutable data — safe to memoise across
+ * renders or reuse for many rows. It carries no cached state of its own;
+ * {@link rowMatchesSearch} always reads a row's currently-searched columns
+ * fresh, so a memoised needle never goes stale even if which columns are
+ * searched changes later.
+ *
  * @param text - Whatever `state.globalFilter` holds.
  * @returns The lower-cased, non-empty tokens.
  */
@@ -147,38 +153,52 @@ interface SearchableRow {
   getValue: (columnId: string) => unknown
 }
 
-/*
- * The field list, cached against the needle the table resolved it for.
- *
- * Every needle is built before any row is tested — TanStack resolves the
- * filter value up front, once per globally-filterable column — so this
- * computes the list once per searchable column per filtering pass instead of
- * once per row. Keyed on the needle rather than on the table so a stale list
- * can never outlive the pass that built it, and weakly so neither is held
- * alive by the cache.
- */
-const fieldsByNeedle = new WeakMap<SearchNeedle, readonly string[]>()
-
 /**
- * Which ids to read off a row.
+ * Which ids to read off a row, asked fresh from the row's own table.
  *
  * Read from the table rather than closed over, so this list and the table's own
  * `getColumnCanGlobalFilter` can never disagree about which columns are being
  * searched — they are the same answer, asked once.
+ *
+ * @param row - The row whose table is asked which columns it is searching.
+ * @returns The searched leaf column ids, in table order.
  */
-function searchFieldsFor(needle: SearchNeedle, row: SearchableRow): readonly string[] {
-  const cached = fieldsByNeedle.get(needle)
-  if (cached !== undefined) return cached
-  const fields = row.table
+function searchFieldsForRow(row: SearchableRow): readonly string[] {
+  return row.table
     .getAllLeafColumns()
     .filter((column) => column.getCanGlobalFilter())
     .map((column) => column.id)
-  fieldsByNeedle.set(needle, fields)
-  return fields
+}
+
+/**
+ * Whether every token appears somewhere in the given fields of one row.
+ *
+ * Factored out of {@link rowMatchesSearch} and the internal, cached matcher
+ * `filterFn_dtSearch` uses, so the two share this line rather than drifting.
+ */
+function matchesFields(tokens: readonly string[], fields: readonly string[], row: SearchableRow): boolean {
+  const haystack = fields.map((id) => valueText(row.getValue(id)))
+  return tokens.every((token) => haystack.some((value) => value.includes(token)))
 }
 
 /**
  * Whether every token appears somewhere in the searched fields of one row.
+ *
+ * Recomputes the field list from `row.table` on every call rather than
+ * caching it against the needle, so this is safe to call with a needle built
+ * and kept around by the caller — memoised across renders, reused for many
+ * rows, even reused after the table's searchable columns changed. Each call
+ * answers against the row's *current* `getCanGlobalFilter` set, matching
+ * `filterFn_dtSearch`'s in-pipeline behaviour rather than a snapshot of it.
+ *
+ * `filterFn_dtSearch` itself does not call this: it uses a private, needle-
+ * cached variant that skips recomputing the field list once per row (see
+ * below) because it alone can prove the needle it was handed cannot outlive
+ * the single filtering pass that built it — TanStack calls
+ * `resolveFilterValue` fresh, once per globally-filterable column, before
+ * that column's row loop runs (`createFilteredRowModel.js`). This exported
+ * function has no such guarantee about a needle a caller hands it, so it
+ * makes no such assumption.
  *
  * @param row - The row under test.
  * @param needle - The resolved search text.
@@ -186,9 +206,39 @@ function searchFieldsFor(needle: SearchNeedle, row: SearchableRow): readonly str
  */
 export function rowMatchesSearch(row: SearchableRow, needle: SearchNeedle): boolean {
   if (needle.tokens.length === 0) return true
-  const fields = searchFieldsFor(needle, row)
-  const haystack = fields.map((id) => valueText(row.getValue(id)))
-  return needle.tokens.every((token) => haystack.some((value) => value.includes(token)))
+  return matchesFields(needle.tokens, searchFieldsForRow(row), row)
+}
+
+/*
+ * The field list, cached against the needle the table resolved it for.
+ *
+ * Private to this module's own `filterFn_dtSearch.filter` below — never
+ * exposed through `rowMatchesSearch`. Every needle reaching this cache was
+ * just minted by `resolveFilterValue` for one globally-filterable column and
+ * is used only across that column's row loop within one filtering pass
+ * (`createFilteredRowModel.js` calls `resolveFilterValue` fresh per column,
+ * ahead of that column's loop), so keying on its identity here — and only
+ * here — really can never outlive the pass that built it. Weakly, so neither
+ * needle nor field list is held alive by the cache.
+ */
+const fieldsByNeedle = new WeakMap<SearchNeedle, readonly string[]>()
+
+/**
+ * `rowMatchesSearch`'s matching rule, with the per-column field lookup cached
+ * against the needle for the duration of one filtering pass.
+ *
+ * Only ever called by `filterFn_dtSearch.filter` below, where the needle's
+ * one-pass lifetime is guaranteed by TanStack rather than assumed — see the
+ * comment on `fieldsByNeedle`.
+ */
+function matchesSearchCached(row: SearchableRow, needle: SearchNeedle): boolean {
+  if (needle.tokens.length === 0) return true
+  let fields = fieldsByNeedle.get(needle)
+  if (fields === undefined) {
+    fields = searchFieldsForRow(row)
+    fieldsByNeedle.set(needle, fields)
+  }
+  return matchesFields(needle.tokens, fields, row)
 }
 
 /**
@@ -206,5 +256,5 @@ export function rowMatchesSearch(row: SearchableRow, needle: SearchNeedle): bool
  */
 export const filterFn_dtSearch = constructFilterFn({
   resolveFilterValue: (text: unknown): SearchNeedle => searchNeedle(text),
-  filter: (_dataValue: unknown, needle: SearchNeedle, row) => rowMatchesSearch(row, needle),
+  filter: (_dataValue: unknown, needle: SearchNeedle, row) => matchesSearchCached(row, needle),
 })

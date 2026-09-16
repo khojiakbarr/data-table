@@ -167,4 +167,27 @@ describe("rowMatchesSearch", () => {
     expect(rowMatchesSearch(row({ code: null, partner: undefined }), searchNeedle("  "))).toBe(true)
     expect(rowMatchesSearch(row({ code: null, partner: undefined }), searchNeedle("a"))).toBe(false)
   })
+
+  it("re-reads the table's searched columns on every call, even for a needle a caller reuses across passes", () => {
+    // Reproduces the review finding on Task 8: a host that memoises a needle
+    // (e.g. `useMemo(() => searchNeedle(text), [text])`) and reuses it across
+    // renders must see a column drop out of search the moment
+    // `getCanGlobalFilter` says so — not a stale answer frozen at first call.
+    let partnerSearchable = true
+    const subject = {
+      table: {
+        getAllLeafColumns: () => [
+          { id: "code", getCanGlobalFilter: () => true },
+          { id: "partner", getCanGlobalFilter: () => partnerSearchable },
+        ],
+      },
+      getValue: (columnId: string) => ({ code: "KR-1", partner: "Agro Ltd" })[columnId],
+    }
+    const needle = searchNeedle("agro")
+
+    expect(rowMatchesSearch(subject, needle)).toBe(true)
+
+    partnerSearchable = false
+    expect(rowMatchesSearch(subject, needle)).toBe(false)
+  })
 })

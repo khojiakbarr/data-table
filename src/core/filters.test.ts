@@ -1,5 +1,17 @@
 import { afterEach, describe, expect, it } from "vitest"
-import { addDays, startOfLocalDay, toIsoDay } from "./filters"
+import {
+  addDays,
+  booleanCondition,
+  dateCondition,
+  dayChoiceToCondition,
+  listCondition,
+  numberCondition,
+  rebuildCondition,
+  startOfLocalDay,
+  textCondition,
+  toIsoDay,
+  type FilterCondition,
+} from "./filters"
 
 const ORIGINAL_TZ = process.env.TZ
 
@@ -91,5 +103,98 @@ describe("addDays", () => {
     expect(addDays("2026-10-25", 1)).toBe("2026-10-26")
     // 29 March 2026 is the matching 23-hour day (clocks go forward).
     expect(addDays("2026-03-29", 1)).toBe("2026-03-30")
+  })
+})
+
+describe("condition constructors", () => {
+  it("builds every kind in one fixed key order", () => {
+    // Key order is significant to JSON.stringify, which is what queriesEqual
+    // compares — a reordered-but-identical condition would refetch forever.
+    expect(Object.keys(textCondition({ kind: "text", field: "a", op: "contains", value: "x" }) ?? {}))
+      .toEqual(["kind", "field", "op", "value"])
+    expect(Object.keys(numberCondition({ kind: "number", field: "a", op: "between", from: 1, to: 2 }) ?? {}))
+      .toEqual(["kind", "field", "op", "from", "to"])
+    expect(Object.keys(dateCondition({ kind: "date", field: "a", op: "range", from: "2026-03-01", before: null }) ?? {}))
+      .toEqual(["kind", "field", "op", "from", "before"])
+    expect(Object.keys(booleanCondition({ kind: "boolean", field: "a", op: "is", value: true }) ?? {}))
+      .toEqual(["kind", "field", "op", "value"])
+    expect(Object.keys(listCondition({ kind: "list", field: "a", op: "in", values: ["x"] }) ?? {}))
+      .toEqual(["kind", "field", "op", "values"])
+    expect(Object.keys(textCondition({ kind: "text", field: "a", op: "blank" }) ?? {}))
+      .toEqual(["kind", "field", "op"])
+  })
+
+  it("returns null for a condition that constrains nothing", () => {
+    expect(textCondition({ kind: "text", field: "a", op: "contains", value: "" })).toBeNull()
+    expect(numberCondition({ kind: "number", field: "a", op: "between", from: null, to: null })).toBeNull()
+    expect(dateCondition({ kind: "date", field: "a", op: "range", from: null, before: null })).toBeNull()
+    expect(listCondition({ kind: "list", field: "a", op: "in", values: [] })).toBeNull()
+  })
+
+  it("returns null for a value its operator cannot carry", () => {
+    const badNumber = { kind: "number", field: "a", op: "gt" } as unknown as FilterCondition
+    const badBoolean = { kind: "boolean", field: "a", op: "is", value: "yes" } as unknown as FilterCondition
+    expect(rebuildCondition(badNumber)).toBeNull()
+    expect(rebuildCondition(badBoolean)).toBeNull()
+    expect(numberCondition({ kind: "number", field: "a", op: "gt", value: Number.NaN })).toBeNull()
+  })
+
+  it("swaps reversed bounds rather than publishing them", () => {
+    expect(numberCondition({ kind: "number", field: "a", op: "between", from: 20, to: 10 }))
+      .toEqual({ kind: "number", field: "a", op: "between", from: 10, to: 20 })
+    expect(dateCondition({ kind: "date", field: "a", op: "range", from: "2026-04-01", before: "2026-03-01" }))
+      .toEqual({ kind: "date", field: "a", op: "range", from: "2026-03-01", before: "2026-04-01" })
+  })
+
+  it("drops a bound it cannot read, and keeps the other", () => {
+    expect(dateCondition({ kind: "date", field: "a", op: "range", from: "nonsense", before: "2026-04-01" }))
+      .toEqual({ kind: "date", field: "a", op: "range", from: null, before: "2026-04-01" })
+  })
+
+  it("sorts, de-duplicates and drops null from a list's values", () => {
+    const messy = ["open", "closed", "open", null, 10, 9, true] as unknown as (string | number | boolean)[]
+    expect(listCondition({ kind: "list", field: "a", op: "in", values: messy }))
+      .toEqual({ kind: "list", field: "a", op: "in", values: [true, 9, 10, "closed", "open"] })
+  })
+
+  it("keeps blank and notBlank on every kind, with no value", () => {
+    expect(listCondition({ kind: "list", field: "a", op: "blank" }))
+      .toEqual({ kind: "list", field: "a", op: "blank" })
+    expect(numberCondition({ kind: "number", field: "a", op: "notBlank" }))
+      .toEqual({ kind: "number", field: "a", op: "notBlank" })
+  })
+})
+
+describe("rebuildCondition", () => {
+  it("restores canonical key and value order for a hand-built condition", () => {
+    const handBuilt = { op: "in", values: ["open", "closed"], field: "status", kind: "list" } as FilterCondition
+    const canonical = listCondition({ kind: "list", field: "status", op: "in", values: ["closed", "open"] })
+    expect(JSON.stringify(rebuildCondition(handBuilt))).toBe(JSON.stringify(canonical))
+  })
+
+  it("returns null for a kind it does not know", () => {
+    expect(rebuildCondition({ kind: "colour", field: "a", op: "is" } as unknown as FilterCondition)).toBeNull()
+  })
+})
+
+describe("dayChoiceToCondition", () => {
+  it("converts each of the four choices into a half-open range", () => {
+    expect(dayChoiceToCondition("created", { mode: "is", day: "2026-03-31" }))
+      .toEqual({ kind: "date", field: "created", op: "range", from: "2026-03-31", before: "2026-04-01" })
+    expect(dayChoiceToCondition("created", { mode: "before", day: "2026-03-31" }))
+      .toEqual({ kind: "date", field: "created", op: "range", from: null, before: "2026-03-31" })
+    expect(dayChoiceToCondition("created", { mode: "after", day: "2026-03-31" }))
+      .toEqual({ kind: "date", field: "created", op: "range", from: "2026-04-01", before: null })
+    expect(dayChoiceToCondition("created", { mode: "between", from: "2026-03-01", to: "2026-03-31" }))
+      .toEqual({ kind: "date", field: "created", op: "range", from: "2026-03-01", before: "2026-04-01" })
+  })
+
+  it("passes blankness straight through", () => {
+    expect(dayChoiceToCondition("created", { mode: "blank" }))
+      .toEqual({ kind: "date", field: "created", op: "blank" })
+  })
+
+  it("returns null when nothing was picked", () => {
+    expect(dayChoiceToCondition("created", { mode: "between", from: null, to: null })).toBeNull()
   })
 })

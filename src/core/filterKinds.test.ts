@@ -86,4 +86,29 @@ describe("collectFilterKinds", () => {
     expect(kinds.get("total")).toBe("number")
     expect(kinds.get("status")).toBe("list")
   })
+
+  it("omits an undeclared column when there are no rows yet to infer a kind from", () => {
+    /*
+     * Regression: this used to fall through `resolveFilterKind`'s "text"
+     * default with no sample to go on, and `pruneFilters` reads a resolved
+     * "text" as a *fact* — dropping any stored `number`/`boolean` condition on
+     * that column. That made every server-mode mount (rows arrive after the
+     * first fetch) and every async client-mode mount silently lose a stored
+     * filter on any non-text column before its data ever loaded.
+     */
+    const kinds = collectFilterKinds<Receipt>(
+      [{ accessorKey: "amount" }, { accessorKey: "paid" }, { id: "actions" }],
+      [],
+    )
+    expect(kinds.has("amount")).toBe(false)
+    expect(kinds.has("paid")).toBe(false)
+    // A display column has no accessor at all, so its answer — filtering is
+    // off — does not depend on data and stays a certainty either way.
+    expect(kinds.get("actions")).toBe(false)
+  })
+
+  it("still honours a declared kind with no rows to sample", () => {
+    const kinds = collectFilterKinds<Receipt>([{ accessorKey: "amount", meta: { filter: "number" } }], [])
+    expect(kinds.get("amount")).toBe("number")
+  })
 })

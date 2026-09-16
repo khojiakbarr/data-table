@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react"
 import type { Updater } from "@tanstack/react-table"
-import type { FilterKind } from "./filters"
+import { pruneFilters, type FilterKind } from "./filters"
 import { pruneLayout } from "./persistence"
 import { useDebouncedSave } from "./useDebouncedSave"
 import type { LayoutStorage, TableLayout } from "../types"
@@ -84,9 +84,47 @@ export function useArrangement({
   // ids silently reorders every column that is not in it.
   const [arrangement, setArrangement] = useState<Arrangement>(() => {
     const stored = store.load(id)
+    // `initialLayout` is a hand-written literal — a host's own default, or a
+    // URL a caller pre-parsed — so it gets the same treatment a stored layout
+    // does: `filters` is pruned and rebuilt in canonical key order (or an
+    // unknown-column condition would reach the wire forever, and a
+    // differently-ordered one would give `instance.query` a fresh identity on
+    // the user's first click), and a non-string `search` cannot reach
+    // `.trim()` in `filtering.isFiltered`.
+    const seeded = { ...EMPTY_LAYOUT, ...initialLayout }
+    seeded.filters = pruneFilters(seeded.filters, columnIds, filterKinds)
+    if (typeof seeded.search !== "string") seeded.search = ""
+    const storedOrEmpty = stored ?? {}
+    const layout = { ...seeded, ...pruneLayout(storedOrEmpty, columnIds, filterKinds) }
+    /*
+     * The "nothing arranged" baseline to compare each slice against — not
+     * `seeded` itself, because `pruneLayout` does more than filter to known
+     * ids: an untouched `columnOrder: []` round-trips through storage as the
+     * *explicit* natural order (every known id, in declaration order), since
+     * a save persists the whole layout object, not only the slice that
+     * changed. Comparing `layout.columnOrder` to bare `seeded.columnOrder`
+     * would then read a search-only save as customised on the very next load
+     * — the same bug this is fixing, one key over.
+     *
+     * So a slice is compared against its *own* natural value pushed through
+     * that same normalisation, and only when storage actually held that key —
+     * otherwise `layout` left it at `seeded`'s raw value too, and the two
+     * would only coincidentally differ.
+     */
+    const naturalStored: Partial<TableLayout> = {}
+    if ("columnOrder" in storedOrEmpty) naturalStored.columnOrder = seeded.columnOrder
+    if ("columnVisibility" in storedOrEmpty) naturalStored.columnVisibility = seeded.columnVisibility
+    if ("columnPinning" in storedOrEmpty) naturalStored.columnPinning = seeded.columnPinning
+    if ("columnSizing" in storedOrEmpty) naturalStored.columnSizing = seeded.columnSizing
+    if ("sorting" in storedOrEmpty) naturalStored.sorting = seeded.sorting
+    const naturalLayout = { ...seeded, ...pruneLayout(naturalStored, columnIds, filterKinds) }
     return {
-      layout: { ...EMPTY_LAYOUT, ...initialLayout, ...pruneLayout(stored ?? {}, columnIds, filterKinds) },
-      isCustomised: stored !== null,
+      layout,
+      // A saved search or filter must not make the Columns tab offer a Reset
+      // on the next visit either — only the arrangement slices count.
+      isCustomised: (Object.keys(EMPTY_LAYOUT) as (keyof TableLayout)[]).some(
+        (key) => !FILTER_SLICES.has(key) && !layoutSliceEqual(layout[key], naturalLayout[key]),
+      ),
       hasUnsavedChanges: false,
     }
   })
@@ -151,12 +189,19 @@ export function useArrangement({
 
   const resetLayout = useCallback(() => {
     store.clear(id)
+    // Same normalisation as the mount initialiser above, and for the same
+    // reason: `initialRef.current` is the same untrusted hand-written literal,
+    // and without it a reset would re-introduce whatever unvalidated
+    // conditions the mount-time prune above was written to keep out.
+    const seeded = { ...EMPTY_LAYOUT, ...initialRef.current }
+    seeded.filters = pruneFilters(seeded.filters, columnIds, filterKinds)
+    if (typeof seeded.search !== "string") seeded.search = ""
     setArrangement({
-      layout: { ...EMPTY_LAYOUT, ...initialRef.current },
+      layout: seeded,
       isCustomised: false,
       hasUnsavedChanges: false,
     })
-  }, [store, id])
+  }, [store, id, columnIds, filterKinds])
 
   return { layout: arrangement.layout, isCustomised: arrangement.isCustomised, updateSlice, resetLayout }
 }

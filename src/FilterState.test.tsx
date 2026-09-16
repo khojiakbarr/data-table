@@ -209,6 +209,23 @@ describe("persistence", () => {
     expect(result.current.isCustomised).toBe(false)
   })
 
+  it("still reads as not customised after a filter-only layout is reloaded from storage", () => {
+    // Regression: `isCustomised` used to be `stored !== null` at mount, so a
+    // layout whose only saved change was a filter or a search came back
+    // customised on the very next load — the Columns tab would then offer a
+    // Reset link for a reason that had nothing to do with columns.
+    vi.useFakeTimers()
+    const first = setup("f13b")
+    act(() => first.result.current.filtering.setSearch("kr"))
+    act(() => vi.advanceTimersByTime(400))
+    first.unmount()
+    vi.useRealTimers()
+
+    const second = setup("f13b")
+    expect(second.result.current.filtering.search).toBe("kr")
+    expect(second.result.current.isCustomised).toBe(false)
+  })
+
   it("is on by default and off when filtering is false", () => {
     const enabled = setup("f14")
     expect(enabled.result.current.filtering.enabled).toBe(true)
@@ -217,5 +234,128 @@ describe("persistence", () => {
       useDataTable<Row>({ id: "f15", columns, data, filtering: false, getRowId: (row) => row.id }),
     )
     expect(result.current.filtering.enabled).toBe(false)
+  })
+
+  it("keeps a stored number condition on a server-mode mount before rows have arrived", () => {
+    /*
+     * Regression: `collectFilterKinds` used to default every undeclared
+     * column to "text" whenever there was no data yet to sample from, and
+     * `pruneFilters` treats a resolved kind that disagrees with the stored
+     * condition's own `kind` as a mismatch. A `number` condition saved while
+     * rows were present would then be silently dropped on the very next
+     * mount, because `data: []` is exactly what every server-mode mount
+     * starts as before its first fetch answers.
+     */
+    vi.useFakeTimers()
+    const first = renderHook(() =>
+      useDataTable<Row>({
+        id: "f16",
+        columns,
+        data,
+        mode: "server",
+        rowCount: data.length,
+        getRowId: (row) => row.id,
+        storage: localStorageLayout(),
+      }),
+    )
+    act(() => first.result.current.filtering.setCondition(over))
+    act(() => vi.advanceTimersByTime(400))
+    first.unmount()
+    vi.useRealTimers()
+
+    const second = renderHook(() =>
+      useDataTable<Row>({
+        id: "f16",
+        columns,
+        data: [],
+        mode: "server",
+        rowCount: 0,
+        getRowId: (row) => row.id,
+        storage: localStorageLayout(),
+      }),
+    )
+
+    expect(second.result.current.filtering.conditions).toEqual([over])
+    expect(second.result.current.query.filters).toEqual([over])
+  })
+})
+
+describe("initialLayout validation", () => {
+  it("prunes an unknown-column condition out of a hand-written initialLayout", () => {
+    // Regression: `initialLayout.filters` used to reach `query.filters`
+    // completely unvalidated — `pruneLayout` only normalises the *stored*
+    // half, so a first visit (nothing in storage yet) published a condition
+    // on a column the table does not define, forever, with no editor able to
+    // reach it.
+    const ghost: FilterCondition = { kind: "text", field: "ghost", op: "contains", value: "x" }
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "f17",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        initialLayout: { filters: [contains, ghost] },
+      }),
+    )
+
+    expect(result.current.filtering.conditions).toEqual([contains])
+    expect(result.current.query.filters).toEqual([contains])
+  })
+
+  it("publishes an identical query for a differently-key-ordered initialLayout condition", () => {
+    // The other half of the same finding: an `initialLayout` condition that
+    // was not rebuilt through its constructor would stringify differently
+    // from an editor-built one, giving a host a spurious first fetch.
+    const handBuilt = { value: "7", op: "contains", field: "name", kind: "text" } as FilterCondition
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "f18",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        initialLayout: { filters: [handBuilt] },
+      }),
+    )
+
+    expect(result.current.filtering.conditions).toEqual([contains])
+    expect(result.current.query.filters).toEqual([contains])
+  })
+
+  it("does not crash on a non-string initialLayout.search and treats it as empty", () => {
+    // `filtering.isFiltered` calls `.trim()` on `layout.search`; an
+    // `initialLayout.search` that is not a string (a caller's typo, or
+    // untrusted JSON cast through `as`) must not reach it unchecked.
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "f19",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        initialLayout: { search: 7 as unknown as string },
+      }),
+    )
+
+    expect(result.current.filtering.search).toBe("")
+    expect(result.current.filtering.isFiltered).toBe(false)
+  })
+
+  it("re-validates initialLayout.filters again on resetLayout", () => {
+    // `resetLayout` rebuilds from the same `initialLayout` and must not
+    // re-introduce a condition the mount-time prune had rejected.
+    const ghost: FilterCondition = { kind: "text", field: "ghost", op: "contains", value: "x" }
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "f20",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        initialLayout: { filters: [ghost] },
+      }),
+    )
+    act(() => result.current.filtering.setCondition(contains))
+
+    act(() => result.current.resetLayout())
+
+    expect(result.current.filtering.conditions).toEqual([])
   })
 })

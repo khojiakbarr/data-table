@@ -65,7 +65,12 @@ export interface FilterColumnDefShape<TData> {
  *
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
- * @returns Leaf column id to resolved kind.
+ * @returns Leaf column id to resolved kind. A column with no declared
+ *   `meta.filter` and no rows yet to sample is omitted rather than guessed at
+ *   — `pruneFilters` treats a missing entry as "kind check skipped", which is
+ *   the only safe reading before the first row has arrived (server mode, or
+ *   client mode with async data): guessing "text" would drop every stored
+ *   number/boolean condition on that render.
  */
 export function collectFilterKinds<TData>(
   columns: readonly FilterColumnDefShape<TData>[],
@@ -80,11 +85,13 @@ export function collectFilterKinds<TData>(
       }
       const id = deriveColumnId(def, index)
       const read = valueReader(def)
-      kinds.set(id, resolveFilterKind({
-        meta: def.meta,
-        hasAccessor: read !== null,
-        sampleValue: read === null ? undefined : firstNonNull(rows, read),
-      }))
+      const sample = read === null ? undefined : firstNonNull(rows, read)
+      // Nothing declared and nothing to infer from: the kind is *unknown*, not
+      // "text". Recording the guess makes `pruneFilters` delete every stored
+      // number/boolean condition on the first render of a table whose rows have
+      // not arrived — i.e. on every server-mode mount.
+      if (def.meta?.filter === undefined && read !== null && sample === undefined) return
+      kinds.set(id, resolveFilterKind({ meta: def.meta, hasAccessor: read !== null, sampleValue: sample }))
     })
   }
   walk(columns)

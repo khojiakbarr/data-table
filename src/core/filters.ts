@@ -104,10 +104,19 @@ export function startOfLocalDay(day: IsoDay): number | null {
  * Not `toISOString().slice(0, 10)`, which is the UTC day and so names the
  * wrong day for most of the world for part of every day.
  *
- * @param date - Any date.
- * @returns Its local calendar day, `YYYY-MM-DD`.
+ * `date` is typed as "any date" but an Invalid Date (`new Date("nonsense")`,
+ * or one built from a `NaN` component) is still a `Date`, and nothing else
+ * catches it before this function reads its fields. Without the guard below,
+ * `getFullYear()`/`getMonth()`/`getDate()` all return `NaN`, and
+ * `String(NaN).padStart(4, "0")` produces `"0NaN"` — a syntactically
+ * plausible but fake `IsoDay` (`"0NaN-NaN-NaN"`) that flows silently into a
+ * filter bound instead of failing.
+ *
+ * @param date - Any date; may be an Invalid Date.
+ * @returns Its local calendar day, `YYYY-MM-DD`, or null if `date` is invalid.
  */
-export function toIsoDay(date: Date): IsoDay {
+export function toIsoDay(date: Date): IsoDay | null {
+  if (Number.isNaN(date.getTime())) return null
   const year = String(date.getFullYear()).padStart(4, "0")
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
@@ -121,14 +130,18 @@ export function toIsoDay(date: Date): IsoDay {
  * or 25 hours long is still one day.
  *
  * @param day - A calendar day, `YYYY-MM-DD`.
- * @param days - How many days to move; may be negative.
- * @returns The moved day, or null if `day` is not a day.
+ * @param days - How many days to move; may be negative. A non-finite `days`
+ *   (e.g. `NaN`) produces an Invalid Date, guarded below rather than left to
+ *   flow into `toIsoDay`'s own guard, so the failure is explicit at the call
+ *   that actually introduces it.
+ * @returns The moved day, or null if `day` is not a day or `days` is not finite.
  */
 export function addDays(day: IsoDay, days: number): IsoDay | null {
   const start = startOfLocalDay(day)
   if (start === null) return null
   const moved = new Date(start)
   moved.setDate(moved.getDate() + days)
+  if (Number.isNaN(moved.getTime())) return null
   return toIsoDay(moved)
 }
 

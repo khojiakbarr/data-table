@@ -76,7 +76,17 @@ with. The day helpers are the reason the task exists on its own: a bound built w
 `new Date("2026-03-01")` is parsed by ES as **UTC** midnight, which east of Greenwich drops the
 first hours of the range's first day and west of it the last hours of its last day. The tests
 therefore run under two real timezones. Node re-reads `process.env.TZ` on every `Date` operation, so
-setting it inside a test works and is restored in `afterEach`.
+setting it inside a test works and is restored in a single **file-scoped** `afterEach` — not one
+scoped to `startOfLocalDay` alone, since `addDays`'s DST case below needs the same restore.
+
+That restore is not `process.env.TZ = ORIGINAL_TZ` when `TZ` was unset going in: an env var is
+always a string, so assigning `undefined` stores the literal text `"undefined"`, which ICU falls
+back to resolving as UTC — a zone with no DST. Left uncaught, every test after the first `afterEach`
+would silently run in a DST-free zone, and a millisecond-based `addDays` that is wrong exactly on a
+DST boundary (`new Date(start + days * 86_400_000)`, the bug the JSDoc below exists to rule out)
+would pass every case here. The restore has to `delete` the key when it started unset, and the last
+`addDays` case has to force a real DST-observing zone (`Europe/London`) rather than trust whatever
+the environment happens to run under.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -88,11 +98,18 @@ import { addDays, startOfLocalDay, toIsoDay } from "./filters"
 
 const ORIGINAL_TZ = process.env.TZ
 
-describe("startOfLocalDay", () => {
-  afterEach(() => {
-    process.env.TZ = ORIGINAL_TZ
-  })
+// File-scoped so every describe below shares one restore, not just
+// `startOfLocalDay`'s. `process.env.TZ = undefined` does not unset the
+// variable — env vars are always strings, so it stores the literal text
+// `"undefined"`, which ICU then resolves to UTC instead of this machine's
+// real zone. That silently flattens every later test to a DST-free
+// timezone, which is exactly the kind of bug `addDays` exists to catch.
+afterEach(() => {
+  if (ORIGINAL_TZ === undefined) delete process.env.TZ
+  else process.env.TZ = ORIGINAL_TZ
+})
 
+describe("startOfLocalDay", () => {
   it("parses into the local calendar east of Greenwich", () => {
     process.env.TZ = "Asia/Tashkent"
     const start = startOfLocalDay("2026-03-01")
@@ -126,7 +143,13 @@ describe("toIsoDay", () => {
     // 01:00 local on 2 March is 20:00Z on the 1st, which `toISOString()` would
     // name wrongly.
     expect(toIsoDay(new Date(2026, 2, 2, 1, 0))).toBe("2026-03-02")
-    process.env.TZ = ORIGINAL_TZ
+  })
+
+  it("returns null for an Invalid Date instead of a fake day", () => {
+    // `String(NaN).padStart(4, "0")` is `"0NaN"` — a plausible-looking but
+    // bogus IsoDay that would otherwise flow silently into a filter bound.
+    expect(toIsoDay(new Date("nonsense"))).toBeNull()
+    expect(toIsoDay(new Date(NaN))).toBeNull()
   })
 })
 
@@ -148,6 +171,21 @@ describe("addDays", () => {
 
   it("returns null for a day it cannot parse", () => {
     expect(addDays("nonsense", 1)).toBeNull()
+  })
+
+  it("returns null instead of a fake day when `days` is not finite", () => {
+    expect(addDays("2026-03-01", NaN)).toBeNull()
+  })
+
+  it("counts calendar days, not 24-hour blocks, across a DST change", () => {
+    process.env.TZ = "Europe/London"
+    // 25 October 2026 is 25 hours long in Europe/London (clocks go back at
+    // 02:00). A millisecond-based implementation — `new Date(start + days *
+    // 86_400_000)` — lands 25 hours later, still inside the 25th, and
+    // returns the same day back; calendar arithmetic must cross into the 26th.
+    expect(addDays("2026-10-25", 1)).toBe("2026-10-26")
+    // 29 March 2026 is the matching 23-hour day (clocks go forward).
+    expect(addDays("2026-03-29", 1)).toBe("2026-03-30")
   })
 })
 ```
@@ -272,10 +310,19 @@ export function startOfLocalDay(day: IsoDay): number | null {
  * Not `toISOString().slice(0, 10)`, which is the UTC day and so names the
  * wrong day for most of the world for part of every day.
  *
- * @param date - Any date.
- * @returns Its local calendar day, `YYYY-MM-DD`.
+ * `date` is typed as "any date" but an Invalid Date (`new Date("nonsense")`,
+ * or one built from a `NaN` component) is still a `Date`, and nothing else
+ * catches it before this function reads its fields. Without the guard below,
+ * `getFullYear()`/`getMonth()`/`getDate()` all return `NaN`, and
+ * `String(NaN).padStart(4, "0")` produces `"0NaN"` — a syntactically
+ * plausible but fake `IsoDay` (`"0NaN-NaN-NaN"`) that flows silently into a
+ * filter bound instead of failing.
+ *
+ * @param date - Any date; may be an Invalid Date.
+ * @returns Its local calendar day, `YYYY-MM-DD`, or null if `date` is invalid.
  */
-export function toIsoDay(date: Date): IsoDay {
+export function toIsoDay(date: Date): IsoDay | null {
+  if (Number.isNaN(date.getTime())) return null
   const year = String(date.getFullYear()).padStart(4, "0")
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
@@ -289,14 +336,18 @@ export function toIsoDay(date: Date): IsoDay {
  * or 25 hours long is still one day.
  *
  * @param day - A calendar day, `YYYY-MM-DD`.
- * @param days - How many days to move; may be negative.
- * @returns The moved day, or null if `day` is not a day.
+ * @param days - How many days to move; may be negative. A non-finite `days`
+ *   (e.g. `NaN`) produces an Invalid Date, guarded below rather than left to
+ *   flow into `toIsoDay`'s own guard, so the failure is explicit at the call
+ *   that actually introduces it.
+ * @returns The moved day, or null if `day` is not a day or `days` is not finite.
  */
 export function addDays(day: IsoDay, days: number): IsoDay | null {
   const start = startOfLocalDay(day)
   if (start === null) return null
   const moved = new Date(start)
   moved.setDate(moved.getDate() + days)
+  if (Number.isNaN(moved.getTime())) return null
   return toIsoDay(moved)
 }
 
@@ -313,7 +364,7 @@ pnpm vitest run src/core/filters.test.ts
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **278 tests** (270 at HEAD plus 8).
+`pnpm test` must report **281 tests** (270 at HEAD plus 11).
 
 Note: `isFilterValue` is exported but not yet used — that is fine for `noUnusedLocals`, which only
 flags unused *locals*. Task 2 uses it.
@@ -704,7 +755,7 @@ pnpm vitest run src/core/filters.test.ts
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **290 tests** (278 plus 12).
+`pnpm test` must report **293 tests** (281 plus 12).
 
 - [ ] **Step 5: Commit**
 
@@ -1214,7 +1265,7 @@ pnpm vitest run src/core/filterFn.test.ts
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **307 tests** (290 plus 17).
+`pnpm test` must report **310 tests** (293 plus 17).
 
 - [ ] **Step 5: Commit**
 
@@ -1876,7 +1927,7 @@ pnpm vitest run src/core/query.test.ts src/core/useTableQuery.test.ts src/Server
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **311 tests** (307 plus 4 — `query.test.ts` grows from 3 tests to 7).
+`pnpm test` must report **314 tests** (310 plus 4 — `query.test.ts` grows from 3 tests to 7).
 
 - [ ] **Step 5: Commit**
 
@@ -2442,7 +2493,7 @@ pnpm vitest run src/core/filterKinds.test.ts src/core/persistence.test.ts
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **323 tests** (311 plus 6 in `filterKinds.test.ts` and 6 in
+`pnpm test` must report **326 tests** (314 plus 6 in `filterKinds.test.ts` and 6 in
 `persistence.test.ts`).
 
 - [ ] **Step 5: Commit**
@@ -3097,7 +3148,7 @@ pnpm vitest run src/FilterState.test.tsx
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **338 tests** (323 plus 15).
+`pnpm test` must report **341 tests** (326 plus 15).
 
 - [ ] **Step 5: Commit**
 
@@ -3431,7 +3482,7 @@ pnpm vitest run src/core/search.test.ts src/core/filterKinds.test.ts
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **343 tests** (338 plus 5). `filterKinds.test.ts`'s six tests must still pass
+`pnpm test` must report **346 tests** (341 plus 5). `filterKinds.test.ts`'s six tests must still pass
 unchanged — the refactor is behaviour-preserving, and that is what proves it.
 
 - [ ] **Step 5: Commit**
@@ -3680,7 +3731,7 @@ pnpm vitest run src/core/search.test.ts
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **347 tests** (343 plus 4).
+`pnpm test` must report **350 tests** (346 plus 4).
 
 - [ ] **Step 5: Commit**
 
@@ -4245,7 +4296,7 @@ pnpm vitest run src/ClientFiltering.test.tsx
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **356 tests** (347 plus 9). Every earlier test must still pass: composing the
+`pnpm test` must report **359 tests** (350 plus 9). Every earlier test must still pass: composing the
 features widens `DataTableFeatures`, and a break there would show up in `DataTable.test.tsx` and
 `ServerMode.test.tsx` first.
 
@@ -4650,7 +4701,7 @@ pnpm vitest run src/SearchState.test.tsx
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **365 tests** (356 plus 9).
+`pnpm test` must report **368 tests** (359 plus 9).
 
 - [ ] **Step 5: Commit**
 
@@ -4932,7 +4983,7 @@ pnpm vitest run src/PublicExports.test.tsx
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **367 tests** (365 plus 2).
+`pnpm test` must report **370 tests** (368 plus 2).
 
 - [ ] **Step 5: Commit**
 
@@ -5330,7 +5381,7 @@ pnpm vitest run src/QuickSearch.test.tsx src/themes/themes.test.ts src/StylesCas
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **373 tests** (367 plus 6). `themes.test.ts` must pass untouched — its
+`pnpm test` must report **376 tests** (370 plus 6). `themes.test.ts` must pass untouched — its
 "finds the base tokens" case asserts a hard-coded 25 distinct `--dt-*` tokens, and it fails under
 that name, with no hint that a new token is the cause, if one was added.
 
@@ -5664,7 +5715,7 @@ pnpm typecheck && pnpm test && pnpm build
 `HeaderMenuPlacement.test.tsx` must pass **untouched**: it is the regression net for the move, and
 its two cases still read `8px` margins out of the same arithmetic.
 
-`pnpm test` must report **377 tests** (373 plus 4).
+`pnpm test` must report **380 tests** (376 plus 4).
 
 - [ ] **Step 5: Commit**
 
@@ -6497,7 +6548,7 @@ pnpm vitest run src/core/filterDraft.test.ts src/FilterState.test.tsx
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **393 tests** (377 plus 15 in `filterDraft.test.ts` and 1 in
+`pnpm test` must report **396 tests** (380 plus 15 in `filterDraft.test.ts` and 1 in
 `FilterState.test.tsx`).
 
 - [ ] **Step 5: Commit**
@@ -7165,7 +7216,7 @@ pnpm typecheck && pnpm test && pnpm build
 `DataTable.test.tsx` and `Reordering.test.tsx` are the net under the `columnLabel` move: both read
 column names out of the Columns panel and the header.
 
-`pnpm test` must report **402 tests** (393 plus 9).
+`pnpm test` must report **405 tests** (396 plus 9).
 
 - [ ] **Step 5: Commit**
 
@@ -7842,7 +7893,7 @@ pnpm typecheck && pnpm test && pnpm build
 The three older suites are the net under the new menu item: they drive the menu by item name, and
 none of them counts items, so all of them must still pass untouched.
 
-`pnpm test` must report **410 tests** (402 plus 7 in `FilterPopover.test.tsx` and 1 in
+`pnpm test` must report **413 tests** (405 plus 7 in `FilterPopover.test.tsx` and 1 in
 `StylesCascade.test.ts`).
 
 - [ ] **Step 5: Commit**
@@ -8831,7 +8882,7 @@ pnpm typecheck && pnpm test && pnpm build
 drag handles, its persistence — and both must pass untouched: that is what "`ColumnPanel`'s current
 public props stay intact" means in practice.
 
-`pnpm test` must report **422 tests** (410 plus 12).
+`pnpm test` must report **425 tests** (413 plus 12).
 
 - [ ] **Step 5: Commit**
 
@@ -9614,7 +9665,7 @@ pnpm vitest run src/FilterValues.test.tsx src/FilterEditor.test.tsx src/ServerMo
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **431 tests** (422 plus 9).
+`pnpm test` must report **434 tests** (425 plus 9).
 
 - [ ] **Step 5: Commit**
 
@@ -10236,7 +10287,7 @@ pnpm typecheck && pnpm test && pnpm build
 that suite — but it does render `<ServerDemo />`, which now passes `filtering: { loadValues }`, so
 run it deliberately rather than trusting that.
 
-`pnpm test` must report **435 tests** (431 plus 4).
+`pnpm test` must report **438 tests** (434 plus 4).
 
 - [ ] **Step 5: Commit**
 
@@ -10260,7 +10311,7 @@ git status --short
 git log --oneline main..khojiakbar
 ```
 
-`pnpm test` reports **435 tests**, `git status` is clean, and the log shows this section's seven
+`pnpm test` reports **438 tests**, `git status` is clean, and the log shows this section's seven
 commits on top of Sections A and B's twelve.
 
 Then:

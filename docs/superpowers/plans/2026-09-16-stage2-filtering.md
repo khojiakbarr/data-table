@@ -3351,13 +3351,28 @@ closing brace — with a thin version plus the extracted walk. The existing body
 `export function collectFilterKinds<TData>(` and ending at the `return kinds\n}` before
 `/** How to read one column's value off a row, or null for a display column. */`:
 
+> **Correction (found while implementing Task 7):** a review round on Task 5/6 added a regression
+> test — `filterKinds.test.ts`'s `"omits an undeclared column when there are no rows yet to infer a
+> kind from"` — that pins the exact behaviour this section's original snippet below would have
+> deleted: `collectFilterKinds` must *skip* adding an entry when nothing is declared, the column has
+> an accessor, and there is no sample to infer from yet, rather than falling through
+> `resolveFilterKind` to a guessed `"text"`. A thin `for (const [id, facts] of collectColumnFacts(...))
+> kinds.set(id, resolveFilterKind(facts))` loses that skip and breaks the regression test. Keep the
+> skip check, moved from the old inline walk onto the facts the extracted `collectColumnFacts` now
+> produces:
+
 ```ts
 /**
  * Every leaf column's resolved filter kind.
  *
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
- * @returns Leaf column id to resolved kind.
+ * @returns Leaf column id to resolved kind. A column with no declared
+ *   `meta.filter` and no rows yet to sample is omitted rather than guessed at
+ *   — `pruneFilters` treats a missing entry as "kind check skipped", which is
+ *   the only safe reading before the first row has arrived (server mode, or
+ *   client mode with async data): guessing "text" would drop every stored
+ *   number/boolean condition on that render.
  */
 export function collectFilterKinds<TData>(
   columns: readonly FilterColumnDefShape<TData>[],
@@ -3365,6 +3380,11 @@ export function collectFilterKinds<TData>(
 ): Map<string, FilterKind | false> {
   const kinds = new Map<string, FilterKind | false>()
   for (const [id, facts] of collectColumnFacts(columns, rows)) {
+    // Nothing declared and nothing to infer from: the kind is *unknown*, not
+    // "text". Recording the guess makes `pruneFilters` delete every stored
+    // number/boolean condition on the first render of a table whose rows have
+    // not arrived — i.e. on every server-mode mount.
+    if (facts.meta?.filter === undefined && facts.hasAccessor && facts.sampleValue === undefined) continue
     kinds.set(id, resolveFilterKind(facts))
   }
   return kinds
@@ -3506,7 +3526,11 @@ pnpm vitest run src/core/search.test.ts src/core/filterKinds.test.ts
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **346 tests** (341 plus 5). `filterKinds.test.ts`'s six tests must still pass
+`pnpm test` must report **5 more tests than the count on `main` before this task** (review rounds on
+earlier tasks have already pushed the running total above this plan's original absolute numbers —
+treat those as a floor, not an equality, and diff the count before/after this task instead).
+`filterKinds.test.ts`'s existing tests (nine, as of the review rounds that added the
+"omits an undeclared column…" regression test — see the Step 3 correction above) must still pass
 unchanged — the refactor is behaviour-preserving, and that is what proves it.
 
 - [ ] **Step 5: Commit**

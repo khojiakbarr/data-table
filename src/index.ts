@@ -66,8 +66,9 @@ export type {
 
 export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"
-export { collectFilterKinds, resolveFilterKind } from "./core/filterKinds"
+export { collectColumnFacts, collectFilterKinds, resolveFilterKind } from "./core/filterKinds"
 export type { FilterColumnDefShape, FilterKindSource } from "./core/filterKinds"
+export { collectSearchFields, isSearchableColumn } from "./core/search"
 
 /* Helpers worth borrowing rather than rewriting. */
 export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"

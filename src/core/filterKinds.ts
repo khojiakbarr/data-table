@@ -57,12 +57,6 @@ export interface FilterColumnDefShape<TData> {
 /**
  * Every leaf column's resolved filter kind.
  *
- * Mirrors `collectLeafIds`' own id resolution (both derive it the way
- * TanStack's `constructColumn` does — see {@link deriveColumnId}) so the map
- * lines up with the ids a stored layout holds. Only the first few rows are
- * sampled: inference needs one non-null value, and walking a 100 000-row array
- * per column on every mount to find one is not worth the accuracy.
- *
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
  * @returns Leaf column id to resolved kind. A column with no declared
@@ -77,6 +71,40 @@ export function collectFilterKinds<TData>(
   rows: readonly TData[],
 ): Map<string, FilterKind | false> {
   const kinds = new Map<string, FilterKind | false>()
+  for (const [id, facts] of collectColumnFacts(columns, rows)) {
+    // Nothing declared and nothing to infer from: the kind is *unknown*, not
+    // "text". Recording the guess makes `pruneFilters` delete every stored
+    // number/boolean condition on the first render of a table whose rows have
+    // not arrived — i.e. on every server-mode mount.
+    if (facts.meta?.filter === undefined && facts.hasAccessor && facts.sampleValue === undefined) continue
+    kinds.set(id, resolveFilterKind(facts))
+  }
+  return kinds
+}
+
+/**
+ * Every leaf column's meta, accessor and sample value, in one walk.
+ *
+ * Extracted because quick search needs exactly the same three facts about a
+ * column that {@link resolveFilterKind} does, and walking the definitions twice
+ * — once per consumer — is how the two would drift apart about which id a
+ * column has.
+ *
+ * Ids come from {@link deriveColumnId} — the one place this library derives an
+ * id the way TanStack's `constructColumn` does — so the map lines up with the
+ * live columns and with the ids a stored layout holds. Only the first few rows
+ * are sampled: inference needs one non-null value, and walking a 100 000-row
+ * array per column on every mount to find one is not worth the accuracy.
+ *
+ * @param columns - Column definitions, possibly nested.
+ * @param rows - The data, or the page of it the table is holding.
+ * @returns Leaf column id to the facts both resolvers read.
+ */
+export function collectColumnFacts<TData>(
+  columns: readonly FilterColumnDefShape<TData>[],
+  rows: readonly TData[],
+): Map<string, FilterKindSource> {
+  const facts = new Map<string, FilterKindSource>()
   const walk = (defs: readonly FilterColumnDefShape<TData>[]): void => {
     defs.forEach((def, index) => {
       if (def.columns?.length) {
@@ -85,17 +113,15 @@ export function collectFilterKinds<TData>(
       }
       const id = deriveColumnId(def, index)
       const read = valueReader(def)
-      const sample = read === null ? undefined : firstNonNull(rows, read)
-      // Nothing declared and nothing to infer from: the kind is *unknown*, not
-      // "text". Recording the guess makes `pruneFilters` delete every stored
-      // number/boolean condition on the first render of a table whose rows have
-      // not arrived — i.e. on every server-mode mount.
-      if (def.meta?.filter === undefined && read !== null && sample === undefined) return
-      kinds.set(id, resolveFilterKind({ meta: def.meta, hasAccessor: read !== null, sampleValue: sample }))
+      facts.set(id, {
+        meta: def.meta,
+        hasAccessor: read !== null,
+        sampleValue: read === null ? undefined : firstNonNull(rows, read),
+      })
     })
   }
   walk(columns)
-  return kinds
+  return facts
 }
 
 /** How to read one column's value off a row, or null for a display column. */

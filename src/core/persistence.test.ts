@@ -126,6 +126,26 @@ describe("pruneLayout", () => {
     expect(pruned.sorting).toBeUndefined()
     expect(pruned.columnPinning).toEqual({ start: [], end: [] })
   })
+
+  it("does not throw when an element of an array-shaped slice is malformed", () => {
+    // Guarding the container is not enough for `sorting`, the one slice whose
+    // elements are dereferenced (`entry.id`) rather than only handed to
+    // `Set.has`. `JSON.stringify([undefined])` is `"[null]"`, so a storage
+    // adapter that lets an undefined into the sorting array puts exactly this
+    // on the wire — and the throw lands in `useArrangement`'s `useState`
+    // initialiser, which nothing clears, so every reload crashes again.
+    const damaged = {
+      columnOrder: [null, "a"] as unknown as string[],
+      sorting: [null, undefined, "b", 5, { id: "gone", desc: true }, { id: "a", desc: false }] as unknown as
+        TableLayout["sorting"],
+      columnPinning: { start: [null], end: [undefined] } as unknown as TableLayout["columnPinning"],
+    }
+    expect(() => pruneLayout(damaged, ["a", "b"])).not.toThrow()
+    const pruned = pruneLayout(damaged, ["a", "b"])
+    expect(pruned.sorting).toEqual([{ id: "a", desc: false }])
+    expect(pruned.columnOrder).toEqual(["a", "b"])
+    expect(pruned.columnPinning).toEqual({ start: [], end: [] })
+  })
 })
 
 describe("pruneLayout — filters", () => {

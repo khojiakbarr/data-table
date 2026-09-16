@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-table"
 import {
   isFilterValue,
+  rebuildCondition,
   startOfLocalDay,
   type FilterCondition,
   type FilterValue,
@@ -70,8 +71,16 @@ function blankResolved(op: "blank" | "notBlank"): ResolvedCondition {
  * The table runs this once per filter, before any row is tested, and hands
  * `filter` the result — not the raw condition.
  *
- * @param condition - The condition stored for a column.
- * @returns The condition with its needle, bounds and value set prepared.
+ * **Fail open, always.** A condition this cannot read constrains nothing.
+ * Blanking the table is the worse failure: an empty grid gives the user
+ * nothing to correct, and an operator that is silently dropped rather than
+ * rejected is worse still, because it keeps exactly the rows the caller asked
+ * to exclude.
+ *
+ * @param condition - The condition stored for a column. Untrusted: it is the
+ *   TanStack `ColumnFilter.value`, which any host can write directly.
+ * @returns The canonical condition with its needle, bounds and value set
+ *   prepared, or `{ kind: "always" }` for anything unreadable.
  */
 export function resolveCondition(condition: FilterCondition): ResolvedCondition {
   // A filter value reaches this from `state.columnFilters`, which any host can
@@ -79,59 +88,63 @@ export function resolveCondition(condition: FilterCondition): ResolvedCondition 
   // only `undefined` and `""`, so a `null` (or any other non-object) lands
   // here and must fail open rather than throw on `condition.kind`.
   if (typeof condition !== "object" || condition === null) return { kind: "always" }
-  switch (condition.kind) {
+  // Validate through the very constructors `pruneFilters` and
+  // `filtering.setModel` run this same untrusted input through, rather than
+  // keeping a sixth hand-written copy of the per-key checks here. That is what
+  // makes the policy above whole: `rebuildCondition` rejects an operator no
+  // kind declares, a non-finite number, a malformed day and a valued op whose
+  // `value` key a null-omitting serialiser dropped, and it orders reversed
+  // bounds — so the rows this keeps are the rows the canonical condition on
+  // the wire asks the backend for, and the client can no longer disagree with
+  // `buildQuery` about which conditions are readable.
+  const canonical = rebuildCondition(condition)
+  // Null also covers a condition that constrains nothing — `contains ""`, an
+  // all-null range, an empty `in` list. Those are never stored and never
+  // published, so the backend returns every row; matching "every non-blank
+  // row" here would hide rows the server kept.
+  if (canonical === null) return { kind: "always" }
+  // Each member is selected by its own property rather than by `op`, for the
+  // reason `textCondition` records: narrowing a union whose discriminant is
+  // itself a union of literals does not exclude the other members by
+  // exclusion alone. It is sound here because the constructors guarantee the
+  // shape matches the operator — which is exactly what `rebuildCondition`
+  // above has just established.
+  switch (canonical.kind) {
     case "text": {
-      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
-      // Branch on `op` — the actual discriminant — before reading `value`: a
-      // condition serialised by a backend that omits nulls (Go `omitempty`,
-      // Jackson NON_NULL, protobuf-JSON) can carry a valued op with its
-      // `value` key dropped, and that must fail open, not silently become a
-      // blank filter. See the matching comment in `textCondition`.
-      if (!("value" in condition) || typeof condition.value !== "string") return { kind: "always" }
-      return { kind: "text", op: condition.op, needle: condition.value.toLowerCase() }
+      if (!("value" in canonical)) return blankResolved(canonical.op)
+      return { kind: "text", op: canonical.op, needle: canonical.value.toLowerCase() }
     }
     case "number": {
-      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
-      if (condition.op === "between") {
-        // Read each bound independently — a bound whose key was dropped in
-        // serialisation is unbounded, not a blank filter. See the matching
-        // comment in `numberCondition`.
-        const from = "from" in condition && typeof condition.from === "number" ? condition.from : null
-        const to = "to" in condition && typeof condition.to === "number" ? condition.to : null
+      if ("value" in canonical) return { kind: "number", op: canonical.op, value: canonical.value }
+      // A bound the constructor read as null is unbounded, not a blank filter
+      // — including one whose key a null-omitting serialiser dropped.
+      if ("from" in canonical) {
         return {
           kind: "numberRange",
-          min: from ?? Number.NEGATIVE_INFINITY,
-          max: to ?? Number.POSITIVE_INFINITY,
+          min: canonical.from ?? Number.NEGATIVE_INFINITY,
+          max: canonical.to ?? Number.POSITIVE_INFINITY,
         }
       }
-      if (!("value" in condition) || typeof condition.value !== "number") return { kind: "always" }
-      return { kind: "number", op: condition.op, value: condition.value }
+      return blankResolved(canonical.op)
     }
     case "date": {
-      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
-      // A bound whose key was dropped in serialisation is unbounded, not a
-      // blank filter: see the matching comment in `dateCondition`.
+      if (!("from" in canonical)) return blankResolved(canonical.op)
+      // Both bounds were parsed once already inside `dateCondition`, so
+      // neither `startOfLocalDay` call below can return null here.
       return {
         kind: "date",
-        from: "from" in condition && condition.from !== null ? startOfLocalDay(condition.from) : null,
-        before: "before" in condition && condition.before !== null ? startOfLocalDay(condition.before) : null,
+        from: canonical.from === null ? null : startOfLocalDay(canonical.from),
+        before: canonical.before === null ? null : startOfLocalDay(canonical.before),
       }
     }
     case "boolean": {
-      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
-      if (!("value" in condition) || typeof condition.value !== "boolean") return { kind: "always" }
-      return { kind: "boolean", value: condition.value }
+      if (!("value" in canonical)) return blankResolved(canonical.op)
+      return { kind: "boolean", value: canonical.value }
     }
     case "list": {
-      if (condition.op === "blank" || condition.op === "notBlank") return blankResolved(condition.op)
-      if (!("values" in condition) || !Array.isArray(condition.values)) return { kind: "always" }
-      return { kind: "list", negated: condition.op === "notIn", values: new Set(condition.values) }
+      if (!("values" in canonical)) return blankResolved(canonical.op)
+      return { kind: "list", negated: canonical.op === "notIn", values: new Set(canonical.values) }
     }
-    default:
-      // Unreachable through the constructors, which are the only way to build a
-      // condition. Failing open is the safe direction: a condition nobody can
-      // read constrains nothing, rather than blanking the table.
-      return { kind: "always" }
   }
 }
 

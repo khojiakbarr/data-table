@@ -254,4 +254,78 @@ describe("resolveCondition", () => {
     })
     expect(matches({ kind: "text", field: "v", op: "contains" } as FilterCondition, "anything")).toBe(true)
   })
+
+  it("fails open on an operator its kind does not declare", () => {
+    // Same untrusted door as the null condition above: an operator this
+    // version does not know (a stale one from an older release, a miscased
+    // one from a JS host) reached the inner switches, which either blanked
+    // the table or — worse — dropped the operator and kept exactly the rows
+    // the caller asked to exclude.
+    const staleText = { kind: "text", field: "v", op: "matches", value: "agro" } as unknown as FilterCondition
+    expect(resolveCondition(staleText)).toEqual({ kind: "always" })
+    expect(matches(staleText, "Gallaorol agro")).toBe(true)
+    expect(matches(staleText, null)).toBe(true)
+
+    const staleNumber = { kind: "number", field: "v", op: "gtOrEq", value: 10 } as unknown as FilterCondition
+    expect(matches(staleNumber, 5)).toBe(true)
+
+    // `isNot` used to resolve to a bare `{ kind: "boolean", value }`, i.e. `is`.
+    const staleBoolean = { kind: "boolean", field: "v", op: "isNot", value: true } as unknown as FilterCondition
+    expect(matches(staleBoolean, false)).toBe(true)
+
+    // `notInAll` used to resolve with `negated: false`, i.e. `in`.
+    const staleList = { kind: "list", field: "v", op: "notInAll", values: ["open"] } as unknown as FilterCondition
+    expect(matches(staleList, "closed")).toBe(true)
+
+    // The date branch never looked at `op` at all, so an unreadable operator
+    // became an unbounded range that still rejected every non-date value.
+    const staleDate = { kind: "date", field: "v", op: "onOrBefore", day: "2026-04-01" } as unknown as FilterCondition
+    expect(matches(staleDate, null)).toBe(true)
+    expect(matches(staleDate, "not a date")).toBe(true)
+  })
+
+  it("fails open on a non-finite number rather than matching nothing", () => {
+    // `typeof NaN === "number"`, so both value checks passed and the
+    // comparison then failed for every row. `filters.ts` rejects non-finite
+    // numbers through `finiteOrNull`; this module has to agree with it.
+    const nanValue = { kind: "number", field: "v", op: "eq", value: Number.NaN } as FilterCondition
+    expect(resolveCondition(nanValue)).toEqual({ kind: "always" })
+    expect(matches(nanValue, 1)).toBe(true)
+
+    const nanBound = { kind: "number", field: "v", op: "between", from: Number.NaN, to: 20 } as FilterCondition
+    expect(resolveCondition(nanBound)).toEqual({
+      kind: "numberRange",
+      min: Number.NEGATIVE_INFINITY,
+      max: 20,
+    })
+    expect(matches(nanBound, 5)).toBe(true)
+    expect(matches(nanBound, 25)).toBe(false)
+  })
+
+  it("resolves the canonical condition, so the client agrees with the wire", () => {
+    // `pruneFilters` orders reversed bounds and sorts list values before
+    // `buildQuery` sees them. A host that registers `filterFn_dt` on its own
+    // column hands conditions straight here, and a client that read them
+    // differently would disagree with its own backend.
+    const reversed = { kind: "number", field: "v", op: "between", from: 20, to: 10 } as FilterCondition
+    expect(matches(reversed, 15)).toBe(true)
+    const reversedDays = {
+      kind: "date",
+      field: "v",
+      op: "range",
+      from: "2026-04-01",
+      before: "2026-03-01",
+    } as FilterCondition
+    expect(matches(reversedDays, "2026-03-15")).toBe(true)
+  })
+
+  it("fails open on an empty needle, the way the layout drops it", () => {
+    // `textCondition` returns null for `contains ""` — it constrains nothing,
+    // so it is never stored and never published, and the server therefore
+    // returns every row. Matching "every non-blank row" here would make the
+    // client hide rows the backend kept.
+    const emptyNeedle = { kind: "text", field: "v", op: "contains", value: "" } as FilterCondition
+    expect(resolveCondition(emptyNeedle)).toEqual({ kind: "always" })
+    expect(matches(emptyNeedle, null)).toBe(true)
+  })
 })

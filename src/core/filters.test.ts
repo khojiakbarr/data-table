@@ -46,6 +46,26 @@ describe("startOfLocalDay", () => {
     expect(start).toBeGreaterThan(Date.parse("2026-04-01"))
   })
 
+  it("accepts a leap day in a year under 100", () => {
+    // Year 0 is a leap year — it is divisible by 400 — so 0000-02-29 exists.
+    // Building the day as `new Date(0, 1, 29)` first landed it in 1900, which
+    // is not a leap year, so it rolled to 1 March before `setFullYear` could
+    // move the year back, and the read-back check then rejected a real day.
+    const start = startOfLocalDay("0000-02-29")
+    expect(start).not.toBeNull()
+    expect(toIsoDay(new Date(start ?? Number.NaN))).toBe("0000-02-29")
+  })
+
+  it("lands on local midnight for a year under 100", () => {
+    process.env.TZ = "America/Sao_Paulo"
+    // Constructing in 1900 and moving the year afterwards left the 1914
+    // standard offset applied to a date that predates standard time, so the
+    // "first instant of the day" sat 6m28s inside the zone's LMT day.
+    const local = new Date(startOfLocalDay("0014-01-01") ?? Number.NaN)
+    expect(local.getHours()).toBe(0)
+    expect(local.getMinutes()).toBe(0)
+  })
+
   it("rejects anything that is not a calendar day", () => {
     expect(startOfLocalDay("2026-3-1")).toBeNull()
     expect(startOfLocalDay("2026-02-30")).toBeNull()
@@ -69,6 +89,22 @@ describe("toIsoDay", () => {
     expect(toIsoDay(new Date("nonsense"))).toBeNull()
     expect(toIsoDay(new Date(NaN))).toBeNull()
   })
+
+  it("returns null for a year `startOfLocalDay` could not read back", () => {
+    // The second way to emit a fake day: `String(10000).padStart(4, "0")` is
+    // `"10000"` and `String(-1).padStart(4, "0")` is `"00-1"`. Both satisfy
+    // the declared return type and neither is a day this module's own parser
+    // accepts, so the generator would contradict the parser.
+    expect(toIsoDay(new Date(10_000, 0, 1))).toBeNull()
+    const beforeYearZero = new Date(0, 0, 1)
+    beforeYearZero.setFullYear(-1)
+    expect(toIsoDay(beforeYearZero)).toBeNull()
+    // The last and first days it can still name.
+    expect(toIsoDay(new Date(9999, 11, 31))).toBe("9999-12-31")
+    const yearZero = new Date(0, 0, 1)
+    yearZero.setFullYear(0)
+    expect(toIsoDay(yearZero)).toBe("0000-01-01")
+  })
 })
 
 describe("addDays", () => {
@@ -91,8 +127,26 @@ describe("addDays", () => {
     expect(addDays("nonsense", 1)).toBeNull()
   })
 
-  it("returns null instead of a fake day when `days` is not finite", () => {
+  it("returns null instead of a fake day when `days` is not a whole number", () => {
     expect(addDays("2026-03-01", NaN)).toBeNull()
+    expect(addDays("2026-03-01", Number.POSITIVE_INFINITY)).toBeNull()
+    // `setDate` truncates toward zero, so a fractional `days` was read two
+    // different ways depending on its sign: `+0.5` moved nothing while `-0.5`
+    // moved a whole day back.
+    expect(addDays("2026-03-01", 0.5)).toBeNull()
+    expect(addDays("2026-03-01", -0.5)).toBeNull()
+  })
+
+  it("returns null at the edges of the year range a day can be named in", () => {
+    // Stepping off either end used to produce `"10000-01-01"` and
+    // `"00-1-12-31"` — non-null strings typed `IsoDay`, so every caller's
+    // null guard was bypassed and the malformed bound reached the layout,
+    // the wire and, at evaluation time, a silent `null`.
+    expect(addDays("9999-12-31", 1)).toBeNull()
+    expect(addDays("0000-01-01", -1)).toBeNull()
+    // One step inside each edge still moves.
+    expect(addDays("9999-12-30", 1)).toBe("9999-12-31")
+    expect(addDays("0000-01-02", -1)).toBe("0000-01-01")
   })
 
   it("counts calendar days, not 24-hour blocks, across a DST change", () => {
@@ -242,6 +296,19 @@ describe("dayChoiceToCondition", () => {
 
   it("returns null when nothing was picked", () => {
     expect(dayChoiceToCondition("created", { mode: "between", from: null, to: null })).toBeNull()
+  })
+
+  it("returns null when the exclusive upper bound falls outside the nameable years", () => {
+    // `<input type="date">` accepts 9999-12-31, and every mode below adds a
+    // day to reach its exclusive bound. The null guards each of these already
+    // has only work if `addDays` actually returns null there.
+    expect(dayChoiceToCondition("created", { mode: "is", day: "9999-12-31" })).toBeNull()
+    expect(dayChoiceToCondition("created", { mode: "after", day: "9999-12-31" })).toBeNull()
+    expect(dayChoiceToCondition("created", { mode: "between", from: "9999-12-01", to: "9999-12-31" }))
+      .toBeNull()
+    // "before 31 Dec 9999" needs no arithmetic, so it still resolves.
+    expect(dayChoiceToCondition("created", { mode: "before", day: "9999-12-31" }))
+      .toEqual({ kind: "date", field: "created", op: "range", from: null, before: "9999-12-31" })
   })
 
   it("orders a reversed between pair before making the later day exclusive", () => {

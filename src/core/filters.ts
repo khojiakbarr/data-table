@@ -7,7 +7,15 @@
  * change, refetch forever and write the layout on every render.
  */
 
-/** A calendar day, `YYYY-MM-DD`. Never a `Date`. */
+/**
+ * A calendar day, `YYYY-MM-DD`. Never a `Date`.
+ *
+ * A plain `string` alias, so the compiler enforces nothing about the shape:
+ * every day that crosses a boundary — storage, the wire, a host's own call —
+ * has to be read through {@link startOfLocalDay} before it is trusted. The
+ * year is four digits, so only years 0000..9999 can be named; {@link toIsoDay}
+ * returns null rather than emit anything else.
+ */
 export type IsoDay = string
 
 /**
@@ -87,9 +95,16 @@ export function startOfLocalDay(day: IsoDay): number | null {
   const year = Number(parts[1])
   const month = Number(parts[2])
   const date = Number(parts[3])
-  const stamp = new Date(year, month - 1, date)
-  // Years under 100 are mapped into the 1900s by the Date constructor.
-  if (year < 100) stamp.setFullYear(year)
+  // All three fields are set in one `setFullYear` call rather than through
+  // `new Date(year, month - 1, date)`, which maps years under 100 into the
+  // 1900s and so evaluates the day in the wrong year before the year can be
+  // corrected: 0000-02-29 exists (year 0 is divisible by 400) but 1900-02-29
+  // does not, so it rolled to 1 March and was then rejected as unreal. The
+  // same detour also applied a modern UTC offset to a pre-standard-time date,
+  // landing minutes inside the day instead of at its first instant.
+  const stamp = new Date(0)
+  stamp.setFullYear(year, month - 1, date)
+  stamp.setHours(0, 0, 0, 0)
   // `new Date(2026, 1, 30)` rolls forward to 2 March rather than failing, so a
   // day that does not exist is caught by reading the parts back out.
   if (stamp.getFullYear() !== year || stamp.getMonth() !== month - 1 || stamp.getDate() !== date) {
@@ -112,12 +127,25 @@ export function startOfLocalDay(day: IsoDay): number | null {
  * plausible but fake `IsoDay` (`"0NaN-NaN-NaN"`) that flows silently into a
  * filter bound instead of failing.
  *
+ * A year outside 0..9999 is the same defect by another route, and is guarded
+ * the same way — see the comment on the year below.
+ *
  * @param date - Any date; may be an Invalid Date.
- * @returns Its local calendar day, `YYYY-MM-DD`, or null if `date` is invalid.
+ * @returns Its local calendar day, `YYYY-MM-DD`, or null if `date` is invalid
+ *   or falls in a year that cannot be named in four digits.
  */
 export function toIsoDay(date: Date): IsoDay | null {
   if (Number.isNaN(date.getTime())) return null
-  const year = String(date.getFullYear()).padStart(4, "0")
+  const yearNumber = date.getFullYear()
+  // `ISO_DAY` parses exactly four digits, so a year outside 0..9999 cannot be
+  // named as an `IsoDay`: `padStart` would emit `"10000-01-01"` or
+  // `"00-1-12-31"`, strings this module's own parser refuses. Returning them
+  // would make the generator contradict the parser — and because they are not
+  // null, every caller's null guard is bypassed and the malformed day reaches
+  // the stored layout and the wire, only to resolve to `null` at evaluation
+  // time and silently widen the filter.
+  if (yearNumber < 0 || yearNumber > 9999) return null
+  const year = String(yearNumber).padStart(4, "0")
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
   return `${year}-${month}-${day}`
@@ -130,18 +158,20 @@ export function toIsoDay(date: Date): IsoDay | null {
  * or 25 hours long is still one day.
  *
  * @param day - A calendar day, `YYYY-MM-DD`.
- * @param days - How many days to move; may be negative. A non-finite `days`
- *   (e.g. `NaN`) produces an Invalid Date, guarded below rather than left to
- *   flow into `toIsoDay`'s own guard, so the failure is explicit at the call
- *   that actually introduces it.
- * @returns The moved day, or null if `day` is not a day or `days` is not finite.
+ * @param days - Whole days to move; may be negative. Anything else is
+ *   rejected rather than truncated: `setDate` truncates toward zero, so `0.5`
+ *   moved nothing while `-0.5` moved a whole day back — the same input read
+ *   two different ways. `Number.isInteger` also covers `NaN` and `Infinity`,
+ *   which would otherwise reach `toIsoDay` as an Invalid Date.
+ * @returns The moved day, or null if `day` is not a day, `days` is not a whole
+ *   number, or the result falls outside the years an `IsoDay` can name.
  */
 export function addDays(day: IsoDay, days: number): IsoDay | null {
+  if (!Number.isInteger(days)) return null
   const start = startOfLocalDay(day)
   if (start === null) return null
   const moved = new Date(start)
   moved.setDate(moved.getDate() + days)
-  if (Number.isNaN(moved.getTime())) return null
   return toIsoDay(moved)
 }
 

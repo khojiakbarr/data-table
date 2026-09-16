@@ -146,7 +146,14 @@ export function pruneLayout(
     }
   }
   if (Array.isArray(stored.sorting)) {
-    pruned.sorting = stored.sorting.filter((entry) => known.has(entry.id))
+    // An element can be malformed as well as the container, and `sorting` is
+    // the one slice whose elements are dereferenced (`entry.id`) rather than
+    // only handed to `Set.has` — which quietly rejects a string or a number
+    // but throws on null. `JSON.stringify([undefined])` is `"[null]"`, so
+    // `[null]` is what a storage adapter actually puts on the wire.
+    pruned.sorting = stored.sorting.filter(
+      (entry) => typeof entry === "object" && entry !== null && known.has(entry.id),
+    )
   }
 
   // Without this a deleted column's filter stays active forever with no UI able

@@ -29,6 +29,9 @@ export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
 export { TablePagination } from "./components/TablePagination"
 export { SkeletonRows, TableStatus } from "./components/TableStatus"
 
+export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
+export type { ResolvedCondition } from "./core/filterFn"
+
 /* Helpers worth borrowing rather than rewriting. */
 export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"
 export type { HeaderPinning } from "./core/pinning"

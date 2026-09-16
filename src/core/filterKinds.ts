@@ -1,3 +1,4 @@
+import { deriveColumnId } from "./columnIds"
 import type { FilterKind } from "./filters"
 import type { DataTableColumnMeta } from "../types"
 
@@ -48,6 +49,7 @@ export interface FilterColumnDefShape<TData> {
   id?: string
   accessorKey?: unknown
   accessorFn?: (row: TData, index: number) => unknown
+  header?: unknown
   meta?: DataTableColumnMeta | undefined
   columns?: readonly FilterColumnDefShape<TData>[]
 }
@@ -55,10 +57,11 @@ export interface FilterColumnDefShape<TData> {
 /**
  * Every leaf column's resolved filter kind.
  *
- * Mirrors `collectLeafIds`' own id resolution so the map lines up with the ids
- * a stored layout holds. Only the first few rows are sampled: inference needs
- * one non-null value, and walking a 100 000-row array per column on every
- * mount to find one is not worth the accuracy.
+ * Mirrors `collectLeafIds`' own id resolution (both derive it the way
+ * TanStack's `constructColumn` does — see {@link deriveColumnId}) so the map
+ * lines up with the ids a stored layout holds. Only the first few rows are
+ * sampled: inference needs one non-null value, and walking a 100 000-row array
+ * per column on every mount to find one is not worth the accuracy.
  *
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
@@ -75,12 +78,7 @@ export function collectFilterKinds<TData>(
         walk(def.columns)
         return
       }
-      const id =
-        typeof def.id === "string"
-          ? def.id
-          : typeof def.accessorKey === "string"
-            ? def.accessorKey
-            : String(index)
+      const id = deriveColumnId(def, index)
       const read = valueReader(def)
       kinds.set(id, resolveFilterKind({
         meta: def.meta,

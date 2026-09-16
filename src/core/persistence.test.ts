@@ -104,6 +104,28 @@ describe("pruneLayout", () => {
     expect(pruneLayout({ pageSize: 0 }, ["a"]).pageSize).toBeUndefined()
     expect(pruneLayout({ pageSize: "x" as unknown as number }, ["a"]).pageSize).toBeUndefined()
   })
+
+  it("does not throw when an array-shaped slice comes back from storage as something else", () => {
+    // `stored` is whatever `JSON.parse` produced from untrusted data (a
+    // hand-edited localStorage entry, a server response), so nothing here
+    // guarantees `columnOrder`/`sorting`/`columnPinning.start`/`.end` are
+    // actually arrays. This runs inside `useArrangement`'s `useState`
+    // initialiser, so a throw here is a render crash with no self-healing
+    // path — the bad entry is never cleared and every reload crashes again.
+    const damaged = {
+      columnOrder: { a: 1 } as unknown as string[],
+      sorting: { a: 1 } as unknown as TableLayout["sorting"],
+      columnPinning: { start: "oops", end: 5 } as unknown as TableLayout["columnPinning"],
+    }
+    expect(() => pruneLayout(damaged, ["a", "b"])).not.toThrow()
+    const pruned = pruneLayout(damaged, ["a", "b"])
+    // Neither slice is copied when its shape is wrong — `pruneLayout` rebuilds
+    // from recognised keys, so an unrecognised shape is treated the same as
+    // an absent one rather than guessed at.
+    expect(pruned.columnOrder).toBeUndefined()
+    expect(pruned.sorting).toBeUndefined()
+    expect(pruned.columnPinning).toEqual({ start: [], end: [] })
+  })
 })
 
 describe("pruneLayout — filters", () => {
@@ -156,5 +178,15 @@ describe("pruneLayout — filters", () => {
     expect(pruneLayout({ search: "kr-102" }, ["a"]).search).toBe("kr-102")
     expect(pruneLayout({ search: 5 as unknown as string }, ["a"]).search).toBeUndefined()
     expect(pruneLayout({}, ["a"]).search).toBeUndefined()
+  })
+
+  it("does not throw when the stored filters container is not an array", () => {
+    // Reproduces seeding localStorage with `{"v":1,"layout":{"filters":{"a":1}}}`
+    // and mounting a table: `stored.filters` is truthy, so pruneLayout used to
+    // hand a non-iterable straight to `for...of` inside pruneFilters, throwing
+    // from `useArrangement`'s `useState` initialiser on every mount.
+    const damagedFilters = { a: 1 } as unknown as FilterCondition[]
+    expect(() => pruneLayout({ filters: damagedFilters }, ["a"], kinds)).not.toThrow()
+    expect(pruneLayout({ filters: damagedFilters }, ["a"], kinds).filters).toEqual([])
   })
 })

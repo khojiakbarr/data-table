@@ -453,18 +453,27 @@ export function dayChoiceToCondition(field: string, choice: DayChoice): DateCond
  * of 10 000 and no way to find out why" a stranded filter produces, and a
  * duplicate could never round-trip back out of the projection anyway.
  *
- * @param filters - Conditions as they came out of storage or from a host.
+ * @param filters - Conditions as they came out of storage or from a host. Not
+ *   trusted to actually be an array — untrusted JSON (a hand-edited
+ *   `localStorage` entry, a server response) can hand this a string, a plain
+ *   object or anything else `JSON.parse` produces.
  * @param knownColumnIds - Column ids the table currently defines.
  * @param filterKinds - Each column's resolved filter kind; `false` where
  *   filtering is off for it. Omitted, the kind check is skipped.
  * @returns The conditions worth keeping, one per column, each rebuilt in
- *   canonical form.
+ *   canonical form. Empty when `filters` is not an array.
  */
 export function pruneFilters(
   filters: readonly FilterCondition[],
   knownColumnIds: readonly string[],
   filterKinds?: ReadonlyMap<string, FilterKind | false> | undefined,
 ): FilterCondition[] {
+  // `filters` is typed as an array, but this is exactly the untrusted-input
+  // boundary the type does not enforce at runtime: a stored `{"filters":{"a":1}}`
+  // would otherwise reach `for...of` on a non-iterable and throw, crashing the
+  // `useArrangement` initialiser that calls this on every mount with no
+  // recovery — the bad entry is never cleared, so the crash repeats forever.
+  if (!Array.isArray(filters)) return []
   const known = new Set(knownColumnIds)
   const kept = new Map<string, FilterCondition>()
   for (const condition of filters) {

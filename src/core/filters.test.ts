@@ -6,6 +6,7 @@ import {
   dayChoiceToCondition,
   listCondition,
   numberCondition,
+  pruneFilters,
   rebuildCondition,
   startOfLocalDay,
   textCondition,
@@ -252,5 +253,21 @@ describe("dayChoiceToCondition", () => {
     const reversed = dayChoiceToCondition("created", { mode: "between", from: "2026-03-31", to: "2026-03-01" })
     expect(reversed).toEqual(forward)
     expect(reversed).toEqual({ kind: "date", field: "created", op: "range", from: "2026-03-01", before: "2026-04-01" })
+  })
+})
+
+describe("pruneFilters", () => {
+  it("returns an empty list instead of throwing when the container is not an array", () => {
+    // `filters` is typed as an array, but the caller's own input is untrusted
+    // JSON: a hand-edited localStorage entry or a server response can hand
+    // this a plain object, a string, a number, or null. `for...of` on any of
+    // those (except a string) throws `TypeError: ... is not iterable`, which
+    // — reached through `pruneLayout` from `useArrangement`'s `useState`
+    // initialiser — is an unrecoverable render crash.
+    const notArray = { a: 1 } as unknown as FilterCondition[]
+    expect(pruneFilters(notArray, ["a"])).toEqual([])
+    expect(pruneFilters(null as unknown as FilterCondition[], ["a"])).toEqual([])
+    expect(pruneFilters("oops" as unknown as FilterCondition[], ["a"])).toEqual([])
+    expect(pruneFilters(5 as unknown as FilterCondition[], ["a"])).toEqual([])
   })
 })

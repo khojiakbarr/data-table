@@ -22,6 +22,7 @@ import {
   type Updater,
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
+import { deriveColumnId } from "./core/columnIds"
 import type { FilterCondition } from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
 import type { TableQuery, TableSearch } from "./core/query"
@@ -650,6 +651,7 @@ function normaliseSizing(
 interface ColumnDefShape {
   id?: string
   accessorKey?: unknown
+  header?: unknown
   columns?: readonly ColumnDefShape[]
 }
 
@@ -658,8 +660,9 @@ interface ColumnDefShape {
  *
  * Only leaves carry order, visibility, width and pinning, so a group's own id
  * must not appear — mixing them in makes TanStack drop every id it cannot match
- * and reshuffle the rest. Mirrors TanStack's own id resolution so stored
- * layouts line up with live columns.
+ * and reshuffle the rest. Derives each id with {@link deriveColumnId}, the same
+ * way TanStack's own `constructColumn` does, so stored layouts line up with
+ * live columns.
  *
  * @param columns - Column definitions, possibly nested.
  * @returns Every leaf id, depth-first.
@@ -667,8 +670,6 @@ interface ColumnDefShape {
 function collectLeafIds(columns: readonly ColumnDefShape[]): string[] {
   return columns.flatMap((column, index) => {
     if (column.columns?.length) return collectLeafIds(column.columns)
-    if (typeof column.id === "string") return [column.id]
-    if (typeof column.accessorKey === "string") return [column.accessorKey]
-    return [String(index)]
+    return [deriveColumnId(column, index)]
   })
 }

@@ -60,9 +60,19 @@ describe("collectFilterKinds", () => {
     expect(kinds.has("money")).toBe(false)
   })
 
-  it("reads a dotted accessorKey as a path, the way TanStack does", () => {
+  it("keys a dotted accessorKey the way TanStack's constructColumn does, but still reads it as a path", () => {
+    // TanStack's `constructColumn` computes a live column's id as
+    // `accessorKey.replaceAll(".", "_")`, so `"partner.name"` has live id
+    // `"partner_name"` — the map must be keyed the same way, or a stored
+    // condition on this column can never be found again.
     const kinds = collectFilterKinds<Receipt>([{ accessorKey: "partner.name" }], rows)
-    expect(kinds.get("partner.name")).toBe("text")
+    expect(kinds.get("partner_name")).toBe("text")
+    expect(kinds.has("partner.name")).toBe(false)
+  })
+
+  it("falls back to a string header for the id, again matching constructColumn", () => {
+    const kinds = collectFilterKinds<Receipt>([{ header: "Actions" }], rows)
+    expect(kinds.get("Actions")).toBe(false)
   })
 
   it("prefers an accessorFn and an explicit meta over inference", () => {

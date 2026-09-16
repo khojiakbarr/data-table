@@ -111,7 +111,13 @@ export function pruneLayout(
 
   const pruned: Partial<TableLayout> = {}
 
-  if (stored.columnOrder) {
+  // `stored` is untrusted JSON — a hand-edited `localStorage` entry or a server
+  // response — so every array-shaped slice below is checked with `Array.isArray`
+  // before `.filter` runs on it; a non-array throws `TypeError: ... is not a
+  // function` (or "not iterable") from inside `useArrangement`'s `useState`
+  // initialiser, which is an unrecoverable render crash: the bad entry is never
+  // cleared, so it repeats on every subsequent mount.
+  if (Array.isArray(stored.columnOrder)) {
     // Keep the stored order, then append columns added since it was saved.
     const ordered = stored.columnOrder.filter((id) => known.has(id))
     const missing = knownColumnIds.filter((id) => !ordered.includes(id))
@@ -130,17 +136,23 @@ export function pruneLayout(
   }
 
   if (stored.columnPinning) {
+    // `start`/`end` are read defensively too: a malformed entry like
+    // `{ start: "oops" }` would otherwise reach `.filter` on a string.
+    const start = stored.columnPinning.start
+    const end = stored.columnPinning.end
     pruned.columnPinning = {
-      start: (stored.columnPinning.start ?? []).filter((id) => known.has(id)),
-      end: (stored.columnPinning.end ?? []).filter((id) => known.has(id)),
+      start: (Array.isArray(start) ? start : []).filter((id) => known.has(id)),
+      end: (Array.isArray(end) ? end : []).filter((id) => known.has(id)),
     }
   }
-  if (stored.sorting) {
+  if (Array.isArray(stored.sorting)) {
     pruned.sorting = stored.sorting.filter((entry) => known.has(entry.id))
   }
 
   // Without this a deleted column's filter stays active forever with no UI able
   // to reach it: 40 rows out of 10 000 and no way to find out why.
+  // `pruneFilters` itself re-checks `Array.isArray` — `stored.filters` is
+  // untrusted JSON too — so the truthy check here is only an optimisation.
   if (stored.filters) {
     pruned.filters = pruneFilters(stored.filters, knownColumnIds, filterKinds)
   }

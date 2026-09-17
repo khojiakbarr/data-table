@@ -35,12 +35,20 @@ export function QuickSearch<TData extends RowData>({ instance, labels }: QuickSe
   // has actually been published.
   const published = instance.query.search !== null
   /*
-   * The count as the user would count it: every matching row, not the page.
-   * `pagination.rowCount` is that total when paging is on (and undefined in
-   * server mode until the host answers); with paging off the row model already
-   * holds every row that matched.
+   * The count as the user would count it: every matching row, not the page
+   * and not the expanded tree under it. `table.getRowModel()` (and, in client
+   * mode, `pagination.rowCount`, which is `getPrePaginatedRowModel()`) are
+   * both aliases for `getExpandedRowModel()` — TanStack's pipeline is core ->
+   * filtered -> grouped -> sorted -> expanded -> paginated — so either one
+   * re-flattens on every row expand/collapse and would fire this announcement
+   * (with the wrong number) on a render the search never touched.
+   * `getFilteredRowModel()` sits one stage earlier, right after filtering and
+   * before expansion ever sees the rows, so its count holds steady across
+   * expand/collapse. Server mode has no such model to read — `manualFiltering`
+   * makes `getFilteredRowModel()` alias the *unfiltered* core model there — so
+   * it keeps reading the host's own `pagination.rowCount` instead.
    */
-  const matches = pagination.enabled ? pagination.rowCount : table.getRowModel().rows.length
+  const matches = instance.mode === "server" ? pagination.rowCount : table.getFilteredRowModel().rows.length
 
   return (
     <div className="dt-search-box">

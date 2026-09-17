@@ -63,6 +63,82 @@ describe("quick search box", () => {
     expect(status).toHaveAttribute("aria-live", "polite")
   })
 
+  it("announces the full match count across pages, not just the page's own rows", () => {
+    // 12 matches spread across more than one 10-row page: a count read from
+    // the paginated (or expanded) row model would report the page's slice,
+    // not the true total.
+    vi.useFakeTimers()
+    const matching = Array.from({ length: 12 }, (_, i) => ({ id: `m${i}`, name: `Match ${i}`, tag: "open" }))
+    const rest = Array.from({ length: 18 }, (_, i) => ({ id: `o${i}`, name: `Other ${i}`, tag: "closed" }))
+
+    function Paged() {
+      const instance = useDataTable<Row>({
+        id: "qs-paged",
+        columns,
+        data: [...matching, ...rest],
+        getRowId: (row) => row.id,
+        pagination: { pageSize: 10 },
+      })
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    render(<Paged />)
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search rows" }), { target: { value: "match" } })
+    act(() => vi.advanceTimersByTime(300))
+
+    expect(screen.getByRole("status")).toHaveTextContent("12 matching rows")
+  })
+
+  it("does not change its announcement when a matching row's children are expanded", () => {
+    // `getFilteredRowModel()` — not `getRowModel()` / `pagination.rowCount`,
+    // both of which alias `getExpandedRowModel()` — is what the count must
+    // come from: only the filtered model stays put while the tree opens and
+    // closes underneath it.
+    vi.useFakeTimers()
+    interface Node {
+      id: string
+      name: string
+      children?: Node[]
+    }
+    const treeHelper = createColumnHelper<DataTableFeatures, Node>()
+    const treeColumns = [treeHelper.accessor("name", { header: "Name", size: 200 })]
+    const tree: Node[] = [
+      {
+        id: "p",
+        name: "Alpha",
+        children: [
+          { id: "c1", name: "Alpha Jr" },
+          { id: "c2", name: "Alpha III" },
+        ],
+      },
+      { id: "q", name: "Beta" },
+    ]
+
+    function Tree() {
+      const instance = useDataTable<Node>({
+        id: "qs-tree",
+        columns: treeColumns,
+        data: tree,
+        getRowId: (row) => row.id,
+        getSubRows: (row) => row.children,
+      })
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    render(<Tree />)
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search rows" }), { target: { value: "alpha" } })
+    act(() => vi.advanceTimersByTime(300))
+    const status = screen.getByRole("status")
+    expect(status).toHaveTextContent("1 matching rows")
+
+    fireEvent.click(screen.getByRole("button", { name: /expand row/i }))
+    expect(screen.getByText("Alpha Jr")).toBeInTheDocument()
+    expect(status).toHaveTextContent("1 matching rows")
+
+    fireEvent.click(screen.getByRole("button", { name: /collapse row/i }))
+    expect(status).toHaveTextContent("1 matching rows")
+  })
+
   it("sits before the spacer, so it is left of the Columns button", () => {
     const { container } = render(<Table />)
     const toolbar = container.querySelector(".dt-toolbar")!

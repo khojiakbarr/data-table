@@ -7429,7 +7429,20 @@ pnpm typecheck && pnpm test && pnpm build
 `DataTable.test.tsx` and `Reordering.test.tsx` are the net under the `columnLabel` move: both read
 column names out of the Columns panel and the header.
 
-`pnpm test` must report **405 tests** (396 plus 9).
+`pnpm test` must report **16 more tests than it did before this task**, and no file other than
+`FilterEditor.test.tsx` may gain or lose one. The absolute totals in this plan are stale — the
+review rounds after the earlier tasks added regression tests the original chain never counted — so
+take the count before and compare: it was **504 tests across 38 files** when this task landed (488
+across 37 before it).
+
+Sixteen and not the nine printed above: the listing in Step 1 leaves seven behaviours this task
+implements uncovered, and they were added to the same file rather than left to a review round. The
+harness there grew an `onCommit` spy and an `autoFocus` flag to carry them, and the extra cases are
+Enter committing from the value field, `onCommit` firing on Apply and on Clear, Clear emptying the
+draft it left behind, a typed *number* waiting for blur the way typed text does, the list column's
+`noValues` note standing in for Task 18's values list, `autoFocus` landing on the value field and —
+when the operator leaves no field to type in — on the operator select, and `canFilterColumn`
+refusing a `meta: { filter: false }` column while allowing an ordinary one.
 
 - [ ] **Step 5: Commit**
 

@@ -11,6 +11,7 @@ import {
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 import { classNames } from "../core/classNames"
+import { columnLabel } from "../core/columnLabel"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
 import { dropSideAt, type DropSide } from "../core/reorder"
 import { clampColumnWidth } from "../core/sizing"
@@ -171,10 +172,7 @@ export function HeaderCell<TData extends RowData>({
   }
 
   const label = flexRender(column.columnDef.header, header.getContext())
-  const columnName =
-    typeof column.columnDef.header === "string" && column.columnDef.header.length > 0
-      ? column.columnDef.header
-      : String(column.id)
+  const columnName = columnLabel(column.id, column.columnDef.header)
 
   return (
     <th

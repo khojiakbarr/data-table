@@ -1,5 +1,6 @@
 import type { RowData } from "@tanstack/react-table"
 import { useEffect, useRef, useState, type DragEvent } from "react"
+import { columnLabel } from "../core/columnLabel"
 import { renderedLeafColumns } from "../core/pinning"
 import type { DropSide } from "../core/reorder"
 import type { DataTableInstance } from "../useDataTable"
@@ -163,11 +164,6 @@ export function ColumnPanel<TData extends RowData>({
       </ul>
     </div>
   )
-}
-
-/** Header definitions can be strings or render functions; only strings label well. */
-function columnLabel(id: string, header: unknown): string {
-  return typeof header === "string" && header.length > 0 ? header : id
 }
 
 function GripIcon() {

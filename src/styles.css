@@ -917,7 +917,8 @@
 
 .dt-select,
 .dt-page-input,
-.dt-search {
+.dt-search,
+.dt-filter-input {
   height: 28px;
   padding-inline: 6px;
   border: 1px solid var(--dt-border);
@@ -981,6 +982,7 @@
 .dt-page-input:focus-visible,
 .dt-search:focus-visible,
 .dt-search-clear:focus-visible,
+.dt-filter-input:focus-visible,
 .dt-icon-button:focus-visible {
   outline: 2px solid var(--dt-focus-ring);
   outline-offset: -2px;
@@ -1074,4 +1076,44 @@
   .dt-skeleton {
     animation: none;
   }
+}
+
+/* ---------- filter editor ---------- *
+ * Shared by the header popover and the side panel's Filters tab, so it carries
+ * no positioning of its own — only the stack of controls.
+ */
+
+.dt-filter-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+/*
+ * (0,2,0), so it beats `.dt-page-input`'s `width: 4em` whatever the source
+ * order: both fields share the rule above, and only one of them is 4em wide.
+ *
+ * The operator select is reached through `.dt-filter-editor .dt-select` rather
+ * than through a class of its own: the editor holds exactly one `<select>`, and
+ * a `.dt-filter-op` in the markup with no rule anywhere reads as a rule someone
+ * deleted.
+ */
+.dt-filter-editor .dt-select,
+.dt-filter-editor .dt-filter-input {
+  width: 100%;
+}
+
+.dt-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* An editor that cannot offer anything says so, rather than showing nothing. */
+.dt-filter-note {
+  margin: 0;
+  padding: 6px 2px;
+  color: var(--dt-muted-fg);
+  font-size: 12px;
 }

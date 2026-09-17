@@ -430,15 +430,24 @@ effect on the very next render, narrowing or widening. Set
 one request its first resolution can cost.
 
 Hiding a column narrows the search, which is surprising either way and is why
-`filtering.searchFields` overrides the list outright. `search` is `null` when
-the box is empty, when it holds only whitespace, and when no column is
-searchable at all — the client has nothing to match against either, so both
-modes return everything.
+`filtering.searchFields` overrides the list outright. What it cannot override
+is what the client will actually match: an entry naming no column, naming a
+display column, or naming one with `enableGlobalFilter: false` is dropped, with
+a dev-mode warning naming it, because TanStack refuses those three underneath
+us and the wire would otherwise ask a backend to search columns this table
+searches none of. Name the *live* id — a nested `accessorKey` like
+`"partner.name"` has id `"partner_name"`. `search` is `null` when the box is
+empty, when it holds only whitespace, and when no column is searchable at all —
+including when every `searchFields` entry was dropped — the client has nothing
+to match against either, so both modes return everything.
 
 **The published value is debounced**, by `filtering.debounceMs` (default
 300 ms). The box itself stays responsive: the raw text is in state on the
 keystroke, and what waits is the query. Column filters are never debounced —
-they commit on Apply, Enter or blur.
+they commit on Apply, Enter or blur. Nor is a programmatic write: `clearAll()`
+and `setModel()` publish their search with their filters, in one query, so
+clearing the toolbar or restoring a shared URL never announces an intermediate
+request a host would fetch.
 
 ---
 

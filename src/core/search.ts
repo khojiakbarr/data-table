@@ -161,6 +161,66 @@ export function collectSearchFields<TData>(
   }
 }
 
+/** What {@link pruneSearchFields} made of a host's `filtering.searchFields`. */
+export interface PrunedSearchFields {
+  /** The listed ids quick search can cover, sorted and deduplicated. */
+  fields: string[]
+  /** The listed ids that were dropped, sorted and deduplicated. */
+  dropped: string[]
+}
+
+/**
+ * A host's `filtering.searchFields` narrowed to the ids quick search can
+ * actually cover.
+ *
+ * `searchFields` bypasses the inference {@link collectSearchFields} does, and
+ * that is the whole point of it — but it cannot bypass what the *client*
+ * refuses to search. TanStack's `column_getCanGlobalFilter` ANDs
+ * `columnDef.enableGlobalFilter ?? true` and `!!column.accessorFn` into its
+ * own verdict, and this library's `getColumnCanGlobalFilter` sits underneath
+ * both, so an id naming a column that does not exist, has no accessor, or
+ * opted out with `enableGlobalFilter: false` is a column the client silently
+ * will not match. Left on the wire it would tell a backend to search columns
+ * the same table, in client mode, searches none of — the divergence the shared
+ * predicate exists to prevent. Worse, when *every* listed id is refused the
+ * table has no globally-filterable column at all and `createFilteredRowModel`
+ * skips the global filter entirely, so the client quietly returns every row.
+ *
+ * Existence and accessor only. Visibility is deliberately not consulted: a
+ * hidden column named here keeps being searched, which is exactly the
+ * hidden-column narrowing `searchFields` is documented to override. Nor is
+ * `meta.searchable`, which is this library's own default heuristic and is what
+ * naming a column explicitly overrides.
+ *
+ * A dropped id is nearly always a typo, and the likeliest one is a nested
+ * `accessorKey`: `"partner.name"` has live id `"partner_name"`, because that
+ * is how {@link deriveColumnId} — and TanStack's `constructColumn` — spells
+ * it. The caller reports `dropped` so that mistake is not a silent no-op.
+ *
+ * @param columns - Column definitions, possibly nested.
+ * @param rows - The data, or the page of it the table is holding.
+ * @param declared - The host's `filtering.searchFields`, verbatim.
+ * @returns The surviving `fields` and the `dropped` ids, each sorted.
+ *
+ * @example
+ * const { fields, dropped } = pruneSearchFields(columns, data, ["name", "ghost"])
+ */
+export function pruneSearchFields<TData>(
+  columns: readonly FilterColumnDefShape<TData>[],
+  rows: readonly TData[],
+  declared: readonly string[],
+): PrunedSearchFields {
+  const facts = collectColumnFacts(columns, rows)
+  const fields: string[] = []
+  const dropped: string[] = []
+  for (const id of new Set(declared)) {
+    const column = facts.get(id)
+    if (column === undefined || !column.hasAccessor || column.enableGlobalFilter === false) dropped.push(id)
+    else fields.push(id)
+  }
+  return { fields: fields.sort(compareIds), dropped: dropped.sort(compareIds) }
+}
+
 /** The search text with its per-filter work done: lower-cased, split. */
 export interface SearchNeedle {
   tokens: string[]

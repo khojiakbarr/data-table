@@ -1,11 +1,18 @@
 import type { RowData } from "@tanstack/react-table"
 import { useRef } from "react"
+import { useAnsweredQuery } from "../core/useAnsweredQuery"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 
 interface QuickSearchProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   labels: DataTableLabels
+  /**
+   * The host's `loading` prop, forwarded by `<DataTable>`. Server mode only,
+   * where it is one of the signals that the host has moved on to the query
+   * the table last announced — see {@link useAnsweredQuery}.
+   */
+  loading?: boolean | undefined
 }
 
 /**
@@ -22,9 +29,21 @@ interface QuickSearchProps<TData extends RowData> {
  * case, and a field that visibly accepts input but silently drops it is worse
  * than no field.
  */
-export function QuickSearch<TData extends RowData>({ instance, labels }: QuickSearchProps<TData>) {
+export function QuickSearch<TData extends RowData>({ instance, labels, loading = false }: QuickSearchProps<TData>) {
   const { filtering, pagination, table } = instance
   const inputRef = useRef<HTMLInputElement>(null)
+  /*
+   * Whether the host has answered the query on the wire. Only server mode
+   * consults it — a client table filters its own rows, so its count is always
+   * this render's — but the hook is called unconditionally, ahead of the
+   * `filtering.enabled` gate below, because hook order cannot depend on props.
+   */
+  const answered = useAnsweredQuery({
+    query: instance.query,
+    data: table.options.data,
+    rowCount: pagination.rowCount,
+    loading,
+  })
   if (!filtering.enabled) return null
 
   // Drives the clear button: the raw, not-yet-debounced text, so the button
@@ -48,7 +67,23 @@ export function QuickSearch<TData extends RowData>({ instance, labels }: QuickSe
    * makes `getFilteredRowModel()` alias the *unfiltered* core model there — so
    * it keeps reading the host's own `pagination.rowCount` instead.
    */
-  const matches = instance.mode === "server" ? pagination.rowCount : table.getFilteredRowModel().rows.length
+  const server = instance.mode === "server"
+  const matches = server ? pagination.rowCount : table.getFilteredRowModel().rows.length
+  /*
+   * What the live region says. In server mode the count belongs to the last
+   * query the *host* answered, and `published` flips true one commit before
+   * `onQueryChange` has even fired — so on a first search `pagination.rowCount`
+   * is still the unfiltered total, and reading it out would be the same defect
+   * the `published` gate above fixes for client mode. Until the host has
+   * answered, the count of the current search is simply not known yet, and
+   * `labels.searchResults(undefined)` ("Searching") is the honest string for
+   * it.
+   */
+  const announcement = !published
+    ? ""
+    : server && !answered
+      ? labels.searchResults(undefined)
+      : labels.searchResults(matches)
 
   return (
     <div className="dt-search-box">
@@ -84,15 +119,11 @@ export function QuickSearch<TData extends RowData>({ instance, labels }: QuickSe
         Polite, and gated on the debounced `query.search` rather than the raw
         field: that is what stops a screen reader hearing the unfiltered total
         on the first keystroke and correcting itself 300ms later, so it hears
-        one result count per settled search instead of one per keystroke. In
-        server mode the count can still trail the host's answer for the
-        duration of the in-flight request, because `pagination.rowCount`
-        belongs to the last query the host actually answered, not the one on
-        the wire — that residual staleness is a server-mode limitation, not
-        something this gate can fix. It never moves focus.
+        one result count per settled search instead of one per keystroke. See
+        `announcement` above for the server-mode half of the same rule.
       */}
       <span className="dt-sr-only" role="status" aria-live="polite">
-        {published ? labels.searchResults(matches) : ""}
+        {announcement}
       </span>
     </div>
   )

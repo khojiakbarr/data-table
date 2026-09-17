@@ -347,7 +347,9 @@ export function DataTable<TData extends RowData>({
       {toolbar ? (
         <div className="dt-toolbar">
           {toolbarContent}
-          {instance.filtering.enabled ? <QuickSearch instance={instance} labels={labels} /> : null}
+          {instance.filtering.enabled ? (
+            <QuickSearch instance={instance} labels={labels} loading={loading} />
+          ) : null}
           <span className="dt-spacer" />
           {flags.hiding || flags.pinning ? (
             <button

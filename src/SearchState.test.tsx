@@ -1,6 +1,8 @@
 import { createColumnHelper } from "@tanstack/react-table"
 import { act, renderHook } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { deriveColumnId } from "./core/columnIds"
+import type { FilterCondition } from "./core/filters"
 import type { TableQuery } from "./core/query"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
 
@@ -381,5 +383,203 @@ describe("quick search", () => {
     // the client may claim a match.
     expect(result.current.query.search).toEqual({ text: "flagged", fields: ["name"] })
     expect(result.current.table.getRowModel().rows).toHaveLength(0)
+  })
+
+  /**
+   * A row shape whose columns cover every way a `searchFields` entry can name
+   * something quick search cannot actually cover: a column that opted out with
+   * `enableGlobalFilter: false`, a display column with no accessor, a nested
+   * `accessorKey` whose live id is not its dotted spelling, and an id that
+   * matches no column at all.
+   */
+  interface PartnerRow {
+    id: string
+    name: string
+    note: string
+    partner: { name: string }
+  }
+  const partnerHelper = createColumnHelper<DataTableFeatures, PartnerRow>()
+  const partnerColumns = [
+    partnerHelper.accessor("name", { header: "Name", size: 100 }),
+    partnerHelper.accessor("note", { header: "Note", size: 100, enableGlobalFilter: false }),
+    partnerHelper.accessor("partner.name", { header: "Partner", size: 100 }),
+    partnerHelper.display({ id: "actions", header: "Actions", size: 60 }),
+  ]
+  const partnerData: PartnerRow[] = [
+    { id: "r0", name: "Agro Ltd", note: "flagged", partner: { name: "Temir" } },
+    { id: "r1", name: "Beta Ltd", note: "clean", partner: { name: "Olma" } },
+  ]
+  /** The live id of the nested column, derived the one way this library derives ids. */
+  const partnerNameId = deriveColumnId({ accessorKey: "partner.name" }, 2)
+
+  it("drops searchFields entries the client could never match, and names them once", () => {
+    /*
+     * Reproduces the Task 10 review finding: `filtering.searchFields` was
+     * returned verbatim, with none of the validation the default path runs, so
+     * `search.fields` on the wire named columns the client silently refuses to
+     * match. TanStack's `column_getCanGlobalFilter` ANDs `columnDef.
+     * enableGlobalFilter ?? true` and `!!column.accessorFn` into its own
+     * verdict and neither is overridable from here, so a backend honouring
+     * those ids would return rows the same table, in client mode, shows none
+     * of — exactly the divergence the shared predicate exists to prevent.
+     */
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { result } = renderHook(() =>
+      useDataTable<PartnerRow>({
+        id: "q11-prune",
+        columns: partnerColumns,
+        data: partnerData,
+        getRowId: (row) => row.id,
+        filtering: {
+          // "partner.name" is the dotted spelling, not the live id: the
+          // typo this warning exists to surface. "partner_name" beside it is
+          // the same column named correctly, and must survive.
+          searchFields: ["note", "partner.name", partnerNameId, "ghost", "actions", "name"],
+        },
+      }),
+    )
+
+    act(() => result.current.filtering.setSearch("temir"))
+    act(() => vi.advanceTimersByTime(300))
+
+    expect(result.current.query.search).toEqual({ text: "temir", fields: ["name", partnerNameId] })
+    expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r0"])
+    expect(warn).toHaveBeenCalledTimes(1)
+    const message = String(warn.mock.calls[0]![0])
+    for (const dropped of ["actions", "ghost", "note", "partner.name"]) {
+      expect(message).toContain(dropped)
+    }
+    // The ids that survived are not slandered in the warning.
+    expect(message).not.toContain('"name"')
+    warn.mockRestore()
+  })
+
+  it("turns search off when every searchFields entry is unmatchable, rather than publishing a term the client ignores", () => {
+    /*
+     * Case (a) of the same finding, and the round-2 review finding it left
+     * open: with `note` the only listed id and `note` opted out with
+     * `enableGlobalFilter: false`, the table has no globally-filterable column
+     * at all, so `createFilteredRowModel` skips the global filter entirely and
+     * the client returns every row — while the wire told the server to narrow
+     * to `["note"]`.
+     */
+    vi.useFakeTimers()
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const { result } = renderHook(() =>
+      useDataTable<PartnerRow>({
+        id: "q11-all-dropped",
+        columns: partnerColumns,
+        data: partnerData,
+        getRowId: (row) => row.id,
+        filtering: { searchFields: ["note"] },
+      }),
+    )
+
+    act(() => result.current.filtering.setSearch("flagged"))
+    act(() => vi.advanceTimersByTime(300))
+
+    // Nothing searchable is survived honestly: `search` is null, the same as
+    // `searchFields: []`, and both sides return everything.
+    expect(result.current.query.search).toBeNull()
+    expect(result.current.table.getRowModel().rows).toHaveLength(2)
+    warn.mockRestore()
+  })
+
+  it("keeps searching a hidden column that searchFields names explicitly", () => {
+    /*
+     * The gate is existence and accessor, never visibility: README documents
+     * `searchFields` as overriding the hidden-column narrowing outright, and
+     * TanStack's own `getCanGlobalFilter` never consults visibility either, so
+     * a hidden column named here is matched by both sides and must stay that
+     * way.
+     */
+    vi.useFakeTimers()
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "q11-hidden",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        filtering: { searchFields: ["tag"] },
+      }),
+    )
+    act(() => result.current.table.getColumn("tag")!.toggleVisibility(false))
+    act(() => result.current.filtering.setSearch("closed"))
+    act(() => vi.advanceTimersByTime(300))
+
+    expect(result.current.query.search).toEqual({ text: "closed", fields: ["tag"] })
+    expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r1"])
+  })
+
+  it("clears filters and search in one query, with no intermediate announcement", () => {
+    /*
+     * Reproduces the Task 10 review finding: `clearAll` writes `layout.filters`
+     * synchronously and `layout.search` through the debounce, so a host wired
+     * to `onQueryChange` saw `{filters: [], search: "temir"}` immediately and
+     * `{filters: [], search: null}` 300 ms later — one wasted round-trip and a
+     * two-step settle on every "Clear all" click.
+     */
+    vi.useFakeTimers()
+    const onQueryChange = vi.fn<(query: TableQuery) => void>()
+    const { result } = server("q12-clear-all", onQueryChange)
+    act(() =>
+      result.current.filtering.setCondition({ kind: "text", field: "tag", op: "contains", value: "open" }),
+    )
+    act(() => result.current.filtering.setSearch("temir"))
+    act(() => vi.advanceTimersByTime(300))
+    onQueryChange.mockClear()
+
+    act(() => result.current.filtering.clearAll())
+    act(() => vi.advanceTimersByTime(300))
+
+    expect(onQueryChange).toHaveBeenCalledTimes(1)
+    expect(onQueryChange.mock.calls[0]![0].filters).toEqual([])
+    expect(onQueryChange.mock.calls[0]![0].search).toBeNull()
+  })
+
+  it("applies setModel in one query, with no intermediate announcement", () => {
+    /*
+     * The same finding through the API the README recommends for URL
+     * round-trips: the filters landed immediately and the search 300 ms later,
+     * so restoring a shared link fired two queries and showed two states.
+     */
+    vi.useFakeTimers()
+    const onQueryChange = vi.fn<(query: TableQuery) => void>()
+    const { result } = server("q12-set-model", onQueryChange)
+    onQueryChange.mockClear()
+
+    const condition: FilterCondition = { kind: "text", field: "tag", op: "contains", value: "open" }
+    act(() => result.current.filtering.setModel({ filters: [condition], search: "temir" }))
+    act(() => vi.advanceTimersByTime(300))
+
+    expect(onQueryChange).toHaveBeenCalledTimes(1)
+    expect(onQueryChange.mock.calls[0]![0].filters).toEqual([condition])
+    expect(onQueryChange.mock.calls[0]![0].search).toEqual({
+      text: "temir",
+      fields: ["amount", "name", "tag"],
+    })
+  })
+
+  it("still debounces a keystroke after a programmatic write has published at once", () => {
+    // The settle-now path must not leak into typing: `setSearch` is the
+    // keystroke path and has to go on waiting out `debounceMs`.
+    vi.useFakeTimers()
+    const onQueryChange = vi.fn<(query: TableQuery) => void>()
+    const { result } = server("q12-still-debounced", onQueryChange)
+    act(() => result.current.filtering.setModel({ filters: [], search: "temir" }))
+    act(() => vi.advanceTimersByTime(300))
+    onQueryChange.mockClear()
+
+    act(() => result.current.filtering.setSearch("t"))
+    act(() => result.current.filtering.setSearch("te"))
+    expect(onQueryChange).not.toHaveBeenCalled()
+
+    act(() => vi.advanceTimersByTime(300))
+    expect(onQueryChange).toHaveBeenCalledTimes(1)
+    expect(onQueryChange.mock.calls[0]![0].search).toEqual({
+      text: "te",
+      fields: ["amount", "name", "tag"],
+    })
   })
 })

@@ -41,7 +41,7 @@ import {
 } from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
 import type { TableQuery, TableSearch } from "./core/query"
-import { collectSearchFields, filterFn_dtSearch } from "./core/search"
+import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { apply, layoutSliceEqual, useArrangement } from "./core/useArrangement"
 import { useDebouncedValue } from "./core/useDebouncedValue"
@@ -139,7 +139,17 @@ export interface FilteringOptions {
   debounceMs?: number
   /** Keep active filters in the saved layout. Default true. */
   persist?: boolean
-  /** Columns quick search covers. Default: every visible searchable column. */
+  /**
+   * Columns quick search covers, by leaf column id. Default: every visible
+   * searchable column.
+   *
+   * Overrides inference and the hidden-column narrowing, but not what the
+   * client can actually match: an id naming no column, a display column, or a
+   * column with `enableGlobalFilter: false` is dropped — with a dev-mode
+   * warning naming it — so the wire never asks a backend to search a column
+   * this table searches none of. A nested `accessorKey` like `"partner.name"`
+   * has live id `"partner_name"`, which is the id to name here.
+   */
   searchFields?: string[]
   /**
    * Server-mode source of a values filter's choices. Never called in client mode.
@@ -564,7 +574,28 @@ export function useDataTable<TData extends RowData>({
     const next = (() => {
       if (!filteringEnabled) return []
       const declaredOverride = filteringOptions?.searchFields
-      if (declaredOverride) return [...declaredOverride].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      if (declaredOverride) {
+        /*
+         * Named explicitly, but still held to what the client can actually
+         * match: `pruneSearchFields` drops an id that names no column, names a
+         * display column, or names one that opted out with
+         * `enableGlobalFilter: false`, because TanStack's own
+         * `column_getCanGlobalFilter` refuses all three underneath
+         * `getColumnCanGlobalFilter` below and the wire would otherwise ask a
+         * backend to search columns this table searches none of. Visibility is
+         * not part of that gate: overriding the hidden-column narrowing is
+         * what `searchFields` is for.
+         */
+        const { fields, dropped } = pruneSearchFields(columns, data, declaredOverride)
+        if (process.env.NODE_ENV !== "production" && dropped.length > 0) {
+          warnOnce(
+            `useDataTable("${id}"): filtering.searchFields dropped ${dropped.map((field) => `"${field}"`).join(", ")}. ` +
+              `Quick search only covers a column that exists, has an accessor, and does not set enableGlobalFilter: false. ` +
+              `A nested accessorKey's live column id replaces each "." with "_".`,
+          )
+        }
+        return fields
+      }
       const { fields, unresolved, excluded, declared } = collectSearchFields(columns, data, layout.columnVisibility)
       const verdicts = searchVerdictsRef.current
       const declaredIds = new Set(declared)
@@ -616,6 +647,18 @@ export function useDataTable<TData extends RowData>({
   }, [filteringEnabled, filteringOptions?.searchFields, columns, data, layout.columnVisibility])
 
   /*
+   * Bumped by the programmatic writers — `clearAll` and `setModel` — and by
+   * nothing else. Both write `layout.filters` synchronously and `layout.search`
+   * through the debounce, so without this the filters landed at once and the
+   * search 300 ms later: a host wired to `onQueryChange` fired one wasted
+   * round-trip and showed a two-step settle on every "Clear all" click and
+   * every URL restore. A keystroke leaves the token alone and goes on waiting
+   * out `debounceMs`, which is the whole point of the debounce.
+   */
+  const [publishToken, setPublishToken] = useState(0)
+  const publishNow = useCallback(() => setPublishToken((token) => token + 1), [])
+
+  /*
    * `layout.search` holds the raw text and is written on every keystroke, which
    * keeps the input a normal controlled field. What is debounced is everything
    * downstream: `state.globalFilter`, and `search` on the wire. Ten keystrokes
@@ -629,6 +672,7 @@ export function useDataTable<TData extends RowData>({
   const searchText = useDebouncedValue(
     layout.search.trim(),
     filteringOptions?.debounceMs ?? DEFAULT_SEARCH_DEBOUNCE_MS,
+    publishToken,
   )
   // An empty field list means search is off: the client has nothing to match
   // against, so the wire carries `null` rather than a term no backend could honour.
@@ -1001,7 +1045,9 @@ export function useDataTable<TData extends RowData>({
   const clearAll = useCallback(() => {
     updateFilters([])
     updateSearch("")
-  }, [updateFilters, updateSearch])
+    // Both halves of "clear" belong to one query: see `publishNow`.
+    publishNow()
+  }, [updateFilters, updateSearch, publishNow])
   const setModel = useCallback(
     (model: FilterModel) => {
       /*
@@ -1017,8 +1063,12 @@ export function useDataTable<TData extends RowData>({
       // `updateSearch` is where a non-string is coerced, for every caller at
       // once; a second check here would be the same rule written twice.
       updateSearch(model.search)
+      // A whole model is one request, not two: see `publishNow`. Announcing the
+      // filters without the search would be the spurious refetch the re-run
+      // above exists to prevent, arriving from the other side.
+      publishNow()
     },
-    [updateFilters, updateSearch, columnIds, filterKinds],
+    [updateFilters, updateSearch, publishNow, columnIds, filterKinds],
   )
 
   const filteringApi = useMemo(

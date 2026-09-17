@@ -73,10 +73,11 @@ export {
   collectSearchFields,
   filterFn_dtSearch,
   isSearchableColumn,
+  pruneSearchFields,
   rowMatchesSearch,
   searchNeedle,
 } from "./core/search"
-export type { SearchFieldsResult, SearchNeedle } from "./core/search"
+export type { PrunedSearchFields, SearchFieldsResult, SearchNeedle } from "./core/search"
 export { useDebouncedValue } from "./core/useDebouncedValue"
 
 /* Helpers worth borrowing rather than rewriting. */

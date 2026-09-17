@@ -219,4 +219,73 @@ describe("quick search box", () => {
     act(() => vi.advanceTimersByTime(300))
     expect(screen.queryByText("Temir")).not.toBeInTheDocument()
   })
+
+  it("never announces the previous query's total as a server search's match count", () => {
+    /*
+     * Reproduces the Task 12 review finding, and it is deterministic rather
+     * than a race: in server mode the count comes from `pagination.rowCount`,
+     * which belongs to the last query the *host* answered, while `published`
+     * flips true on the render the debounce settles — one commit before
+     * `onQueryChange` fires from its effect, so the host cannot possibly have
+     * answered yet. A screen reader therefore heard the unfiltered total as
+     * the match count of every first server-mode search, which is the very
+     * defect an earlier round fixed for client mode.
+     */
+    vi.useFakeTimers()
+    function Server({ rows, rowCount }: { rows: Row[]; rowCount: number }) {
+      const instance = useDataTable<Row>({
+        id: "qs-server-count",
+        columns,
+        data: rows,
+        mode: "server",
+        rowCount,
+        getRowId: (row) => row.id,
+      })
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    // The host's unfiltered total: 100 rows, of which this page holds two.
+    const { rerender } = render(<Server rows={data} rowCount={100} />)
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search rows" }), { target: { value: "temir" } })
+    act(() => vi.advanceTimersByTime(300))
+
+    const status = screen.getByRole("status")
+    expect(status).not.toHaveTextContent("100")
+    expect(status).toHaveTextContent("Searching")
+
+    // The host answers the query it was just handed.
+    rerender(<Server rows={[data[1]!]} rowCount={1} />)
+    expect(status).toHaveTextContent("1 matching rows")
+  })
+
+  it("says Searching again for the next server search, not the count it just announced", () => {
+    // The announcement must go stale on every new query, not only the first:
+    // a second search whose answer is still in flight must not read out the
+    // first search's count.
+    vi.useFakeTimers()
+    function Server({ rows, rowCount }: { rows: Row[]; rowCount: number }) {
+      const instance = useDataTable<Row>({
+        id: "qs-server-count-2",
+        columns,
+        data: rows,
+        mode: "server",
+        rowCount,
+        getRowId: (row) => row.id,
+      })
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    const { rerender } = render(<Server rows={data} rowCount={2} />)
+    const box = screen.getByRole("searchbox", { name: "Search rows" })
+    const status = screen.getByRole("status")
+
+    fireEvent.change(box, { target: { value: "temir" } })
+    act(() => vi.advanceTimersByTime(300))
+    rerender(<Server rows={[data[1]!]} rowCount={1} />)
+    expect(status).toHaveTextContent("1 matching rows")
+
+    fireEvent.change(box, { target: { value: "agro" } })
+    act(() => vi.advanceTimersByTime(300))
+    expect(status).toHaveTextContent("Searching")
+    expect(status).not.toHaveTextContent("1 matching rows")
+  })
 })

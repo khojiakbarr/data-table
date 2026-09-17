@@ -51,6 +51,15 @@ export interface SearchFieldsResult {
    * excluded from it — unresolved, not `false`.
    */
   unresolved: string[]
+  /**
+   * Visible, accessor-backed leaf ids resolved as **not** searched, sorted —
+   * either `meta.searchable: false`, or a sampled value that failed the
+   * string-or-number heuristic. Definite, the same way `fields` is: a caller
+   * that remembers a verdict across renders (`useDataTable`'s monotonic
+   * search-field cache) needs this to tell "resolved false" apart from "not
+   * yet resolved" without re-deriving it from `fields` and the column set.
+   */
+  excluded: string[]
 }
 
 /**
@@ -87,7 +96,7 @@ export interface SearchFieldsResult {
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
  * @param visibility - TanStack's visibility state; an absent id is visible.
- * @returns `fields` and `unresolved`, each sorted.
+ * @returns `fields`, `unresolved` and `excluded`, each sorted.
  */
 export function collectSearchFields<TData>(
   columns: readonly FilterColumnDefShape<TData>[],
@@ -96,6 +105,7 @@ export function collectSearchFields<TData>(
 ): SearchFieldsResult {
   const fields: string[] = []
   const unresolved: string[] = []
+  const excluded: string[] = []
   for (const [id, facts] of collectColumnFacts(columns, rows)) {
     const visible = visibility[id] ?? true
     if (!facts.hasAccessor || !visible) continue
@@ -107,8 +117,13 @@ export function collectSearchFields<TData>(
       continue
     }
     if (isSearchableColumn(facts, visible)) fields.push(id)
+    else excluded.push(id)
   }
-  return { fields: fields.sort(compareIds), unresolved: unresolved.sort(compareIds) }
+  return {
+    fields: fields.sort(compareIds),
+    unresolved: unresolved.sort(compareIds),
+    excluded: excluded.sort(compareIds),
+  }
 }
 
 /** The search text with its per-filter work done: lower-cased, split. */

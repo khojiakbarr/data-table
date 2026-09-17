@@ -163,6 +163,84 @@ describe("quick search", () => {
     expect(result.current.filtering.search).toBe("temir")
   })
 
+  it("does not reopen a search field a previous page already resolved, even once a later page samples it as all-null", () => {
+    /*
+     * Reproduces the Task 10 review finding: `search` depends on
+     * `resolvedSearchFields`, which is derived from `data`, and `data` is the
+     * host's own response to `search` on the wire — a feedback loop. A column
+     * with no declared `meta.searchable` whose non-null values are not a
+     * string or a number (`closedAt: Date | null` here) is `unresolved`
+     * before any page has arrived, so it starts on the wire; the first real
+     * page proves it unsearchable and narrows `fields`. Without a cache
+     * remembering that, a later, narrower page's own sample can land on
+     * all-null, `collectSearchFields` reports the column `unresolved` again,
+     * and folding `unresolved` back into `fields` unconditionally reopens the
+     * question the first page already settled — forever, against a backend
+     * whose response depends on `fields`.
+     */
+    interface ClosableRow {
+      id: string
+      name: string
+      closedAt: Date | null
+    }
+    const closableHelper = createColumnHelper<DataTableFeatures, ClosableRow>()
+    const closableColumns = [
+      closableHelper.accessor("name", { header: "Name", size: 100 }),
+      closableHelper.accessor("closedAt", { header: "Closed", size: 100 }),
+    ]
+    const beforeFirstPage: ClosableRow[] = []
+    const pageWithClosedAt: ClosableRow[] = [
+      { id: "r0", name: "Agro Ltd", closedAt: new Date(2026, 0, 1) },
+      { id: "r1", name: "Agro Group", closedAt: new Date(2026, 0, 2) },
+    ]
+    // The host honoured the narrowed `fields: ["name"]` and this page's
+    // matched rows all happen to have `closedAt` null.
+    const pageWithoutClosedAtSample: ClosableRow[] = [
+      { id: "r2", name: "Agro Traders", closedAt: null },
+      { id: "r3", name: "Agro Imports", closedAt: null },
+    ]
+
+    vi.useFakeTimers()
+    const onQueryChange = vi.fn<(query: TableQuery) => void>()
+    const { result, rerender } = renderHook(
+      (props: { data: ClosableRow[] }) =>
+        useDataTable<ClosableRow>({
+          id: "q9",
+          columns: closableColumns,
+          data: props.data,
+          mode: "server",
+          rowCount: 4,
+          getRowId: (row) => row.id,
+          onQueryChange,
+        }),
+      { initialProps: { data: beforeFirstPage } },
+    )
+    onQueryChange.mockClear() // drop the mount announcement (search: null)
+
+    act(() => result.current.filtering.setSearch("agro"))
+    act(() => vi.advanceTimersByTime(300))
+
+    // Nothing sampled yet: both columns are unresolved and stay on the wire.
+    expect(result.current.query.search).toEqual({ text: "agro", fields: ["closedAt", "name"] })
+    expect(onQueryChange).toHaveBeenCalledTimes(1)
+
+    // The first real page proves `closedAt` unsearchable (a Date sample) and
+    // narrows `fields` — one extra, expected announcement.
+    act(() => rerender({ data: pageWithClosedAt }))
+    expect(result.current.query.search).toEqual({ text: "agro", fields: ["name"] })
+    expect(onQueryChange).toHaveBeenCalledTimes(2)
+
+    // Toggling between a page that samples `closedAt` as null and one that
+    // doesn't must not reopen a question the first page already answered —
+    // no further announcement, whichever way the sample swings.
+    act(() => rerender({ data: pageWithoutClosedAtSample }))
+    act(() => rerender({ data: pageWithClosedAt }))
+    act(() => rerender({ data: pageWithoutClosedAtSample }))
+
+    expect(result.current.query.search).toEqual({ text: "agro", fields: ["name"] })
+    expect(onQueryChange).toHaveBeenCalledTimes(2)
+  })
+
   it("publishes nothing to search when no column is searchable", () => {
     vi.useFakeTimers()
     const { result } = renderHook(() =>

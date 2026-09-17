@@ -402,9 +402,22 @@ return `null` for a condition that constrains nothing, and `instance.query`'s
 identity depends on all three.
 
 **Which columns `fields` holds** is every visible, accessor-backed column whose
-`meta.searchable` resolves true. The default for `meta.searchable` is "the
-column's first non-null value is a string or a number", so a numeric column is
-searched too — mark anything unindexed or sensitive `meta: { searchable: false }`.
+`meta.searchable` resolves true, *plus* every visible, accessor-backed column
+that has neither a declared `meta.searchable` nor a sampled value yet — an
+unresolved column stays in `fields` rather than being dropped from it. The
+default for `meta.searchable`, once a sample exists, is "the column's first
+non-null value is a string or a number", so a numeric column is searched too —
+mark anything unindexed or sensitive `meta: { searchable: false }`.
+
+That unresolved rule has a consequence in server mode: a column with nothing
+declared is unresolved at mount, before the first page has arrived, so `fields`
+can change — narrower or wider — once real data lands and a sample is found.
+A column resolves at most once, though: once real evidence has settled it one
+way or the other, that verdict is cached for the life of the table, so a later
+page whose sample happens to be all-null cannot re-open the question. Set
+`filtering.searchFields` explicitly to skip inference altogether, including the
+one request its first resolution can cost.
+
 Hiding a column narrows the search, which is surprising either way and is why
 `filtering.searchFields` overrides the list outright. `search` is `null` when
 the box is empty, when it holds only whitespace, and when no column is

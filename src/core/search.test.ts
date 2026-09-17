@@ -148,6 +148,23 @@ describe("collectSearchFields", () => {
     expect(result.fields).toEqual([])
     expect(result.unresolved).toEqual([])
   })
+
+  it("reports a resolved-false column separately from an unresolved one", () => {
+    // `excluded` is what tells a caller that remembers verdicts across
+    // renders (`useDataTable`'s monotonic search-field cache) that a column
+    // has a definite "no" — as opposed to "no evidence yet" — without having
+    // to re-derive it from `fields` and the full column set.
+    const result = collectSearchFields<Receipt>(
+      [{ accessorKey: "code" }, { accessorKey: "created" }, { accessorKey: "paid", meta: { searchable: false } }],
+      rows,
+      {},
+    )
+    expect(result.fields).toEqual(["code"])
+    // `created` (a Date) and `paid` (declared false) both have a definite
+    // answer this call — neither is missing evidence.
+    expect(result.excluded).toEqual(["created", "paid"])
+    expect(result.unresolved).toEqual([])
+  })
 })
 
 describe("searchNeedle", () => {

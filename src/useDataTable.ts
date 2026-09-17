@@ -529,21 +529,49 @@ export function useDataTable<TData extends RowData>({
    * render for the two shorthand forms, and only this member is read.
    */
   const resolvedSearchFieldsRef = useRef<string[]>([])
+  /*
+   * A column resolves at most once per table. `collectSearchFields` folds an
+   * unresolved column into inclusion so a server-mode mount is not
+   * unsearchable before the first page arrives (see the Task 7 review
+   * correction below) — but that same fold, redone every render, opens a
+   * feedback loop: `search` depends on `data`, `data` is the host's response
+   * to `search`, and a nullable column whose *current* page happens to sample
+   * all-null goes back to `unresolved` even after an earlier page proved it
+   * unsearchable (a Date or boolean column, say). Re-including it then
+   * reopens the request that excluded it, which can narrow the next page back
+   * to all-null, forever.
+   *
+   * This map is the fix: the first time `collectSearchFields` resolves an id
+   * definitely — in `fields` or in `excluded`, never `unresolved` — that
+   * verdict is recorded here and every later render consults it first,
+   * instead of re-folding a since-unresolved id back into the default. A
+   * table's search-field set can still change once real data replaces the
+   * pre-mount default, but never oscillates once a definite answer exists.
+   */
+  const searchVerdictsRef = useRef<Map<string, boolean>>(new Map())
   const resolvedSearchFields = useMemo(() => {
     const next = (() => {
       if (!filteringEnabled) return []
       const declared = filteringOptions?.searchFields
       if (declared) return [...declared].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-      const { fields, unresolved } = collectSearchFields(columns, data, layout.columnVisibility)
-      // A column with nothing declared and no sampled value yet stays included
-      // rather than dropped — see the Task 7 review correction next to
-      // `collectSearchFields`'s own definition. Folding `unresolved` into
-      // exclusion (treating `collectSearchFields` as returning a bare
-      // `string[]`, which is what an earlier draft of this task did) empties
-      // `resolvedSearchFields` on a server-mode table's first render, before
-      // `data` has arrived, and makes a nullable text column's inclusion depend
-      // on which page happens to be loaded.
-      return [...fields, ...unresolved].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      const { fields, unresolved, excluded } = collectSearchFields(columns, data, layout.columnVisibility)
+      const verdicts = searchVerdictsRef.current
+      // Record every id this render resolved for real, the first time it is
+      // resolved — see the JSDoc above. A verdict already cached (from an
+      // earlier render) is left as-is even if this render's evidence
+      // disagrees: it is the *first* resolution that is authoritative.
+      for (const id of fields) if (!verdicts.has(id)) verdicts.set(id, true)
+      for (const id of excluded) if (!verdicts.has(id)) verdicts.set(id, false)
+      // A column with nothing declared and no sampled value yet — ever, for
+      // this id — stays included rather than dropped, so a server-mode
+      // table's first render is still searchable before `data` has arrived.
+      // See the Task 7 review correction next to `collectSearchFields`'s own
+      // definition for why folding `unresolved` into exclusion is wrong, and
+      // the JSDoc above for why a *cached* verdict, not this render's raw
+      // `unresolved`, is what decides an id that has resolved before.
+      return [...fields, ...excluded, ...unresolved]
+        .filter((id) => verdicts.get(id) ?? true)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     })()
     /*
      * `filteringOptions?.searchFields` is a fresh array for the natural inline

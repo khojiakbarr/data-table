@@ -1,5 +1,7 @@
 import { createColumnHelper } from "@tanstack/react-table"
 import { fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DataTable, defaultLabels } from "./components/DataTable"
 import { canFilterColumn, FilterEditor } from "./components/FilterEditor"
@@ -227,6 +229,109 @@ describe("the filter editor", () => {
 
     expect(screen.getByLabelText("Name: Operator")).toHaveFocus()
   })
+
+  it("lets Enter on the Clear button clear the filter, rather than re-applying it", async () => {
+    // `user.keyboard` models the browser's own activation behaviour, where a
+    // button's keydown default action IS its click — `fireEvent.keyDown`
+    // alone does not fire that click, so it would not catch this regression.
+    const user = userEvent.setup()
+    const contains: FilterCondition = { kind: "text", field: "name", op: "contains", value: "temir" }
+    render(<Table columnId="name" initialLayout={{ filters: [contains] }} />)
+    expect(shown()).toHaveLength(1)
+
+    screen.getByRole("button", { name: "Clear filter" }).focus()
+    await user.keyboard("{Enter}")
+
+    // Before the fix, the wrapper's own keydown handler ran `commit(draft)`
+    // ahead of the button's click, so the seeded "contains temir" draft was
+    // re-applied instead of the column being cleared.
+    expect(shown()).toHaveLength(3)
+  })
+
+  it("ignores an Enter that is still composing an IME candidate", () => {
+    const onCommit = vi.fn()
+    render(<Table columnId="name" onCommit={onCommit} />)
+    const field = screen.getByLabelText("Name: Value")
+
+    fireEvent.change(field, { target: { value: "te" } })
+    fireEvent.keyDown(field, { key: "Enter", isComposing: true })
+
+    // A composing Enter confirms the IME candidate, not the filter: the
+    // half-typed text must not commit, and the popover must not be told to
+    // close mid-word.
+    expect(shown()).toHaveLength(3)
+    expect(onCommit).not.toHaveBeenCalled()
+  })
+
+  it("does not reset the page when a blur or a Clear changes nothing", () => {
+    const pagedData: Row[] = Array.from({ length: 25 }, (_, index) => ({
+      id: `p${index}`,
+      name: `Row ${index}`,
+      amount: index,
+      when: "2026-03-30",
+      tag: "open",
+    }))
+    let pageIndex = -1
+    function PagedTable() {
+      const instance = useDataTable<Row>({
+        id: "editor-paged",
+        columns,
+        data: pagedData,
+        getRowId: (row) => row.id,
+        pagination: { pageSize: 10 },
+      })
+      pageIndex = instance.pagination.pageIndex
+      return (
+        <>
+          <button type="button" onClick={() => instance.pagination.setPageIndex(2)}>
+            Go to page 3
+          </button>
+          <FilterEditor instance={instance} column={instance.table.getColumn("name")!} labels={defaultLabels} />
+        </>
+      )
+    }
+    render(<PagedTable />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Go to page 3" }))
+    expect(pageIndex).toBe(2)
+
+    // Untouched and empty: the built condition is null and the column
+    // carries none either, so this blur is a genuine no-op.
+    fireEvent.blur(screen.getByLabelText("Name: Value"))
+    expect(pageIndex).toBe(2)
+
+    // Same column, still no condition: Clear has nothing to clear either.
+    fireEvent.click(screen.getByRole("button", { name: "Clear filter" }))
+    expect(pageIndex).toBe(2)
+  })
+
+  it("reseeds the draft when the column prop changes without a remount", () => {
+    function SwappableTable() {
+      const instance = useDataTable<Row>({ id: "editor-swap", columns, data, getRowId: (row) => row.id })
+      const [columnId, setColumnId] = useState("name")
+      return (
+        <>
+          <button type="button" onClick={() => setColumnId("amount")}>
+            Switch to Amount
+          </button>
+          <FilterEditor instance={instance} column={instance.table.getColumn(columnId)!} labels={defaultLabels} />
+        </>
+      )
+    }
+    render(<SwappableTable />)
+
+    fireEvent.change(screen.getByLabelText("Name: Value"), { target: { value: "agro" } })
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Amount" }))
+
+    // Before the fix, nothing keyed the editor on the column, so the text
+    // draft ("agro") survived under the new column's label and rendered as a
+    // `type="text"` field even though Amount is a number column. `toHaveValue`
+    // treats an empty number input specially, so the display value is what's
+    // asserted here.
+    const value = screen.getByLabelText("Amount: Value")
+    expect(value).toHaveDisplayValue("")
+    expect(value).toHaveAttribute("type", "number")
+  })
 })
 
 describe("canFilterColumn", () => {
@@ -243,5 +348,48 @@ describe("canFilterColumn", () => {
     render(<Probe />)
 
     expect(answers).toEqual({ id: false, name: true })
+  })
+
+  it("refuses every column when the host turned filtering off for the whole table", () => {
+    // `filterKinds` is resolved from the column definitions regardless of
+    // `filteringEnabled`, so an ordinary column (unlike `id`, above) still
+    // has a resolved kind — the gate has to read `filtering.enabled` itself.
+    let answer: boolean | null = null
+    function Probe() {
+      const instance = useDataTable<Row>({
+        id: "can-filter-off",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        filtering: false,
+      })
+      answer = canFilterColumn(instance, instance.table.getColumn("name")!)
+      return null
+    }
+    render(<Probe />)
+
+    expect(answer).toBe(false)
+  })
+})
+
+describe("a table with filtering turned off", () => {
+  it("renders no editor, even for a column that would otherwise get one", () => {
+    function OffTable() {
+      const instance = useDataTable<Row>({
+        id: "editor-off",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        filtering: false,
+      })
+      return <FilterEditor instance={instance} column={instance.table.getColumn("name")!} labels={defaultLabels} />
+    }
+    const { container } = render(<OffTable />)
+
+    // Before the fix this rendered a fully interactive editor whose Apply
+    // and Clear silently did nothing, because `updateFilters` swallows every
+    // write when `filtering: false` — a field that accepts input but drops
+    // it is worse than no field.
+    expect(container.querySelector(".dt-filter-editor")).toBeNull()
   })
 })

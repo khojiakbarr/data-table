@@ -11,6 +11,7 @@ import {
   withOperator,
   type FilterDraft,
 } from "../core/filterDraft"
+import { layoutSliceEqual } from "../core/useArrangement"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 
@@ -36,24 +37,42 @@ export interface FilterEditorProps<TData extends RowData> {
 /**
  * Whether a column gets a filter editor at all.
  *
- * Two independent gates, and both matter: TanStack's `getCanFilter()` covers
- * the accessor and the `enableColumnFilter*` flags but knows nothing about
- * `meta.filter`, and `meta: { filter: false }` is how a host turns filtering
- * off for one column.
+ * Three independent gates, and all three matter: `instance.filtering.enabled`
+ * is `false` for a host that passed `filtering: false` — `filterKinds` is
+ * resolved from the column definitions regardless, so it says nothing about
+ * that on its own; TanStack's `getCanFilter()` covers the accessor and the
+ * `enableColumnFilter*` flags but knows nothing about `meta.filter`; and
+ * `meta: { filter: false }` is how a host turns filtering off for one column.
  *
  * @param instance - The table instance.
  * @param column - The column to test.
- * @returns True when the column has both an accessor and a resolved kind.
+ * @returns True when filtering is on for the table and the column has both an
+ *   accessor and a resolved kind.
  */
 export function canFilterColumn<TData extends RowData>(
   instance: DataTableInstance<TData>,
   column: Column<DataTableFeatures, TData, unknown>,
 ): boolean {
   const kind = instance.filtering.kinds.get(column.id)
-  return column.getCanFilter() && kind !== undefined && kind !== false
+  return instance.filtering.enabled && column.getCanFilter() && kind !== undefined && kind !== false
 }
 
-export function FilterEditor<TData extends RowData>({
+/**
+ * One column's filter, wired to the live instance.
+ *
+ * Remounted whenever `column` changes, through the `key` on the body below:
+ * the draft `useState` seeds itself once from the column it opened with, and
+ * nothing re-seeds it on a later render, so a caller that swaps `column`
+ * prop on an already-mounted editor (nothing in this library does that today
+ * — the popover and the panel both remount per column already — but nothing
+ * in the exported type says a host may not) would otherwise be left showing
+ * the previous column's draft under the new column's label and operators.
+ */
+export function FilterEditor<TData extends RowData>(props: FilterEditorProps<TData>) {
+  return <FilterEditorBody key={props.column.id} {...props} />
+}
+
+function FilterEditorBody<TData extends RowData>({
   instance,
   column,
   labels,
@@ -73,18 +92,42 @@ export function FilterEditor<TData extends RowData>({
     draftFromCondition(current, kind === undefined || kind === false ? "text" : kind),
   )
 
-  // After the hook, so hook order never depends on which column this is.
+  // After the hook, so hook order never depends on which column this is or on
+  // whether the host has filtering on at all.
+  if (!filtering.enabled) return null
   if (kind === undefined || kind === false) return null
 
   const commit = (next: FilterDraft) => {
     const built = draftToCondition(next, column.id)
-    // An editor that constrains nothing clears the column: the constructor
-    // returns null for it, and a condition that means nothing is not a filter.
-    if (built === null) filtering.clearColumn(column.id)
-    else filtering.setCondition(built)
+    /*
+     * A no-op commit must not reach `filtering.setCondition`/`clearColumn`:
+     * `updateFilters` resets the page unconditionally, so a blur that changed
+     * nothing (an untouched, empty field; a value equal to what the column
+     * already carries) would otherwise send the user back to page 1. `built`
+     * and `current` both come out of the constructors in filters.ts, whose
+     * whole contract is canonical key order, so a structural compare is exact.
+     */
+    if (built === null) {
+      if (current !== undefined) filtering.clearColumn(column.id)
+      return
+    }
+    if (!layoutSliceEqual(built, current)) filtering.setCondition(built)
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    /*
+     * Let a button run its own activation. A button's default action on
+     * `keydown` IS its click — unlike Space, which activates on `keyup` — so
+     * `preventDefault()` below would otherwise swallow that click and this
+     * handler's own `commit(draft)` would run in its place. That is silently
+     * wrong for Clear, which must never re-apply the draft it is meant to
+     * discard, and only coincidentally right for Apply.
+     */
+    if (event.target instanceof HTMLButtonElement) return
+    // A composing IME's Enter confirms a candidate, not the editor: the
+    // native event carries `isComposing` for exactly this, and without the
+    // check the half-typed candidate is committed as the filter value.
+    if (event.nativeEvent.isComposing) return
     // Enter commits from anywhere in the editor. There is no <form> here: a
     // filter editor inside a table is not a submission, and a form element
     // would bring a page reload with it.
@@ -106,7 +149,10 @@ export function FilterEditor<TData extends RowData>({
   }
 
   const handleClear = () => {
-    filtering.clearColumn(column.id)
+    // Same no-op guard as `commit`: a column that carries no condition has
+    // nothing to clear, and calling `clearColumn` anyway would still cost the
+    // user their page position for changing nothing.
+    if (current !== undefined) filtering.clearColumn(column.id)
     setDraft(emptyDraft(kind))
     onCommit?.()
   }

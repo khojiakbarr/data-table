@@ -67,3 +67,27 @@ describe("public API surface", () => {
     expect(screen.getByRole("button", { name: "First page" })).toBeInTheDocument()
   })
 })
+
+describe("the filtering labels batch", () => {
+  it("fills in every new key through the README's `{ ...defaultLabels, ...mine }` recipe", () => {
+    // New required keys are a source break for a host that hand-builds a full
+    // labels object rather than spreading `defaultLabels`, so the whole batch
+    // lands at once and the break happens once.
+    const mine = { noMatches: "Mos keladigan qator yo'q" }
+    const labels: publicApi.DataTableLabels = { ...publicApi.defaultLabels, ...mine }
+
+    expect(labels.noMatches).toBe("Mos keladigan qator yo'q")
+    expect(labels.filterInPanel).toBe("Filter in panel…")
+    expect(labels.opNotBlank).toBe("Is not blank")
+    expect(labels.opDateBetween).toBe("Between")
+    expect(labels.searchResults(3)).toBe("3 matching rows")
+    expect(labels.searchResults(undefined)).toBe("Searching")
+    expect(labels.filterTitle("Amount")).toBe("Filter Amount")
+  })
+
+  it("leaves no default blank", () => {
+    for (const [key, value] of Object.entries(publicApi.defaultLabels)) {
+      expect(typeof value === "function" || value !== "", `${key} is blank`).toBe(true)
+    }
+  })
+})

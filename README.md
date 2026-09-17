@@ -756,6 +756,11 @@ it rather than rebuild the range math and page-size select. Its `labels` is the 
 underneath it to fall back on for a key you left out — so spread `defaultLabels`, exported
 alongside it, over your own overrides.
 
+Filtering adds a large batch of keys — operator names, editor labels, the
+search placeholder, the tab names, the clear actions and the no-matches copy.
+Spread `defaultLabels` and override what you need; building the object by hand
+means adding every new key on each minor release.
+
 `<TableStatus loading={…} error={…} onRetry={…} labels={…} />` and `<SkeletonRows
 widths={…} count={…} />` — the loading, error and skeleton states `<DataTable>` renders
 above and in place of its rows (the **States** paragraph under [Server-side

@@ -15,6 +15,13 @@ releases are summarised in one line rather than reconstructed.
   any backend adapter that destructures the query.
 - `TableQuery.filters` is **sorted by `field`**, and `TableQuery.search.fields`
   by id. A backend must not assume either array is in column order.
+- `DataTableLabels` gains 48 required keys for filtering: the quick-search box,
+  the filter editor and its operator names, values lists, the Filters tab and
+  the filtered-empty state. Hosts using the documented
+  `{ ...defaultLabels, ...mine }` recipe are unaffected; a host hand-building a
+  complete labels object has to add them. Operator names are flat keys
+  (`opContains`, `opBetween`, …) rather than a nested object, so overriding one
+  of them works the same way as overriding any other label.
 
 ### Added
 

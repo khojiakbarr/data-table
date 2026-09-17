@@ -70,6 +70,25 @@ export type { ResolvedCondition } from "./core/filterFn"
 export { collectColumnFacts, collectFilterKinds, resolveFilterKind } from "./core/filterKinds"
 export type { FilterColumnDefShape, FilterKindSource } from "./core/filterKinds"
 export {
+  conditionToDayChoice,
+  describeCondition,
+  draftFromCondition,
+  draftToCondition,
+  emptyDraft,
+  isBlankOperator,
+  isRangeOperator,
+  operatorChoices,
+  withOperator,
+} from "./core/filterDraft"
+export type {
+  BooleanDraftOp,
+  FilterDraft,
+  KindOperatorChoice,
+  ListDraft,
+  OperatorChoice,
+  OperatorLabelKey,
+} from "./core/filterDraft"
+export {
   collectSearchFields,
   filterFn_dtSearch,
   isSearchableColumn,

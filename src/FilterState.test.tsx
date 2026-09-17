@@ -418,6 +418,16 @@ describe("persistence", () => {
     expect(second.result.current.filtering.conditions).toEqual([over])
     expect(second.result.current.query.filters).toEqual([over])
   })
+
+  it("publishes each column's resolved filter kind", () => {
+    // Every filter surface needs to know which editor a column gets, and the
+    // resolution is data-dependent: recomputing it per component would be free
+    // to disagree with the map `pruneFilters` used on load.
+    const { result } = setup("f16")
+    expect(result.current.filtering.kinds.get("name")).toBe("text")
+    expect(result.current.filtering.kinds.get("amount")).toBe("number")
+    expect(result.current.filtering.kinds.get("gone")).toBeUndefined()
+  })
 })
 
 describe("filtering: false", () => {

@@ -5987,7 +5987,7 @@ import {
   operatorChoices,
   withOperator,
 } from "./filterDraft"
-import type { FilterCondition } from "./filters"
+import type { DateCondition } from "./filters"
 import type { DataTableLabels } from "../types"
 import { defaultLabels } from "../components/DataTable"
 
@@ -6118,7 +6118,7 @@ describe("draftFromCondition", () => {
 
 describe("conditionToDayChoice", () => {
   it("is the inverse of the four-way conversion", () => {
-    const range = (from: string | null, before: string | null): FilterCondition => ({
+    const range = (from: string | null, before: string | null): DateCondition => ({
       kind: "date",
       field: "d",
       op: "range",

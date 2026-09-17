@@ -36,6 +36,7 @@ import { collectFilterKinds } from "./core/filterKinds"
 import {
   pruneFilters,
   type FilterCondition,
+  type FilterKind,
   type FilterModel,
   type FilterValueOption,
 } from "./core/filters"
@@ -389,7 +390,10 @@ export function useDataTable<TData extends RowData>({
    * first render, and pruning is where a condition whose kind no longer
    * matches its column has to be dropped.
    */
-  const filterKinds = useMemo(() => collectFilterKinds(columns, data), [columns, data])
+  const filterKinds = useMemo<ReadonlyMap<string, FilterKind | false>>(
+    () => collectFilterKinds(columns, data),
+    [columns, data],
+  )
 
   const {
     layout,
@@ -1074,6 +1078,14 @@ export function useDataTable<TData extends RowData>({
   const filteringApi = useMemo(
     () => ({
       enabled: filteringEnabled,
+      /*
+       * Which editor each column gets. Published because every filter surface
+       * needs it and §7.4's resolution is data-dependent: a component that
+       * re-derived it would be free to disagree with the map `pruneFilters`
+       * used on load, and a column would then edit as one kind and prune as
+       * another.
+       */
+      kinds: filterKinds,
       conditions: layout.filters as readonly FilterCondition[],
       search: layout.search,
       isFiltered: layout.filters.length > 0 || layout.search.trim() !== "",
@@ -1084,7 +1096,7 @@ export function useDataTable<TData extends RowData>({
       getModel: (): FilterModel => ({ filters: [...layout.filters], search: layout.search }),
       setModel,
     }),
-    [filteringEnabled, layout.filters, layout.search, setCondition, clearColumn, clearAll, updateSearch, setModel],
+    [filteringEnabled, filterKinds, layout.filters, layout.search, setCondition, clearColumn, clearAll, updateSearch, setModel],
   )
 
   /*

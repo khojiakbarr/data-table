@@ -4,11 +4,16 @@ import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 /** Inputs to {@link useAnsweredQuery}. */
 export interface AnsweredQueryOptions {
   /**
-   * The request currently on the wire. Its identity is the contract
-   * `useTableQuery` maintains: it changes exactly when the request would, so
-   * comparing it by reference is how a new request is recognised.
+   * What the caller is waiting for an answer to, compared with `!==`.
+   *
+   * The query object itself is the obvious thing to pass: its identity is the
+   * contract `useTableQuery` maintains, changing exactly when the request
+   * would. A caller that only cares about part of the request passes a value
+   * key built from that part instead — an object identity cannot serve there,
+   * because a fresh query is minted whenever *any* part of it changes, so a
+   * page turn would read as a new question (see `QuickSearch`'s match key).
    */
-  query: object
+  query: unknown
   /** The rows the host handed the table this render, by reference. */
   data: unknown
   /** The host's `rowCount` this render; `undefined` until it has reported one. */
@@ -53,7 +58,7 @@ export function useAnsweredQuery({ query, data, rowCount, loading }: AnsweredQue
    * render already knew.
    */
   const lastRef = useRef<{
-    query: object
+    query: unknown
     data: unknown
     rowCount: number | undefined
     loading: boolean

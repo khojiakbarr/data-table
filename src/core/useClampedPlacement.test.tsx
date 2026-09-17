@@ -100,6 +100,21 @@ describe("useClampedPlacement", () => {
     expect(overlay.style.top).toBe("40px")
   })
 
+  it("re-clamps when the caller moves the requested point", () => {
+    // The positive half of the "does not disconnect and reobserve" case
+    // below: that one proves the effect stays put when only the identities
+    // churn, and is satisfied by a `[element]` dependency array on its own.
+    // This one proves the values are still watched, which is the hook's
+    // documented contract and what an overlay held mounted across a move
+    // (the filter popover, which survives an operator change) depends on.
+    const { rerender } = render(<Overlay at={NEAR} measure={() => rect(200, 100)} />)
+    expect(screen.getByTestId("overlay").style.left).toBe("120px")
+
+    rerender(<Overlay at={{ x: 2000, y: NEAR.y }} measure={() => rect(200, 100)} />)
+
+    expect(screen.getByTestId("overlay").style.left).toBe("816px")
+  })
+
   it("measures the element itself when no measure is given", () => {
     render(<Overlay at={FAR} />)
 

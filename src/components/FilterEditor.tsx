@@ -1,5 +1,5 @@
 import type { Column, RowData } from "@tanstack/react-table"
-import { useState, type ChangeEvent, type KeyboardEvent } from "react"
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
 import { columnLabel } from "../core/columnLabel"
 import {
   draftFromCondition,
@@ -31,7 +31,11 @@ export interface FilterEditorProps<TData extends RowData> {
   labels: DataTableLabels
   /** Called after the editor commits or clears, so a popover can close itself. */
   onCommit?: (() => void) | undefined
-  /** Take the focus on mount. The popover does; the panel's inline editor does not. */
+  /**
+   * Take the focus on mount. The popover does; the panel's inline editor does
+   * not. Honoured once, at mount: a later operator change never moves the
+   * focus, whatever it does to the fields.
+   */
   autoFocus?: boolean
 }
 
@@ -182,6 +186,30 @@ function FilterEditorBody<TData extends RowData>({
   }
 
   /*
+   * `autoFocus` means "take the focus when this editor opens", and that is a
+   * one-shot. As a standing prop it is not: React focuses every host element
+   * that mounts carrying it, and `DraftFields` remounts its field whenever
+   * the operator changes shape — the value input disappears for `blank`, one
+   * input becomes two for `between`. So a live `autoFocus` pulled the focus
+   * out of the operator <select> and into the value field on every such
+   * change. On Windows and Linux a closed <select> fires `change` on each
+   * arrow key, which left a keyboard user unable to arrow past the first
+   * operator that brings a field back — WCAG 2.2 SC 3.2.2 On Input, which
+   * forbids changing the setting of a control from moving the focus.
+   *
+   * The latch is read during render on purpose: React honours `autoFocus`
+   * only on the commit that mounts an element, and the effect below runs
+   * after that commit, so the latch is still set exactly when it counts. A
+   * new editor gets a fresh latch — the wrapper keys this body on the column
+   * and kind, so opening another column remounts it.
+   */
+  const pendingFocusRef = useRef(autoFocus)
+  useEffect(() => {
+    pendingFocusRef.current = false
+  }, [])
+  const takeFocus = pendingFocusRef.current
+
+  /*
    * The operator select takes the focus only when there is no field to type
    * in. A list draft belongs here too: `DraftFields` renders the `noValues`
    * note for it (Task 18 brings the real values list), which is not
@@ -189,7 +217,7 @@ function FilterEditorBody<TData extends RowData>({
    * focus on `<body>` — a keyboard user's next Tab then starts from the top
    * of the document instead of from the editor it opened (WCAG 2.4.3).
    */
-  const focusSelect = autoFocus && (isBlankOperator(draft) || draft.kind === "boolean" || draft.kind === "list")
+  const focusSelect = takeFocus && (isBlankOperator(draft) || draft.kind === "boolean" || draft.kind === "list")
 
   return (
     <div className="dt-filter-editor" onKeyDown={handleKeyDown}>
@@ -211,7 +239,7 @@ function FilterEditorBody<TData extends RowData>({
         draft={draft}
         name={name}
         labels={labels}
-        autoFocus={autoFocus && !focusSelect}
+        autoFocus={takeFocus && !focusSelect}
         onDraft={setDraft}
         onCommit={commit}
       />

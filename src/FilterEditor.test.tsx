@@ -315,6 +315,28 @@ describe("the filter editor", () => {
     expect(screen.getByLabelText("Tag: Operator")).toHaveFocus()
   })
 
+  it("does not pull the focus out of the operator select when a later change remounts the field", () => {
+    // `autoFocus` is honoured once, at mount, and never again: React applies
+    // it to every host element that mounts carrying it, and `DraftFields`
+    // remounts its field whenever the operator changes shape. A standing
+    // `autoFocus` therefore moved focus from the <select> into the value
+    // field on every such change — and on Windows/Linux a closed <select>
+    // fires `change` per arrow key, so a keyboard user arrowing through the
+    // operators was stopped dead at the first one that brings a field back
+    // (WCAG 2.2 SC 3.2.2 On Input).
+    render(<Table columnId="name" autoFocus />)
+    const operator = screen.getByLabelText("Name: Operator")
+    expect(screen.getByLabelText("Name: Value")).toHaveFocus()
+
+    operator.focus()
+    fireEvent.change(operator, { target: { value: "blank" } })
+    expect(operator).toHaveFocus()
+
+    // The field comes back, and must come back unfocused.
+    fireEvent.change(operator, { target: { value: "contains" } })
+    expect(operator).toHaveFocus()
+  })
+
   it("lets Enter on the Clear button clear the filter, rather than re-applying it", async () => {
     // `user.keyboard` models the browser's own activation behaviour, where a
     // button's keydown default action IS its click — `fireEvent.keyDown`
@@ -388,6 +410,60 @@ describe("the filter editor", () => {
     // Same column, still no condition: Clear has nothing to clear either.
     fireEvent.click(screen.getByRole("button", { name: "Clear filter" }))
     expect(pageIndex).toBe(2)
+  })
+
+  it("does not reset the page when a blur or an operator re-select rebuilds the condition already applied", () => {
+    // The other half of the no-op guard: `built === null` above, and here a
+    // `built` that is structurally identical to what the column already
+    // carries. `updateFilters` resets the page unconditionally, so without
+    // the compare an untouched blur — or re-choosing the operator already on
+    // screen — throws the user back to page 1 for changing nothing.
+    const pagedData: Row[] = Array.from({ length: 25 }, (_, index) => ({
+      id: `p${index}`,
+      name: `Row ${index}`,
+      amount: index,
+      when: "2026-03-30",
+      tag: "open",
+    }))
+    const contains: FilterCondition = { kind: "text", field: "name", op: "contains", value: "Row" }
+    let pageIndex = -1
+    let conditions: readonly FilterCondition[] = []
+    function SeededPagedTable() {
+      const instance = useDataTable<Row>({
+        id: "editor-paged-seeded",
+        columns,
+        data: pagedData,
+        getRowId: (row) => row.id,
+        pagination: { pageSize: 10 },
+        initialLayout: { filters: [contains] },
+      })
+      pageIndex = instance.pagination.pageIndex
+      conditions = instance.filtering.conditions
+      return (
+        <>
+          <button type="button" onClick={() => instance.pagination.setPageIndex(2)}>
+            Go to page 3
+          </button>
+          <FilterEditor instance={instance} column={instance.table.getColumn("name")!} labels={defaultLabels} />
+        </>
+      )
+    }
+    render(<SeededPagedTable />)
+
+    // Every row matches "Row", so the seeded filter leaves all three pages.
+    fireEvent.click(screen.getByRole("button", { name: "Go to page 3" }))
+    expect(pageIndex).toBe(2)
+
+    // Seeded from the condition, so an untouched field rebuilds it exactly.
+    fireEvent.blur(screen.getByLabelText("Name: Value"))
+    expect(pageIndex).toBe(2)
+
+    // The same no-op through the other commit path: `handleOperator` applies
+    // at once, even when the operator chosen is the one already shown.
+    fireEvent.change(screen.getByLabelText("Name: Operator"), { target: { value: "contains" } })
+    expect(pageIndex).toBe(2)
+
+    expect(conditions).toEqual([contains])
   })
 
   it("reseeds the draft when the column prop changes without a remount", () => {

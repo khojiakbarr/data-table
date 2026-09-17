@@ -258,6 +258,44 @@ describe("quick search box", () => {
     expect(status).toHaveTextContent("1 matching rows")
   })
 
+  it("stays silent through a page turn and a sort, which cannot change the match count", () => {
+    /*
+     * The live region must speak once per settled search, not once per query.
+     * `useTableQuery` mints a fresh query object for a page index, a page size
+     * and a sort order too, so a latch keyed on the whole query went back to
+     * "Searching" — and then to the same count again — on every page turn and
+     * every sort, which is two spurious announcements each for a screen-reader
+     * user, about a number that never moved.
+     */
+    vi.useFakeTimers()
+    function Server({ rows, rowCount }: { rows: Row[]; rowCount: number }) {
+      const instance = useDataTable<Row>({
+        id: "qs-server-quiet",
+        columns,
+        data: rows,
+        mode: "server",
+        rowCount,
+        pagination: { pageSize: 1 },
+        getRowId: (row) => row.id,
+      })
+      return <DataTable instance={instance} virtualize={false} />
+    }
+    const { rerender } = render(<Server rows={data} rowCount={60} />)
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search rows" }), { target: { value: "temir" } })
+    act(() => vi.advanceTimersByTime(300))
+    // The host answers with the page and count for that search.
+    rerender(<Server rows={[data[1]!]} rowCount={60} />)
+    const status = screen.getByRole("status")
+    expect(status).toHaveTextContent("60 matching rows")
+
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }))
+    expect(status).toHaveTextContent("60 matching rows")
+
+    fireEvent.click(screen.getByRole("button", { name: "Name: Sort ascending" }))
+    expect(status).toHaveTextContent("60 matching rows")
+  })
+
   it("says Searching again for the next server search, not the count it just announced", () => {
     // The announcement must go stale on every new query, not only the first:
     // a second search whose answer is still in flight must not read out the

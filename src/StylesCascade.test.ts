@@ -214,8 +214,16 @@ describe("README override recipes", () => {
  * which re-triggers `useClampedPlacement`'s ResizeObserver, which clamps
  * again — a feedback loop, not a one-time reflow (review finding on
  * useClampedPlacement.ts). jsdom does no layout, so this cannot be caught by
- * measuring a real reflow; it can only be caught by asserting the box no
- * longer declares the `width: auto` that the loop depends on.
+ * measuring a real reflow; it can only be caught by asserting what the box
+ * declares.
+ *
+ * The invariant is that the declared width is *placement-independent*, which
+ * is narrower than "not the keyword `auto`": `width: fit-content` is
+ * `min(max-content, max(min-content, stretch-fit))` (CSS-SIZING-3), and for a
+ * `position: fixed` box with `left` set and `right: auto` the stretch-fit term
+ * is `ICB width - left` — the same dependency on `left`, under a different
+ * spelling. So each declaration is asserted by value rather than by what it is
+ * not, and `fit-content` is the specific spelling that must not come back.
  */
 describe(".dt-menu sizing", () => {
   let styleEl: HTMLStyleElement
@@ -233,7 +241,7 @@ describe(".dt-menu sizing", () => {
     menu.className = "dt-menu"
     document.body.appendChild(menu)
 
-    expect(getComputedStyle(menu).width).not.toBe("auto")
+    expect(getComputedStyle(menu).width).toBe("max-content")
 
     menu.remove()
   })
@@ -243,7 +251,10 @@ describe(".dt-menu sizing", () => {
     menu.className = "dt-menu"
     document.body.appendChild(menu)
 
-    expect(getComputedStyle(menu).maxWidth).not.toBe("none")
+    // jsdom resolves the declared `calc(100vw - 16px)` against its own
+    // viewport, so the computed value comes back as a pixel length: the
+    // window less the 8px margin `useClampedPlacement` keeps on each side.
+    expect(getComputedStyle(menu).maxWidth).toBe(`${window.innerWidth - 16}px`)
 
     menu.remove()
   })

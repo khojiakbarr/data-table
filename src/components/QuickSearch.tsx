@@ -33,13 +33,24 @@ export function QuickSearch<TData extends RowData>({ instance, labels, loading =
   const { filtering, pagination, table } = instance
   const inputRef = useRef<HTMLInputElement>(null)
   /*
+   * What the announced count answers to, and nothing else: the search text
+   * and fields, plus the column filters. `useTableQuery` mints a fresh query
+   * object for a page index, a page size and a sort order too, so a latch
+   * keyed on the whole query went back to "Searching" on every page turn and
+   * every sort — two spurious announcements each, for a number none of them
+   * can move. Compared by value, as a JSON key, for the same reason
+   * `queriesEqual` is: everything in a query is JSON, and `buildQuery` fixes
+   * the order of both arrays, so a stringify compare is exact.
+   */
+  const matchKey = JSON.stringify({ search: instance.query.search, filters: instance.query.filters })
+  /*
    * Whether the host has answered the query on the wire. Only server mode
    * consults it — a client table filters its own rows, so its count is always
    * this render's — but the hook is called unconditionally, ahead of the
    * `filtering.enabled` gate below, because hook order cannot depend on props.
    */
   const answered = useAnsweredQuery({
-    query: instance.query,
+    query: matchKey,
     data: table.options.data,
     rowCount: pagination.rowCount,
     loading,

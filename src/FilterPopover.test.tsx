@@ -94,6 +94,41 @@ function LonePopover({ measure }: { measure: () => DOMRect }) {
   )
 }
 
+interface NullableRow {
+  id: string
+  amount: number | null
+}
+
+const nullableHelper = createColumnHelper<DataTableFeatures, NullableRow>()
+// No declared `meta.filter`: the kind is inferred from sampled data, which is
+// exactly the case `collectFilterKinds` can later have nothing to sample.
+const nullableColumns = [nullableHelper.accessor("amount", { header: "Amount", size: 100 })]
+
+/** A lone popover on a column whose kind is inferred, so `data` can unresolve it. */
+function UnresolvingPopover({
+  data: rows,
+  onClose,
+}: {
+  data: NullableRow[]
+  onClose: () => void
+}) {
+  const instance = useDataTable<NullableRow>({
+    id: "unresolving",
+    columns: nullableColumns,
+    data: rows,
+    getRowId: (row) => row.id,
+  })
+  return (
+    <FilterPopover
+      instance={instance}
+      column={instance.table.getColumn("amount")!}
+      position={{ x: 120, y: 200 }}
+      labels={defaultLabels}
+      onClose={onClose}
+    />
+  )
+}
+
 beforeEach(() => localStorage.clear())
 afterEach(() => {
   ResizeObserverStub.callbacks.clear()
@@ -234,6 +269,26 @@ describe("the column filter popover", () => {
     fireEvent.pointerDown(document.body)
 
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("closes itself when the column's kind unresolves while it stays open", () => {
+    // Regression: `filterKinds` is re-derived from `data` on every render
+    // (useDataTable.ts) — a column with no declared `meta.filter` whose
+    // sampled rows all go null later drops out of `filtering.kinds` while
+    // this popover is still mounted. `FilterEditor` already returns null the
+    // moment that happens (FilterEditor.tsx:94); without the popover's own
+    // re-check the chrome kept rendering around nothing — an empty
+    // `role="dialog"` with no focusable content for its own Tab trap.
+    const onClose = vi.fn()
+    const withValue: NullableRow[] = [{ id: "r0", amount: 15 }]
+    const allNull: NullableRow[] = [{ id: "r0", amount: null }]
+    const { rerender } = render(<UnresolvingPopover data={withValue} onClose={onClose} />)
+    expect(screen.getByRole("dialog", { name: "Filter Amount" })).toBeInTheDocument()
+
+    rerender(<UnresolvingPopover data={allNull} onClose={onClose} />)
+
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(onClose).toHaveBeenCalled()
   })
 
   it("clears the column from the popover, closing it and dropping the header's mark", async () => {

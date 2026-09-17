@@ -4,7 +4,7 @@ import { columnLabel } from "../core/columnLabel"
 import { useClampedPlacement, type ClampedPoint } from "../core/useClampedPlacement"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
-import { FilterEditor } from "./FilterEditor"
+import { canFilterColumn, FilterEditor } from "./FilterEditor"
 
 /**
  * One column's filter editor, floating over the table.
@@ -66,6 +66,26 @@ export function FilterPopover<TData extends RowData>({
   const ref = useRef<HTMLDivElement>(null)
   const placement = useClampedPlacement(ref, position, measure)
 
+  /*
+   * The gate the menu checked before offering "Filter…" is not a one-time
+   * answer: `filterKinds` is re-derived from `data` on every render
+   * (useDataTable.ts), so a column with no declared `meta.filter` that
+   * samples to nothing on a later page — every value null, a host refetch —
+   * drops out of the map while this popover is still open. `FilterEditor`
+   * already returns null the moment that happens (FilterEditor.tsx:94); left
+   * unchecked here, the popover chrome keeps rendering around nothing — an
+   * empty `role="dialog"` that traps a Tab key over no focusable content and
+   * has torn focus out from under the user. Re-running `canFilterColumn`
+   * rather than a second copy of its checks, same as `DataTable`'s own
+   * `canFilter` gate that decided whether to offer the item in the first
+   * place.
+   */
+  const usable = canFilterColumn(instance, column)
+
+  useEffect(() => {
+    if (!usable) onClose()
+  }, [usable, onClose])
+
   // Close on outside click and on Escape, the two things a user will try —
   // the same pair the menu and the panel handle.
   useEffect(() => {
@@ -104,6 +124,10 @@ export function FilterPopover<TData extends RowData>({
       first.focus()
     }
   }
+
+  // Every hook above must run regardless — only the render is gated, the same
+  // ordering discipline FilterEditor.tsx:91-96 uses for its own kind check.
+  if (!usable) return null
 
   return (
     <div

@@ -18,6 +18,14 @@ export interface FilterKindSource {
   hasAccessor: boolean
   /** The first non-null value the data offers for this column, for inference. */
   sampleValue: unknown
+  /**
+   * The column's own `columnDef.enableGlobalFilter`, when the column declared
+   * one. TanStack's `column_getCanGlobalFilter` ANDs `columnDef.enableGlobalFilter
+   * ?? true` into whether the client actually searches a column, so quick
+   * search's own searchability answer has to account for it too — see
+   * `isSearchableColumn` in `search.ts`, which this facts shape feeds.
+   */
+  enableGlobalFilter?: boolean
 }
 
 /**
@@ -51,6 +59,7 @@ export interface FilterColumnDefShape<TData> {
   accessorFn?: (row: TData, index: number) => unknown
   header?: unknown
   meta?: DataTableColumnMeta | undefined
+  enableGlobalFilter?: boolean
   columns?: readonly FilterColumnDefShape<TData>[]
 }
 
@@ -117,6 +126,10 @@ export function collectColumnFacts<TData>(
         meta: def.meta,
         hasAccessor: read !== null,
         sampleValue: read === null ? undefined : firstNonNull(rows, read),
+        // Conditionally spread rather than assigned outright: `enableGlobalFilter`
+        // is an optional property (exactOptionalPropertyTypes), so writing
+        // `undefined` into it explicitly would differ from leaving it unset.
+        ...(def.enableGlobalFilter !== undefined ? { enableGlobalFilter: def.enableGlobalFilter } : {}),
       })
     })
   }

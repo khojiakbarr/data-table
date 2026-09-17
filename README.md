@@ -409,12 +409,23 @@ default for `meta.searchable`, once a sample exists, is "the column's first
 non-null value is a string or a number", so a numeric column is searched too —
 mark anything unindexed or sensitive `meta: { searchable: false }`.
 
+`columnDef.enableGlobalFilter: false` also takes a column out of `fields`,
+ahead of `meta.searchable` and inference alike: TanStack's own client-side
+global filter honours that flag regardless of what this library's gate says,
+so `fields` has to agree with it or a server honouring the wire's `fields`
+would return rows the same table, in client mode, would show none of.
+
 That unresolved rule has a consequence in server mode: a column with nothing
 declared is unresolved at mount, before the first page has arrived, so `fields`
 can change — narrower or wider — once real data lands and a sample is found.
-A column resolves at most once, though: once real evidence has settled it one
-way or the other, that verdict is cached for the life of the table, so a later
-page whose sample happens to be all-null cannot re-open the question. Set
+A column resolves at most once from inference, though: once a sampled value has
+settled it one way or the other, that verdict is cached for the life of the
+table, so a later page whose sample happens to be all-null cannot re-open the
+question. That cache only ever applies to inference — a column whose
+searchability is *declared* (`meta.searchable`, or `enableGlobalFilter: false`)
+is never cached and always reads the current declaration, so flipping it after
+mount (behind an async permission check, a "search this column" toggle) takes
+effect on the very next render, narrowing or widening. Set
 `filtering.searchFields` explicitly to skip inference altogether, including the
 one request its first resolution can cost.
 

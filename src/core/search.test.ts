@@ -60,6 +60,20 @@ describe("isSearchableColumn", () => {
     // found, is able to tell the two apart via `unresolved`.
     expect(isSearchableColumn({ meta: undefined, hasAccessor: true, sampleValue: undefined }, true)).toBe(false)
   })
+
+  it("excludes a column with enableGlobalFilter: false, even over an explicit meta.searchable: true", () => {
+    // TanStack's own `column_getCanGlobalFilter` ANDs `columnDef.enableGlobalFilter
+    // ?? true` into the client's verdict regardless of this library's own
+    // gate, so a column opted out that way can never actually be searched
+    // client-side — this function has to agree, or `search.fields` on the
+    // wire would claim a column the client silently refuses to match.
+    expect(
+      isSearchableColumn(
+        { meta: { searchable: true }, hasAccessor: true, sampleValue: "KR-1", enableGlobalFilter: false },
+        true,
+      ),
+    ).toBe(false)
+  })
 })
 
 describe("collectSearchFields", () => {
@@ -164,6 +178,33 @@ describe("collectSearchFields", () => {
     // answer this call — neither is missing evidence.
     expect(result.excluded).toEqual(["created", "paid"])
     expect(result.unresolved).toEqual([])
+  })
+
+  it("resolves enableGlobalFilter: false immediately, without a sample, and reports it as declared", () => {
+    // `enableGlobalFilter` is a static column-def option, not data-dependent
+    // like `meta.searchable` paired with inference — it never needs to wait
+    // for a row to arrive the way an unmeta'd column does.
+    const result = collectSearchFields<Receipt>([{ accessorKey: "code", enableGlobalFilter: false }], [], {})
+    expect(result.fields).toEqual([])
+    expect(result.excluded).toEqual(["code"])
+    expect(result.unresolved).toEqual([])
+    expect(result.declared).toEqual(["code"])
+  })
+
+  it("separates ids resolved by a declaration from ids resolved by inference", () => {
+    // `useDataTable`'s monotonic search-field cache only applies to the
+    // inference path — it reads `declared` to skip caching an id whose
+    // searchability came from the column definition itself.
+    const result = collectSearchFields<Receipt>(
+      [{ accessorKey: "code" }, { accessorKey: "amount", meta: { searchable: false } }],
+      rows,
+      {},
+    )
+    expect(result.fields).toEqual(["code"])
+    expect(result.excluded).toEqual(["amount"])
+    // `code` was inferred from its sampled string value; `amount` was
+    // declared false via `meta.searchable` — only the latter is `declared`.
+    expect(result.declared).toEqual(["amount"])
   })
 })
 

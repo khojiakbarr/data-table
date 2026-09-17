@@ -541,36 +541,57 @@ export function useDataTable<TData extends RowData>({
    * reopens the request that excluded it, which can narrow the next page back
    * to all-null, forever.
    *
-   * This map is the fix: the first time `collectSearchFields` resolves an id
-   * definitely — in `fields` or in `excluded`, never `unresolved` — that
-   * verdict is recorded here and every later render consults it first,
-   * instead of re-folding a since-unresolved id back into the default. A
-   * table's search-field set can still change once real data replaces the
-   * pre-mount default, but never oscillates once a definite answer exists.
+   * This map is the fix: the first time `collectSearchFields` resolves an
+   * *inferred* id definitely — in `fields` or in `excluded`, never
+   * `unresolved` — that verdict is recorded here and every later render
+   * consults it first, instead of re-folding a since-unresolved id back into
+   * the default. A table's search-field set can still change once real data
+   * replaces the pre-mount default, but never oscillates once a definite
+   * answer exists.
+   *
+   * A *declared* id — `meta.searchable`, or `enableGlobalFilter: false` on the
+   * column definition — never enters this cache at all: `collectSearchFields`
+   * reports those separately, in `declared`, and this render's fresh
+   * `fields`/`excluded` membership decides them outright every time. A
+   * declaration is not an inference from sampled `data`, so there is no
+   * feedback loop here for the cache to guard against, and a host that
+   * changes the declaration after mount — an async permission check, a
+   * "search this column" toggle — has to see the new value take effect on the
+   * very next render, narrowing or widening.
    */
   const searchVerdictsRef = useRef<Map<string, boolean>>(new Map())
   const resolvedSearchFields = useMemo(() => {
     const next = (() => {
       if (!filteringEnabled) return []
-      const declared = filteringOptions?.searchFields
-      if (declared) return [...declared].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
-      const { fields, unresolved, excluded } = collectSearchFields(columns, data, layout.columnVisibility)
+      const declaredOverride = filteringOptions?.searchFields
+      if (declaredOverride) return [...declaredOverride].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      const { fields, unresolved, excluded, declared } = collectSearchFields(columns, data, layout.columnVisibility)
       const verdicts = searchVerdictsRef.current
-      // Record every id this render resolved for real, the first time it is
-      // resolved — see the JSDoc above. A verdict already cached (from an
-      // earlier render) is left as-is even if this render's evidence
-      // disagrees: it is the *first* resolution that is authoritative.
-      for (const id of fields) if (!verdicts.has(id)) verdicts.set(id, true)
-      for (const id of excluded) if (!verdicts.has(id)) verdicts.set(id, false)
-      // A column with nothing declared and no sampled value yet — ever, for
-      // this id — stays included rather than dropped, so a server-mode
-      // table's first render is still searchable before `data` has arrived.
-      // See the Task 7 review correction next to `collectSearchFields`'s own
-      // definition for why folding `unresolved` into exclusion is wrong, and
-      // the JSDoc above for why a *cached* verdict, not this render's raw
-      // `unresolved`, is what decides an id that has resolved before.
+      const declaredIds = new Set(declared)
+      const fieldsSet = new Set(fields)
+      // Record every *inferred* id this render resolved for real, the first
+      // time it is resolved — see the JSDoc above. A verdict already cached
+      // (from an earlier render) is left as-is even if this render's evidence
+      // disagrees: it is the *first* resolution that is authoritative. A
+      // declared id is skipped here on purpose; it is decided below instead.
+      for (const id of fields) if (!declaredIds.has(id) && !verdicts.has(id)) verdicts.set(id, true)
+      for (const id of excluded) if (!declaredIds.has(id) && !verdicts.has(id)) verdicts.set(id, false)
       return [...fields, ...excluded, ...unresolved]
-        .filter((id) => verdicts.get(id) ?? true)
+        .filter((id) =>
+          declaredIds.has(id)
+            ? // A declaration reads this render's membership outright, bypassing
+              // the cache entirely — see the JSDoc above.
+              fieldsSet.has(id)
+            : // A column with nothing declared and no sampled value yet — ever,
+              // for this id — stays included rather than dropped, so a
+              // server-mode table's first render is still searchable before
+              // `data` has arrived. See the Task 7 review correction next to
+              // `collectSearchFields`'s own definition for why folding
+              // `unresolved` into exclusion is wrong, and the JSDoc above for
+              // why a *cached* verdict, not this render's raw `unresolved`, is
+              // what decides an inferred id that has resolved before.
+              (verdicts.get(id) ?? true),
+        )
         .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     })()
     /*

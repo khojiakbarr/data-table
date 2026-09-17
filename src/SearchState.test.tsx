@@ -260,4 +260,126 @@ describe("quick search", () => {
     expect(result.current.query.search).toBeNull()
     expect(result.current.table.getRowModel().rows).toHaveLength(3)
   })
+
+  /**
+   * A `note` column whose `meta.searchable` is exercised across renders, for
+   * the two review-finding regressions below. Kept out of the shared `Row`
+   * fixture so the column can carry an explicit `meta.searchable` from the
+   * very first render.
+   */
+  interface NoteRow {
+    id: string
+    name: string
+    note: string
+  }
+  const noteHelper = createColumnHelper<DataTableFeatures, NoteRow>()
+  const noteData: NoteRow[] = [
+    { id: "r0", name: "Agro Ltd", note: "flagged" },
+    { id: "r1", name: "Temir", note: "clean" },
+  ]
+
+  it("widens the searched fields immediately when a declared meta.searchable flips from false to true", () => {
+    /*
+     * Reproduces the Task 10 round-2 review finding: the monotonic
+     * search-field cache recorded the *first* verdict `collectSearchFields`
+     * ever resolved for an id and never revisited it — including for a
+     * column whose searchability was *declared*, not inferred. A `note`
+     * column declared `meta: { searchable: false }` at mount, then flipped to
+     * `true` by a host state change (an async permission check, a "search
+     * this column" toggle), stayed excluded forever, because `false` had
+     * already been cached.
+     */
+    vi.useFakeTimers()
+    const columnsFor = (searchable: boolean) => [
+      noteHelper.accessor("name", { header: "Name", size: 100 }),
+      noteHelper.accessor("note", { header: "Note", size: 100, meta: { searchable } }),
+    ]
+    const { result, rerender } = renderHook(
+      (props: { searchable: boolean }) =>
+        useDataTable<NoteRow>({
+          id: "q10-declared-widen",
+          columns: columnsFor(props.searchable),
+          data: noteData,
+          getRowId: (row) => row.id,
+        }),
+      { initialProps: { searchable: false } },
+    )
+
+    act(() => result.current.filtering.setSearch("flagged"))
+    act(() => vi.advanceTimersByTime(300))
+    expect(result.current.query.search).toEqual({ text: "flagged", fields: ["name"] })
+    expect(result.current.table.getRowModel().rows).toHaveLength(0)
+
+    act(() => rerender({ searchable: true }))
+    expect(result.current.query.search).toEqual({ text: "flagged", fields: ["name", "note"] })
+    expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r0"])
+  })
+
+  it("narrows the searched fields immediately when a column newly declares meta.searchable: false", () => {
+    /*
+     * The other direction of the same regression: `note` starts with nothing
+     * declared, so its string sample infers it searchable and *that*
+     * inferred verdict is cached. The host then declares `meta: { searchable:
+     * false }`. README:405 tells hosts to do exactly this for "anything
+     * unindexed or sensitive" — the cache must not go on matching a column
+     * the host just opted out of, on the wire or client-side.
+     */
+    vi.useFakeTimers()
+    const columnsFor = (excluded: boolean) => [
+      noteHelper.accessor("name", { header: "Name", size: 100 }),
+      noteHelper.accessor("note", {
+        header: "Note",
+        size: 100,
+        ...(excluded ? { meta: { searchable: false } } : {}),
+      }),
+    ]
+    const { result, rerender } = renderHook(
+      (props: { excluded: boolean }) =>
+        useDataTable<NoteRow>({
+          id: "q10-declared-narrow",
+          columns: columnsFor(props.excluded),
+          data: noteData,
+          getRowId: (row) => row.id,
+        }),
+      { initialProps: { excluded: false } },
+    )
+
+    act(() => result.current.filtering.setSearch("flagged"))
+    act(() => vi.advanceTimersByTime(300))
+    expect(result.current.query.search).toEqual({ text: "flagged", fields: ["name", "note"] })
+    expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r0"])
+
+    act(() => rerender({ excluded: true }))
+    expect(result.current.query.search).toEqual({ text: "flagged", fields: ["name"] })
+    expect(result.current.table.getRowModel().rows).toHaveLength(0)
+  })
+
+  it("keeps search.fields in agreement with columnDef.enableGlobalFilter", () => {
+    /*
+     * Reproduces the other Task 10 review finding: `resolvedSearchFields`
+     * never read `columnDef.enableGlobalFilter`, but TanStack's own
+     * `column_getCanGlobalFilter` ANDs `columnDef.enableGlobalFilter ?? true`
+     * into whether the client actually searches a column. A `note` column
+     * opting out that way was still published in `search.fields` on the
+     * wire while the client silently refused to match it — a server
+     * honouring `fields` would return a row that the very same table, given
+     * the same data in client mode, shows none of.
+     */
+    vi.useFakeTimers()
+    const noOptOutColumns = [
+      noteHelper.accessor("name", { header: "Name", size: 100 }),
+      noteHelper.accessor("note", { header: "Note", size: 100, enableGlobalFilter: false }),
+    ]
+    const { result } = renderHook(() =>
+      useDataTable<NoteRow>({ id: "q10-enable-global-filter", columns: noOptOutColumns, data: noteData, getRowId: (row) => row.id }),
+    )
+
+    act(() => result.current.filtering.setSearch("flagged"))
+    act(() => vi.advanceTimersByTime(300))
+
+    // Only `note` contains "flagged"; with it opted out, neither the wire nor
+    // the client may claim a match.
+    expect(result.current.query.search).toEqual({ text: "flagged", fields: ["name"] })
+    expect(result.current.table.getRowModel().rows).toHaveLength(0)
+  })
 })

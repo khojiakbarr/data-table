@@ -8,12 +8,18 @@ import { collectColumnFacts, type FilterColumnDefShape, type FilterKindSource } 
 /**
  * Whether quick search covers one column, given what is known about it right now.
  *
- * `meta.searchable` wins outright; with nothing declared the default is "the
- * column's first non-null value is a string or a number". Neither half is
- * TanStack's default: its own heuristic is a gate *underneath* the flags rather
- * than a default a host can override, and it never consults visibility at all —
- * so without this predicate a hidden column would go on being searched
- * client-side while the wire's `fields` omitted it.
+ * `enableGlobalFilter: false` wins outright, ahead of everything else: TanStack's
+ * own `column_getCanGlobalFilter` ANDs `columnDef.enableGlobalFilter ?? true`
+ * into the client's verdict regardless of what this library's own gate says, so
+ * a column that opted out that way can never actually be searched client-side —
+ * this function has to agree, or `search.fields` on the wire would claim a
+ * column the client silently refuses to match. Short of that, `meta.searchable`
+ * wins; with nothing declared the default is "the column's first non-null value
+ * is a string or a number". Neither the `enableGlobalFilter` check nor the
+ * string/number default is TanStack's own: its heuristic is a gate
+ * *underneath* the flags rather than a default a host can override, and it
+ * never consults visibility at all — so without this predicate a hidden column
+ * would go on being searched client-side while the wire's `fields` omitted it.
  *
  * This always returns a definite boolean, including when `sampleValue` is
  * `undefined` because no sample has been found yet — that case reads as
@@ -23,12 +29,13 @@ import { collectColumnFacts, type FilterColumnDefShape, type FilterKindSource } 
  * act on the distinction; call this directly only once the caller has already
  * decided how an unresolved column should be treated.
  *
- * @param facts - The column's meta, accessor and sample value.
+ * @param facts - The column's meta, accessor, enableGlobalFilter flag and sample value.
  * @param visible - Whether the column is currently rendered.
  * @returns Whether the column is searched.
  */
 export function isSearchableColumn(facts: FilterKindSource, visible: boolean): boolean {
   if (!facts.hasAccessor || !visible) return false
+  if (facts.enableGlobalFilter === false) return false
   const declared = facts.meta?.searchable
   if (declared !== undefined) return declared
   return typeof facts.sampleValue === "string" || typeof facts.sampleValue === "number"
@@ -53,13 +60,29 @@ export interface SearchFieldsResult {
   unresolved: string[]
   /**
    * Visible, accessor-backed leaf ids resolved as **not** searched, sorted —
-   * either `meta.searchable: false`, or a sampled value that failed the
-   * string-or-number heuristic. Definite, the same way `fields` is: a caller
-   * that remembers a verdict across renders (`useDataTable`'s monotonic
-   * search-field cache) needs this to tell "resolved false" apart from "not
-   * yet resolved" without re-deriving it from `fields` and the column set.
+   * either `enableGlobalFilter: false`, `meta.searchable: false`, or a sampled
+   * value that failed the string-or-number heuristic. Definite, the same way
+   * `fields` is: a caller that remembers a verdict across renders
+   * (`useDataTable`'s monotonic search-field cache) needs this to tell
+   * "resolved false" apart from "not yet resolved" without re-deriving it from
+   * `fields` and the column set.
    */
   excluded: string[]
+  /**
+   * Ids resolved by an explicit declaration on the column definition —
+   * `enableGlobalFilter: false` or `meta.searchable` — rather than inferred
+   * from a sampled value, sorted. Always a subset of `fields` ∪ `excluded`,
+   * never of `unresolved`: a declaration is definite the instant the column
+   * definition is read, with no data to wait for.
+   *
+   * `useDataTable`'s monotonic search-field cache exists to smooth over
+   * *inference* changing page to page in server mode — it has nothing to do
+   * with a host-authored declaration, which is not data-dependent and must
+   * win immediately, in both directions, however it changes after mount. This
+   * is how that caller tells the two kinds of verdict apart without
+   * re-deriving it from `meta`/`enableGlobalFilter` itself.
+   */
+  declared: string[]
 }
 
 /**
@@ -96,7 +119,7 @@ export interface SearchFieldsResult {
  * @param columns - Column definitions, possibly nested.
  * @param rows - The data, or the page of it the table is holding.
  * @param visibility - TanStack's visibility state; an absent id is visible.
- * @returns `fields`, `unresolved` and `excluded`, each sorted.
+ * @returns `fields`, `unresolved`, `excluded` and `declared`, each sorted.
  */
 export function collectSearchFields<TData>(
   columns: readonly FilterColumnDefShape<TData>[],
@@ -106,9 +129,19 @@ export function collectSearchFields<TData>(
   const fields: string[] = []
   const unresolved: string[] = []
   const excluded: string[] = []
+  const declared: string[] = []
   for (const [id, facts] of collectColumnFacts(columns, rows)) {
     const visible = visibility[id] ?? true
     if (!facts.hasAccessor || !visible) continue
+    // `enableGlobalFilter: false` is definite the instant the column
+    // definition is read — no sample to wait for, unlike `meta.searchable`
+    // paired with inference — so it is resolved, and recorded as declared,
+    // ahead of the unresolved check below.
+    if (facts.enableGlobalFilter === false) {
+      excluded.push(id)
+      declared.push(id)
+      continue
+    }
     // Same "nothing declared, nothing sampled" check `collectFilterKinds` uses
     // to skip rather than guess — see the JSDoc above for why folding this
     // into either `true` or `false` would be wrong.
@@ -116,6 +149,7 @@ export function collectSearchFields<TData>(
       unresolved.push(id)
       continue
     }
+    if (facts.meta?.searchable !== undefined) declared.push(id)
     if (isSearchableColumn(facts, visible)) fields.push(id)
     else excluded.push(id)
   }
@@ -123,6 +157,7 @@ export function collectSearchFields<TData>(
     fields: fields.sort(compareIds),
     unresolved: unresolved.sort(compareIds),
     excluded: excluded.sort(compareIds),
+    declared: declared.sort(compareIds),
   }
 }
 

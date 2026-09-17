@@ -10,6 +10,7 @@ import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import { ColumnPanel } from "./ColumnPanel"
+import { QuickSearch } from "./QuickSearch"
 import { HeaderCell } from "./HeaderCell"
 import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
@@ -346,6 +347,7 @@ export function DataTable<TData extends RowData>({
       {toolbar ? (
         <div className="dt-toolbar">
           {toolbarContent}
+          {instance.filtering.enabled ? <QuickSearch instance={instance} labels={labels} /> : null}
           <span className="dt-spacer" />
           {flags.hiding || flags.pinning ? (
             <button

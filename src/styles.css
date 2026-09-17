@@ -459,6 +459,62 @@
   flex: 1 1 auto;
 }
 
+.dt-search-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+/*
+ * WebKit renders its own clear affordance inside a `type="search"` field. It
+ * is unlabelled and invisible to a screen reader, so it is hidden in favour of
+ * the real button beside it rather than shown twice.
+ */
+.dt-search::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.dt-search-clear {
+  position: absolute;
+  inset-inline-end: 2px;
+  /* WCAG 2.2 AA 2.5.8 asks for 24x24 CSS px, which is also what fits inside a
+     28px-tall field without crowding its text. */
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dt-muted-fg);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dt-search-clear:hover {
+  color: var(--dt-fg);
+  background: var(--dt-row-hover);
+}
+
+/*
+ * Announced but not drawn. Not `display: none` and not `visibility: hidden`,
+ * either of which takes the text out of the accessibility tree entirely.
+ */
+.dt-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .dt-menu-button {
   display: inline-flex;
   align-items: center;
@@ -852,7 +908,8 @@
 }
 
 .dt-select,
-.dt-page-input {
+.dt-page-input,
+.dt-search {
   height: 28px;
   padding-inline: 6px;
   border: 1px solid var(--dt-border);
@@ -866,6 +923,24 @@
 .dt-page-input {
   width: 4em;
   text-align: center;
+}
+
+/*
+ * After the shared rule above, never before it: the two selectors have the same
+ * specificity, so source order decides, and the whole `padding-inline` is
+ * restated rather than only its trailing half — a lone `padding-inline-end`
+ * here would be a partial override of a shorthand, which is the kind of thing
+ * that survives review and then breaks silently when a rule moves.
+ *
+ * Deliberately not pinned by a cascade test: jsdom does not expand
+ * `padding-inline` into the logical longhands `getComputedStyle` reports, so
+ * the assertion passes whichever order the rules are in (verified by moving
+ * this rule above the shared one and watching the test go on passing).
+ */
+.dt-search {
+  width: 14em;
+  /* 6px is the shared rule's own padding; 26px leaves room for the clear button. */
+  padding-inline: 6px 26px;
 }
 
 .dt-footer-nav {
@@ -896,6 +971,8 @@
 
 .dt-select:focus-visible,
 .dt-page-input:focus-visible,
+.dt-search:focus-visible,
+.dt-search-clear:focus-visible,
 .dt-icon-button:focus-visible {
   outline: 2px solid var(--dt-focus-ring);
   outline-offset: -2px;

@@ -768,6 +768,12 @@ data](#server-side-data) describes the precedence between them). Exported for th
 reason as the footer: a shell that reuses `TablePagination` usually wants these too, rather
 than rebuilding the same four-state contract against undocumented class names.
 
+`<QuickSearch instance={instance} labels={{ ...defaultLabels, ...myLabels }} />` — the
+toolbar's search box on its own, for a shell that renders `toolbar={false}`. Like
+the footer it takes the full `DataTableLabels` rather than a `Partial`. It writes
+straight to `instance.filtering.setSearch`, so the debounce, the result-count
+announcement and the page reset come with it.
+
 ---
 
 ## API

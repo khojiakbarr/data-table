@@ -9,8 +9,9 @@ import {
   isRangeOperator,
   operatorChoices,
   withOperator,
+  type FilterDraft,
 } from "./filterDraft"
-import type { DateCondition } from "./filters"
+import type { DateCondition, FilterCondition } from "./filters"
 import type { DataTableLabels } from "../types"
 import { defaultLabels } from "../components/DataTable"
 
@@ -107,11 +108,37 @@ describe("withOperator", () => {
     expect(withOperator(draft, "between")).toBe(draft)
   })
 
+  it("ignores an operator the kind does not offer, for every kind — not only text", () => {
+    // Each `case` in `withOperator`'s switch runs its own `pickOperator`
+    // call; a single text-only rejection test would not notice one of the
+    // other four branches losing its guard.
+    const listDraft: FilterDraft = { kind: "list", op: "in", values: [] }
+    expect(withOperator(listDraft, "eq")).toBe(listDraft)
+    const numberDraft = { kind: "number", op: "eq", value: "1", from: "", to: "" } as const
+    expect(withOperator(numberDraft, "contains")).toBe(numberDraft)
+    const booleanDraft = { kind: "boolean", op: "isTrue" } as const
+    expect(withOperator(booleanDraft, "between")).toBe(booleanDraft)
+    const dateDraft = { kind: "date", mode: "is", day: "", from: "", to: "" } as const
+    expect(withOperator(dateDraft, "eq")).toBe(dateDraft)
+  })
+
   it("says which operators carry no value, and which carry two", () => {
     expect(isBlankOperator({ kind: "date", mode: "blank", day: "", from: "", to: "" })).toBe(true)
     expect(isBlankOperator({ kind: "text", op: "contains", value: "" })).toBe(false)
     expect(isRangeOperator({ kind: "number", op: "between", value: "", from: "", to: "" })).toBe(true)
     expect(isRangeOperator({ kind: "number", op: "gt", value: "5", from: "", to: "" })).toBe(false)
+  })
+
+  it("treats a date between as the range operator, and the other three modes as single-value", () => {
+    // Task 15 uses this to decide between one day input and two; a mutation
+    // that hard-codes `false` for dates would leave the between editor
+    // showing a single day input and silently discard the second bound.
+    expect(isRangeOperator({ kind: "date", mode: "between", day: "", from: "2026-03-01", to: "2026-03-31" })).toBe(
+      true,
+    )
+    expect(isRangeOperator({ kind: "date", mode: "is", day: "2026-03-01", from: "", to: "" })).toBe(false)
+    expect(isRangeOperator({ kind: "date", mode: "before", day: "2026-03-01", from: "", to: "" })).toBe(false)
+    expect(isRangeOperator({ kind: "date", mode: "after", day: "2026-03-01", from: "", to: "" })).toBe(false)
   })
 })
 
@@ -124,10 +151,40 @@ describe("draftFromCondition", () => {
       .toEqual({ kind: "boolean", op: "isFalse" })
   })
 
+  it("preserves the text operator, not only the value", () => {
+    // A default of "contains" would still pass a value-only assertion;
+    // "notContains" pins the branch to `condition.op` rather than a
+    // hard-coded default.
+    expect(draftFromCondition({ kind: "text", field: "a", op: "notContains", value: "x" }, "text")).toEqual({
+      kind: "text",
+      op: "notContains",
+      value: "x",
+    })
+  })
+
   it("reads a one-day range back as the Is the editor offered", () => {
     expect(
       draftFromCondition({ kind: "date", field: "d", op: "range", from: "2026-03-31", before: "2026-04-01" }, "date"),
     ).toEqual({ kind: "date", mode: "is", day: "2026-03-31", from: "", to: "" })
+  })
+
+  it("preserves the list operator and values, including blank/notBlank", () => {
+    expect(
+      draftFromCondition({ kind: "list", field: "s", op: "in", values: ["open", "closed"] }, "list"),
+    ).toEqual({ kind: "list", op: "in", values: ["open", "closed"] })
+    // The one kind whose blank/notBlank operator this module used to drop —
+    // a column filtered to "(Blanks)" must re-open with the operator select
+    // reading "Is blank", not "Is any of".
+    expect(draftFromCondition({ kind: "list", field: "s", op: "blank" }, "list")).toEqual({
+      kind: "list",
+      op: "blank",
+      values: [],
+    })
+    expect(draftFromCondition({ kind: "list", field: "s", op: "notBlank" }, "list")).toEqual({
+      kind: "list",
+      op: "notBlank",
+      values: [],
+    })
   })
 
   it("ignores a condition whose kind is not the column's", () => {
@@ -192,6 +249,39 @@ describe("draftToCondition", () => {
   })
 })
 
+describe("draftFromCondition + draftToCondition round trip", () => {
+  it("round-trips a list blank/notBlank condition unchanged", () => {
+    // The regression this pins: `draftFromCondition` used to collapse
+    // list's blank/notBlank to "in", producing an empty-values draft that
+    // `draftToCondition` then turned into `null` — silently clearing a
+    // column filtered to "(Blanks)" on the first commit.
+    const blank: FilterCondition = { kind: "list", field: "s", op: "blank" }
+    expect(draftToCondition(draftFromCondition(blank, "list"), "s")).toEqual(blank)
+    const notBlank: FilterCondition = { kind: "list", field: "s", op: "notBlank" }
+    expect(draftToCondition(draftFromCondition(notBlank, "list"), "s")).toEqual(notBlank)
+  })
+
+  it("round-trips one condition per kind and operator family", () => {
+    const cases: FilterCondition[] = [
+      { kind: "text", field: "a", op: "contains", value: "agro" },
+      { kind: "text", field: "a", op: "blank" },
+      { kind: "number", field: "a", op: "gt", value: 5 },
+      { kind: "number", field: "a", op: "between", from: 1, to: 9 },
+      { kind: "number", field: "a", op: "blank" },
+      { kind: "date", field: "d", op: "range", from: "2026-03-31", before: "2026-04-01" },
+      { kind: "date", field: "d", op: "range", from: "2026-03-01", before: "2026-04-01" },
+      { kind: "date", field: "d", op: "blank" },
+      { kind: "boolean", field: "b", op: "is", value: true },
+      { kind: "boolean", field: "b", op: "notBlank" },
+      { kind: "list", field: "s", op: "in", values: ["a", "b"] },
+      { kind: "list", field: "s", op: "blank" },
+    ]
+    for (const condition of cases) {
+      expect(draftToCondition(draftFromCondition(condition, condition.kind), condition.field)).toEqual(condition)
+    }
+  })
+})
+
 describe("describeCondition", () => {
   it("says what a filter does, for a collapsed entry in the Filters tab", () => {
     expect(describeCondition({ kind: "text", field: "a", op: "contains", value: "agro" }, labels))
@@ -207,5 +297,24 @@ describe("describeCondition", () => {
 
   it("describes blankness with its operator alone", () => {
     expect(describeCondition({ kind: "text", field: "a", op: "notBlank" }, labels)).toBe("Is not blank")
+  })
+
+  it("pins each date mode to its own label, not just Is", () => {
+    // `operatorLabel` maps a date's mode to `opDateBefore` / `opDateAfter` /
+    // `opDateBetween` by hand rather than through `operatorChoices`; a swap
+    // between the before and after labels is otherwise invisible, since the
+    // only date case previously covered was the one-day "Is" range.
+    expect(
+      describeCondition({ kind: "date", field: "d", op: "range", from: null, before: "2026-03-31" }, labels),
+    ).toBe("Before 2026-03-31")
+    expect(
+      describeCondition({ kind: "date", field: "d", op: "range", from: "2026-04-01", before: null }, labels),
+    ).toBe("After 2026-03-31")
+    expect(
+      describeCondition(
+        { kind: "date", field: "d", op: "range", from: "2026-03-01", before: "2026-04-01" },
+        labels,
+      ),
+    ).toBe("Between 2026-03-01 – 2026-03-31")
   })
 })

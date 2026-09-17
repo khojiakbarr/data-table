@@ -336,9 +336,14 @@ export function draftFromCondition(
       return { kind: "boolean", op: "value" in condition && condition.value ? "isTrue" : "isFalse" }
     }
     case "list":
+      // Every other kind preserves its own operator here (text, number, date
+      // via `conditionToDayChoice`, boolean); list must too, or a column
+      // filtered to "(Blanks)" re-opens with "Is any of" selected instead of
+      // "Is blank", and the first commit clears the filter because an empty
+      // `values` list builds no condition.
       return {
         kind: "list",
-        op: condition.op === "blank" || condition.op === "notBlank" ? "in" : condition.op,
+        op: condition.op,
         values: "values" in condition ? [...condition.values] : [],
       }
   }

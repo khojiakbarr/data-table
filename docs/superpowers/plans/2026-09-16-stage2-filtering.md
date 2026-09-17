@@ -4501,6 +4501,9 @@ git push origin khojiakbar
 - Modify: `src/useDataTable.ts`
 - Modify: `src/index.ts`
 - Modify: `README.md`
+- Modify: `src/ClientFiltering.test.tsx` (Task 9's "recomputes the filtered rows when the column a
+  global filter matched is hidden" drives the table through `table.setGlobalFilter`, which this task
+  routes into `layout.search`; its assertion now has to wait out the debounce)
 - Test: `src/SearchState.test.tsx`
 
 `useTableQuery` re-announces in an effect on every committed change to the query object, so a search
@@ -4723,10 +4726,12 @@ describe("quick search", () => {
 pnpm vitest run src/SearchState.test.tsx
 ```
 
-Eight of the nine fail. The first reports `expected "spy" to be called 1 times, but got 0 times`:
+Seven of the nine fail. The first reports `expected "spy" to be called 1 times, but got 0 times`:
 `search` on the wire is still the `NO_SEARCH` placeholder, so no query changes at all. The client
-cases report three rows where one was expected, because nothing feeds `state.globalFilter`. Only
-"counts a whitespace-only search as no search on the wire" passes, for the wrong reason.
+cases report three rows where one was expected, because nothing feeds `state.globalFilter`. The two
+that pass — "counts a whitespace-only search as no search on the wire" and "publishes nothing to
+search when no column is searchable" — pass for the wrong reason: both assert a `null` `search` and
+an unfiltered table, which is what the placeholder gives them for free.
 
 - [ ] **Step 3: Implement**
 
@@ -4878,6 +4883,25 @@ keystroke, and what waits is the query. Column filters are never debounced —
 they commit on Apply, Enter or blur.
 ```
 
+One test from Task 9 changes meaning here and has to follow. `ClientFiltering.test.tsx`'s
+"recomputes the filtered rows when the column a global filter matched is hidden" calls
+`table.setGlobalFilter("temir")` and asserts the filtered rows on the very next line. That worked
+while `state.globalFilter` was TanStack's own uncontrolled atom; now the call writes `layout.search`
+and `state.globalFilter` follows a debounce later, so the row model has nothing to recompute until
+the wait is over and the table still holds all three rows. Add `afterEach(() => vi.useRealTimers())`
+beside the file's `describe`, import `afterEach` and `vi`, and fake the timers in that one test:
+
+```tsx
+    vi.useFakeTimers()
+    const { result } = setup("c10")
+    act(() => result.current.table.setGlobalFilter("temir"))
+    act(() => vi.advanceTimersByTime(300))
+    expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r1"])
+```
+
+The rest of the test is unchanged: hiding the column does not touch `layout.search`, so the
+`resolvedSearchFields` dependency still makes the row model recompute in the same tick.
+
 - [ ] **Step 4: Run the checks**
 
 ```bash
@@ -4885,12 +4909,17 @@ pnpm vitest run src/SearchState.test.tsx
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **368 tests** (359 plus 9).
+`pnpm test` must report **nine tests more than it did before this task**, and no file other than
+`SearchState.test.tsx` may gain or lose one. The absolute totals written into this plan are stale —
+the review rounds after Tasks 1-9 added regression tests the original chain did not count — so take
+the count before the task and compare. It was **427 tests across 34 files** when this task landed
+(418 across 33 before it).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/core/useDebouncedValue.ts src/useDataTable.ts src/index.ts src/SearchState.test.tsx README.md
+git add src/core/useDebouncedValue.ts src/useDataTable.ts src/index.ts src/SearchState.test.tsx \
+  src/ClientFiltering.test.tsx README.md
 git commit -m "feat(filters): publish quick search on a debounce"
 git push origin khojiakbar
 ```

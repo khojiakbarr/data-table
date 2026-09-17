@@ -76,6 +76,7 @@ export {
   searchNeedle,
 } from "./core/search"
 export type { SearchFieldsResult, SearchNeedle } from "./core/search"
+export { useDebouncedValue } from "./core/useDebouncedValue"
 
 /* Helpers worth borrowing rather than rewriting. */
 export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"

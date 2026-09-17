@@ -401,6 +401,21 @@ never by hand. They fix each condition's key order, sort a list's values and
 return `null` for a condition that constrains nothing, and `instance.query`'s
 identity depends on all three.
 
+**Which columns `fields` holds** is every visible, accessor-backed column whose
+`meta.searchable` resolves true. The default for `meta.searchable` is "the
+column's first non-null value is a string or a number", so a numeric column is
+searched too — mark anything unindexed or sensitive `meta: { searchable: false }`.
+Hiding a column narrows the search, which is surprising either way and is why
+`filtering.searchFields` overrides the list outright. `search` is `null` when
+the box is empty, when it holds only whitespace, and when no column is
+searchable at all — the client has nothing to match against either, so both
+modes return everything.
+
+**The published value is debounced**, by `filtering.debounceMs` (default
+300 ms). The box itself stays responsive: the raw text is in state on the
+keystroke, and what waits is the query. Column filters are never debounced —
+they commit on Apply, Enter or blur.
+
 ---
 
 ## Expandable rows

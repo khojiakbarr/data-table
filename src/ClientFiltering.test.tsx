@@ -1,6 +1,6 @@
 import { createColumnHelper } from "@tanstack/react-table"
 import { act, renderHook } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { filterFn_dt } from "./core/filterFn"
 import type { FilterCondition } from "./core/filters"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
@@ -70,6 +70,8 @@ const tree: Node[] = [
   { id: "p", name: "Parent", children: [{ id: "c", name: "Needle child" }] },
   { id: "q", name: "Other" },
 ]
+
+afterEach(() => vi.useRealTimers())
 
 describe("client-side filtering", () => {
   it("narrows rows from a condition set through the instance API", () => {
@@ -185,8 +187,15 @@ describe("client-side filtering", () => {
     // matched changes which columns are searched, and the row model must
     // recompute even though `columnFilters` and `globalFilter` themselves did
     // not change.
+    //
+    // The timers are faked because what the row model reads is the *published*
+    // search: `setGlobalFilter` writes `layout.search` on the keystroke and
+    // `state.globalFilter` follows a debounce later, so there is nothing to
+    // recompute until the wait is over.
+    vi.useFakeTimers()
     const { result } = setup("c10")
     act(() => result.current.table.setGlobalFilter("temir"))
+    act(() => vi.advanceTimersByTime(300))
     expect(result.current.table.getRowModel().rows.map((row) => row.id)).toEqual(["r1"])
 
     act(() => result.current.table.getColumn("name")!.toggleVisibility(false))

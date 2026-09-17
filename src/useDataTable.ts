@@ -44,6 +44,7 @@ import type { TableQuery, TableSearch } from "./core/query"
 import { collectSearchFields, filterFn_dtSearch } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { apply, layoutSliceEqual, useArrangement } from "./core/useArrangement"
+import { useDebouncedValue } from "./core/useDebouncedValue"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
 import { usePagination, type PaginationApi } from "./core/usePagination"
 import { useTableQuery } from "./core/useTableQuery"
@@ -151,15 +152,8 @@ export interface FilteringOptions {
     | undefined
 }
 
-/**
- * Quick search is not published yet.
- *
- * The slice is written on every keystroke, but what reaches the wire is
- * debounced and needs the resolved search fields, neither of which exists
- * until the quick-search step. A stable constant until then, so the query's
- * identity does not churn.
- */
-const NO_SEARCH: TableSearch | null = null
+/** How long quick search waits before it is published. */
+const DEFAULT_SEARCH_DEBOUNCE_MS = 300
 
 export interface UseDataTableOptions<TData extends RowData> {
   /**
@@ -573,6 +567,31 @@ export function useDataTable<TData extends RowData>({
   }, [filteringEnabled, filteringOptions?.searchFields, columns, data, layout.columnVisibility])
 
   /*
+   * `layout.search` holds the raw text and is written on every keystroke, which
+   * keeps the input a normal controlled field. What is debounced is everything
+   * downstream: `state.globalFilter`, and `search` on the wire. Ten keystrokes
+   * then produce ten renders that change nothing the row model memoises on, and
+   * one query.
+   *
+   * Both sides get `text.trim()`: `createFilteredRowModel` treats `" "` as a
+   * live global filter and would search for a space, while a wire carrying
+   * `null` would have the server return everything.
+   */
+  const searchText = useDebouncedValue(
+    layout.search.trim(),
+    filteringOptions?.debounceMs ?? DEFAULT_SEARCH_DEBOUNCE_MS,
+  )
+  // An empty field list means search is off: the client has nothing to match
+  // against, so the wire carries `null` rather than a term no backend could honour.
+  const search = useMemo<TableSearch | null>(
+    () =>
+      searchText === "" || resolvedSearchFields.length === 0
+        ? null
+        : { text: searchText, fields: resolvedSearchFields },
+    [searchText, resolvedSearchFields],
+  )
+
+  /*
    * `filters` is the first layout slice whose shape is not already TanStack's,
    * so it is the first that cannot be passed straight through.
    *
@@ -689,6 +708,7 @@ export function useDataTable<TData extends RowData>({
       columnSizing: layout.columnSizing,
       sorting: layout.sorting,
       columnFilters,
+      globalFilter: searchText,
       pagination: { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize },
       expanded,
     },
@@ -837,6 +857,13 @@ export function useDataTable<TData extends RowData>({
       updateSlice("columnSizing", updater, (sizing) => normaliseSizing(sizing, table)),
     onSortingChange: updateSorting,
     onColumnFiltersChange: updateFiltersFromTanStack,
+    /*
+     * `state.globalFilter` is controlled from `layout.search`, so TanStack's
+     * default updater would write to an atom the controlled value overrides,
+     * and `table.setGlobalFilter()` would silently do nothing — the same trap
+     * `onColumnFiltersChange` avoids for `column.setFilterValue()`.
+     */
+    onGlobalFilterChange: (updater: Updater<string>) => updateSearch(apply(updater, layout.search)),
   })
 
   /*
@@ -885,7 +912,7 @@ export function useDataTable<TData extends RowData>({
   const query = useTableQuery({
     sorting: layout.sorting,
     filters: layout.filters,
-    search: NO_SEARCH,
+    search,
     pageIndex: pageState.pageIndex,
     pageSize: pageState.pageSize,
     onQueryChange,

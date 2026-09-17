@@ -840,6 +840,14 @@
   position: fixed;
   z-index: 20;
   min-width: 190px;
+  /* `position: fixed` + `width: auto` shrink-to-fits to `containingBlock -
+     left`: every useClampedPlacement re-clamp would hand the menu a little
+     more room, growing it, re-triggering the clamp — a feedback loop rather
+     than a one-time reflow (see useClampedPlacement.ts's JSDoc). Pinning the
+     width to its own content, bounded by the viewport, removes the
+     dependency on `left` entirely. */
+  width: max-content;
+  max-width: calc(100vw - 16px);
   padding: 4px;
   border: 1px solid var(--dt-border);
   border-radius: var(--dt-radius);

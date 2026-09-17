@@ -205,3 +205,46 @@ describe("README override recipes", () => {
     }
   })
 })
+
+/**
+ * `.dt-menu` is `position: fixed` and placed with `left`/`top`
+ * (HeaderMenu.tsx, via `useClampedPlacement`). A `width: auto` box in that
+ * combination shrink-to-fits to `containingBlock - left` (CSS2.1 §10.3.7): a
+ * clamp that moves the box hands it exactly that much more room, growing it,
+ * which re-triggers `useClampedPlacement`'s ResizeObserver, which clamps
+ * again — a feedback loop, not a one-time reflow (review finding on
+ * useClampedPlacement.ts). jsdom does no layout, so this cannot be caught by
+ * measuring a real reflow; it can only be caught by asserting the box no
+ * longer declares the `width: auto` that the loop depends on.
+ */
+describe(".dt-menu sizing", () => {
+  let styleEl: HTMLStyleElement
+
+  beforeEach(() => {
+    styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+    document.head.appendChild(styleEl)
+  })
+
+  afterEach(() => styleEl.remove())
+
+  it("does not leave the menu's width dependent on its own `left`", () => {
+    const menu = document.createElement("div")
+    menu.className = "dt-menu"
+    document.body.appendChild(menu)
+
+    expect(getComputedStyle(menu).width).not.toBe("auto")
+
+    menu.remove()
+  })
+
+  it("still bounds the menu to the viewport instead of letting it grow unboundedly", () => {
+    const menu = document.createElement("div")
+    menu.className = "dt-menu"
+    document.body.appendChild(menu)
+
+    expect(getComputedStyle(menu).maxWidth).not.toBe("none")
+
+    menu.remove()
+  })
+})

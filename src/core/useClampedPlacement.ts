@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react"
+import { useRef, useState, type RefObject } from "react"
 import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 
 /** Smallest gap kept between an overlay and the edge of the window. */
@@ -15,14 +15,28 @@ export interface ClampedPoint {
  *
  * An overlay opens at the pointer or under the control that summoned it, and
  * for the last column that is usually within its own width of the window edge.
- * It is laid out once at the requested spot, measured, and moved before paint.
+ * It is laid out once at the requested spot, measured, and moved before paint,
+ * then re-measured whenever the overlay's own size changes afterwards (a
+ * popover that grows when its operator changes, for example).
+ *
+ * The overlay's own rendered size must not depend on the position this hook
+ * gives it. A `position: fixed` box with `width: auto` shrink-to-fits to
+ * `containingBlock - left`, so every clamp hands it a little more room, which
+ * grows the box, which re-triggers the observer — a slow feedback loop, not a
+ * one-time reflow. Give the overlay an explicit width, or bound it with
+ * `width: max-content; max-width: …` (see `.dt-menu` in styles.css).
  *
  * @param ref - The overlay element.
- * @param requested - Where the caller wants its top-left corner. Stable across
- *   renders, or every render re-measures.
+ * @param requested - Where the caller wants its top-left corner, in viewport
+ *   pixels. Only `x`/`y` are compared across renders, so a fresh object every
+ *   render — the usual shape, since it closes over the event or state that
+ *   opened the overlay — never by itself re-runs the effect below.
  * @param measure - How to measure the overlay. Defaults to its own bounding
  *   rect; injectable because jsdom lays nothing out and reports every rect as
- *   zeros, which makes a re-clamp indistinguishable from no clamp at all.
+ *   zeros, which makes a re-clamp indistinguishable from no clamp at all. Read
+ *   through a ref refreshed every render, so a fresh closure each render (it
+ *   typically closes over component state, same as `requested`) does not
+ *   re-run the effect either.
  * @returns The corner to render at.
  *
  * @example
@@ -34,14 +48,25 @@ export function useClampedPlacement(
   measure?: (() => DOMRect) | undefined,
 ): ClampedPoint {
   const [placement, setPlacement] = useState(requested)
+  const { x: requestedX, y: requestedY } = requested
+
+  // Latest-ref: `measure` is read, not depended on. Depending on its identity
+  // would disconnect and reobserve on every render for a caller who (as the
+  // @example does) writes it as a fresh closure each time.
+  const measureRef = useRef(measure)
+  useIsomorphicLayoutEffect(() => {
+    measureRef.current = measure
+  })
 
   useIsomorphicLayoutEffect(() => {
     const element = ref.current
     if (!element) return
     const clamp = () => {
-      const { width, height } = measure ? measure() : element.getBoundingClientRect()
-      const x = clampToViewport(requested.x, width, window.innerWidth)
-      const y = clampToViewport(requested.y, height, window.innerHeight)
+      const { width, height } = measureRef.current
+        ? measureRef.current()
+        : element.getBoundingClientRect()
+      const x = clampToViewport(requestedX, width, window.innerWidth)
+      const y = clampToViewport(requestedY, height, window.innerHeight)
       // Same point, same object: a fresh one re-renders for nothing, and a
       // re-render that resized the element would observe itself forever.
       setPlacement((current) => (current.x === x && current.y === y ? current : { x, y }))
@@ -57,7 +82,12 @@ export function useClampedPlacement(
     const observer = new ResizeObserver(clamp)
     observer.observe(element)
     return () => observer.disconnect()
-  }, [ref, requested, measure])
+    // `requested` and `measure` are read above via requestedX/requestedY and
+    // measureRef on purpose, not depended on directly — see the JSDoc @param
+    // notes: depending on their identities would re-run this effect (and
+    // disconnect + reobserve) on every render regardless of whether the
+    // requested point actually moved.
+  }, [ref, requestedX, requestedY])
 
   return placement
 }

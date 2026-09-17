@@ -217,6 +217,81 @@ describe("the filter editor", () => {
     expect(container.querySelector(".dt-filter-editor")).toBeNull()
   })
 
+  it("renders nothing for a column whose kind has not resolved yet, rather than seeding a wrong draft", () => {
+    const restored: FilterCondition = { kind: "number", field: "amount", op: "gte", value: 500 }
+    let filters: readonly FilterCondition[] = []
+    function ResolvingTable() {
+      const [rows, setRows] = useState<Row[]>([])
+      const instance = useDataTable<Row>({
+        id: "editor-resolving",
+        columns,
+        data: rows,
+        getRowId: (row) => row.id,
+        initialLayout: { filters: [restored] },
+      })
+      filters = instance.filtering.conditions
+      return (
+        <>
+          <button type="button" onClick={() => setRows(data)}>
+            Load rows
+          </button>
+          <FilterEditor instance={instance} column={instance.table.getColumn("amount")!} labels={defaultLabels} />
+        </>
+      )
+    }
+    render(<ResolvingTable />)
+
+    // No rows yet: "amount" declares no `meta.filter` and has no sample to
+    // infer from, so its kind is unresolved — the editor must render nothing
+    // rather than seed a "text" draft that a later remount cannot correct.
+    expect(screen.queryByLabelText("Amount: Value")).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "Load rows" }))
+
+    // The kind now resolves to "number": the editor mounts fresh, seeded
+    // from the restored condition rather than an empty "text" draft.
+    const field = screen.getByLabelText("Amount: Value")
+    expect(field).toHaveAttribute("type", "number")
+    expect(field).toHaveDisplayValue("500")
+
+    fireEvent.blur(field)
+
+    // Before the fix, the remount key was `column.id` alone, so the body
+    // never remounted once the kind resolved: it kept the empty "text" draft
+    // seeded on the first (kind-unresolved) render, and this untouched blur
+    // committed that empty draft as `null`, silently deleting the restored
+    // filter.
+    expect(filters).toEqual([restored])
+  })
+
+  it("renders no editor for a column canFilterColumn refuses through getCanFilter, even though its kind resolves", () => {
+    const restrictedColumns = [
+      helper.accessor("name", { header: "Name", size: 100, enableColumnFilter: false }),
+      helper.display({ id: "actions", header: "Actions", size: 60, meta: { filter: "text" } }),
+    ]
+    function RestrictedTable({ columnId }: { columnId: string }) {
+      const instance = useDataTable<Row>({
+        id: "editor-restricted",
+        columns: restrictedColumns,
+        data,
+        getRowId: (row) => row.id,
+      })
+      return <FilterEditor instance={instance} column={instance.table.getColumn(columnId)!} labels={defaultLabels} />
+    }
+
+    // `enableColumnFilter: false`: TanStack's own `getCanFilter()` refuses it,
+    // even though its kind resolves to "text" from the sample data — the
+    // editor's own gate has to agree, not just accept a resolved kind.
+    const disabled = render(<RestrictedTable columnId="name" />)
+    expect(disabled.container.querySelector(".dt-filter-editor")).toBeNull()
+    disabled.unmount()
+
+    // A display column: `getCanFilter()` refuses it for having no accessor,
+    // even though `meta: { filter: "text" }` resolves a kind on its own.
+    const display = render(<RestrictedTable columnId="actions" />)
+    expect(display.container.querySelector(".dt-filter-editor")).toBeNull()
+  })
+
   it("takes the focus on mount when its caller asks for it", () => {
     render(<Table columnId="name" autoFocus />)
 
@@ -228,6 +303,16 @@ describe("the filter editor", () => {
     render(<Table columnId="name" initialLayout={{ filters: [blank] }} autoFocus />)
 
     expect(screen.getByLabelText("Name: Operator")).toHaveFocus()
+  })
+
+  it("focuses the operator select for a list column, whose fields offer nothing focusable", () => {
+    // A list draft's default operator is "in", not "blank": `DraftFields`
+    // renders the `noValues` note for it (Task 18 brings the real values
+    // list), and a note is not focusable. Without the fallback this leaves
+    // focus on `<body>`.
+    render(<Table columnId="tag" autoFocus />)
+
+    expect(screen.getByLabelText("Tag: Operator")).toHaveFocus()
   })
 
   it("lets Enter on the Clear button clear the filter, rather than re-applying it", async () => {

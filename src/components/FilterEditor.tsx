@@ -12,6 +12,7 @@ import {
   type FilterDraft,
 } from "../core/filterDraft"
 import { layoutSliceEqual } from "../core/useArrangement"
+import type { FilterKind } from "../core/filters"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 
@@ -60,16 +61,39 @@ export function canFilterColumn<TData extends RowData>(
 /**
  * One column's filter, wired to the live instance.
  *
- * Remounted whenever `column` changes, through the `key` on the body below:
- * the draft `useState` seeds itself once from the column it opened with, and
- * nothing re-seeds it on a later render, so a caller that swaps `column`
- * prop on an already-mounted editor (nothing in this library does that today
- * — the popover and the panel both remount per column already — but nothing
- * in the exported type says a host may not) would otherwise be left showing
- * the previous column's draft under the new column's label and operators.
+ * This wrapper calls no hooks: both gates it runs — a resolved kind and
+ * `canFilterColumn` — must decide before `FilterEditorBody`'s first
+ * `useState` runs, or an unresolved kind (server mode, async client data, a
+ * page whose rows are all null for this column) would seed the draft as
+ * `"text"` and then have no chance to reseed once the kind resolves, because
+ * a render that only flips `kind` from unresolved to resolved would not
+ * otherwise remount the body.
+ *
+ * The key folds `kind` in for exactly that reason, and it doubles as the
+ * remount-on-column-swap key the body used to hold on its own: the draft
+ * `useState` seeds itself once from the column (and kind) it opened with, and
+ * nothing re-seeds it on a later render, so a caller that swaps `column` prop
+ * on an already-mounted editor (nothing in this library does that today — the
+ * popover and the panel both remount per column already — but nothing in the
+ * exported type says a host may not) would otherwise be left showing the
+ * previous column's draft under the new column's label and operators.
+ *
+ * `canFilterColumn` is the one gate used here rather than a hand-rolled copy
+ * of its checks: a second copy is exactly the kind of drift the reuse rule
+ * exists to prevent, and it is how a display column with `meta: { filter:
+ * "text" }` or an `enableColumnFilter: false` column previously got a fully
+ * live editor despite `canFilterColumn` refusing both.
  */
 export function FilterEditor<TData extends RowData>(props: FilterEditorProps<TData>) {
-  return <FilterEditorBody key={props.column.id} {...props} />
+  const { instance, column } = props
+  const kind = instance.filtering.kinds.get(column.id)
+  if (kind === undefined || kind === false || !canFilterColumn(instance, column)) return null
+  return <FilterEditorBody key={`${column.id}:${kind}`} kind={kind} {...props} />
+}
+
+/** {@link FilterEditorProps}, plus the resolved kind the wrapper above already checked. */
+interface FilterEditorBodyProps<TData extends RowData> extends FilterEditorProps<TData> {
+  kind: FilterKind
 }
 
 function FilterEditorBody<TData extends RowData>({
@@ -78,24 +102,19 @@ function FilterEditorBody<TData extends RowData>({
   labels,
   onCommit,
   autoFocus = false,
-}: FilterEditorProps<TData>) {
+  kind,
+}: FilterEditorBodyProps<TData>) {
   const { filtering } = instance
-  const kind = filtering.kinds.get(column.id)
   const name = columnLabel(column.id, column.columnDef.header)
   const current = filtering.conditions.find((condition) => condition.field === column.id)
   /*
    * Seeded once and never synced: §8.3 makes a draft something that is
    * discarded or applied, and re-seeding it from `conditions` would wipe out
    * what the user is typing the moment any other surface committed anything.
+   * Safe to seed straight from `kind` now — the wrapper never mounts this
+   * component with an unresolved one.
    */
-  const [draft, setDraft] = useState<FilterDraft>(() =>
-    draftFromCondition(current, kind === undefined || kind === false ? "text" : kind),
-  )
-
-  // After the hook, so hook order never depends on which column this is or on
-  // whether the host has filtering on at all.
-  if (!filtering.enabled) return null
-  if (kind === undefined || kind === false) return null
+  const [draft, setDraft] = useState<FilterDraft>(() => draftFromCondition(current, kind))
 
   const commit = (next: FilterDraft) => {
     const built = draftToCondition(next, column.id)
@@ -162,8 +181,15 @@ function FilterEditorBody<TData extends RowData>({
     onCommit?.()
   }
 
-  // The operator select takes the focus only when there is no field to type in.
-  const focusSelect = autoFocus && (isBlankOperator(draft) || draft.kind === "boolean")
+  /*
+   * The operator select takes the focus only when there is no field to type
+   * in. A list draft belongs here too: `DraftFields` renders the `noValues`
+   * note for it (Task 18 brings the real values list), which is not
+   * focusable, so without this an `autoFocus` mount on a list column leaves
+   * focus on `<body>` — a keyboard user's next Tab then starts from the top
+   * of the document instead of from the editor it opened (WCAG 2.4.3).
+   */
+  const focusSelect = autoFocus && (isBlankOperator(draft) || draft.kind === "boolean" || draft.kind === "list")
 
   return (
     <div className="dt-filter-editor" onKeyDown={handleKeyDown}>

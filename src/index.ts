@@ -30,6 +30,8 @@ export { QuickSearch } from "./components/QuickSearch"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
 export { canFilterColumn, FilterEditor } from "./components/FilterEditor"
 export type { FilterEditorProps } from "./components/FilterEditor"
+export { FilterPopover } from "./components/FilterPopover"
+export type { FilterPopoverProps } from "./components/FilterPopover"
 export { TablePagination } from "./components/TablePagination"
 export { SkeletonRows, TableStatus } from "./components/TableStatus"
 

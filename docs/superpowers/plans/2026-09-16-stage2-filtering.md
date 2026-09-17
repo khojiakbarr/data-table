@@ -7964,11 +7964,31 @@ add the callback and the gate immediately after the `handleReorder` callback
    * That item is gone — the menu closes as the popover opens — so focus goes
    * to the control that opened the menu instead: the column's ⋮ button, which
    * is the element still on screen in the same place.
+   *
+   * Which column to focus is recorded here and acted on one commit later, by
+   * the layout effect below. Moving the focus from this callback would move it
+   * while the popover is still mounted, and leaving the editor's value field
+   * is exactly what commits a typed draft (FilterEditor.tsx) — so Escape would
+   * apply the draft it exists to discard.
    */
+  const restoreFocusRef = useRef<string | null>(null)
   const closeFilter = useCallback(() => {
-    const columnId = filterAt?.columnId
+    restoreFocusRef.current = filterAt?.columnId ?? null
     setFilterAt(null)
-    if (columnId === undefined) return
+  }, [filterAt])
+
+  useIsomorphicLayoutEffect(() => {
+    const columnId = restoreFocusRef.current
+    // Only once the popover is really gone, and only for a close this
+    // component asked for: a first render, or the popover opening, must not
+    // pull the focus anywhere.
+    if (filterAt !== null || columnId === null) return
+    restoreFocusRef.current = null
+    /*
+     * Matched by walking the headers rather than by a `[data-column-id="…"]`
+     * selector: a column id is whatever the host's accessor or header string
+     * produced, and quotes or brackets in one would make that selector throw.
+     */
     for (const header of tableRef.current?.querySelectorAll("th[data-column-id]") ?? []) {
       if (header.getAttribute("data-column-id") !== columnId) continue
       header.querySelector<HTMLButtonElement>(".dt-kebab")?.focus()
@@ -7985,9 +8005,18 @@ add the callback and the gate immediately after the `handleReorder` callback
    */
   const canFilter = (columnId: string): boolean => {
     const column = table.getColumn(columnId)
-    return instance.filtering.enabled && column !== undefined && canFilterColumn(instance, column)
+    return column !== undefined && canFilterColumn(instance, column)
   }
 ```
+
+`useIsomorphicLayoutEffect` comes from `../core/useIsomorphicLayoutEffect`, added beside the
+`useAutosize` import. Two corrections made while implementing this task, both from the real code:
+
+- the synchronous `closeFilter` this plan first printed moved the focus *before* React unmounted the
+  popover, so leaving the value field fired the editor's `onBlur` — and Escape committed the very
+  draft it discards. The Escape case in `FilterPopover.test.tsx` fails against that version;
+- `canFilterColumn` already reads `instance.filtering.enabled` (see FilterEditor.tsx), so the extra
+  `instance.filtering.enabled &&` this plan printed was a second copy of a gate that exists once.
 
 and replace the whole `{menu ? ( … ) : null}` block with:
 
@@ -8119,8 +8148,12 @@ pnpm typecheck && pnpm test && pnpm build
 The three older suites are the net under the new menu item: they drive the menu by item name, and
 none of them counts items, so all of them must still pass untouched.
 
-`pnpm test` must report **413 tests** (405 plus 7 in `FilterPopover.test.tsx` and 1 in
-`StylesCascade.test.ts`).
+`pnpm test` must report **14 tests more than the run before this task** — the absolute totals
+printed in this plan are stale, because each review round added regression tests. This task's suite
+ends at 13 in `FilterPopover.test.tsx` (the seven above plus six added while implementing: the
+table-wide `filtering: false` gate, the panel item's absence, the menu's autofocus landing on the
+filter item, the Shift+Tab wrap, the outside-pointer close, and Clear closing the popover and
+dropping the header's mark) and 1 in `StylesCascade.test.ts`. Measured here: 517 before, 531 after.
 
 - [ ] **Step 5: Commit**
 
@@ -8168,6 +8201,12 @@ can open the panel straight onto the Filters tab with that column's editor focus
 declared and rendered that item; this task is what passes it, because `setPanelOpen` cannot carry a
 tab or a column until `PanelState` exists. `TablePanel` still takes `focusColumnId` as a prop for a
 host driving the panel itself, and one case below drives it that way.
+
+One existing test flips with that wiring and must be updated here, not worked around:
+`FilterPopover.test.tsx`'s "does not offer the panel route until a shell passes one" asserts that
+the built-in shell offers no "Filter in panel…" item yet. Once `onOpenFilterInPanel` is passed, turn
+it into its positive form — the item is offered, and choosing it opens the panel's Filters tab on
+that column.
 
 - [ ] **Step 1: Write the failing test**
 

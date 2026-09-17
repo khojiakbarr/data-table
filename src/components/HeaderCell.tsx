@@ -218,6 +218,22 @@ export function HeaderCell<TData extends RowData>({
         ) : (
           <span className="dt-th-label">{label}</span>
         )}
+
+        {/*
+          The same vocabulary as the sort indicator: a mark in the header, not
+          a second control. A filtered column that is hidden has no header to
+          carry this, which is why the Filters tab lists hidden columns too.
+        */}
+        {column.getIsFiltered() ? (
+          <span
+            className="dt-filtered"
+            role="img"
+            aria-label={labels.filteredBadge}
+            title={labels.filteredBadge}
+          >
+            <FilterIcon />
+          </span>
+        ) : null}
       </div>
 
       {isGroup ? null : (
@@ -282,6 +298,24 @@ function SortIcon({ direction }: { direction: false | "asc" | "desc" }) {
     >
       {direction !== "desc" ? <path d="M3 5 L6 2 L9 5" /> : null}
       {direction !== "asc" ? <path d="M3 7 L6 10 L9 7" /> : null}
+    </svg>
+  )
+}
+
+function FilterIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1.5 2.5 h9 l-3.4 4 v3.2 l-2.2 1.3 v-4.5 z" />
     </svg>
   )
 }

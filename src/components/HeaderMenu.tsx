@@ -25,6 +25,18 @@ interface HeaderMenuProps<TData extends RowData> {
   labels: DataTableLabels
   onAutosize: () => void
   onAutosizeAll: () => void
+  /**
+   * Opens this column's filter editor in a popover. Optional: a shell of your
+   * own that renders no popover simply leaves it out, and the item is not
+   * offered.
+   */
+  onOpenFilter?: (() => void) | undefined
+  /**
+   * Opens the side panel's Filters tab with this column's editor expanded and
+   * focused — §8.3's `focusColumnId` route. Optional for the same reason, and
+   * Task 17 is what passes it: the panel does not know about tabs until then.
+   */
+  onOpenFilterInPanel?: (() => void) | undefined
   onClose: () => void
 }
 
@@ -35,6 +47,8 @@ export function HeaderMenu<TData extends RowData>({
   labels,
   onAutosize,
   onAutosizeAll,
+  onOpenFilter,
+  onOpenFilterInPanel,
   onClose,
 }: HeaderMenuProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
@@ -76,6 +90,39 @@ export function HeaderMenu<TData extends RowData>({
       aria-label={labels.columnActions}
       style={{ left: placement.x, top: placement.y }}
     >
+      {/*
+        First, and what the menu's own autofocus lands on: it is what a user
+        opening a column's menu on a filterable table most often wants. Both
+        items open a surface of their own — form controls never go inside a
+        `role="menu"` (§8.2) — the popover for this column alone, the panel for
+        this column beside every other filter at once.
+      */}
+      {onOpenFilter || onOpenFilterInPanel ? (
+        <>
+          {onOpenFilter ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="dt-menu-item"
+              onClick={run(onOpenFilter)}
+            >
+              {labels.filter}
+            </button>
+          ) : null}
+          {onOpenFilterInPanel ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="dt-menu-item"
+              onClick={run(onOpenFilterInPanel)}
+            >
+              {labels.filterInPanel}
+            </button>
+          ) : null}
+          <hr className="dt-menu-sep" />
+        </>
+      ) : null}
+
       {flags.sorting && column.getCanSort() ? (
         <>
           <button

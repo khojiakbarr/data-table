@@ -101,13 +101,15 @@
 }
 
 /*
- * Lift the table above whatever follows it while its panel or header menu
- * hangs open. Both render as a direct child of `.dt-root` (see DataTable.tsx)
- * and can extend past the table's own box — the menu is `position: fixed`
- * and clamped only to the viewport, not to this table.
+ * Lift the table above whatever follows it while its panel, its header menu or
+ * a filter popover hangs open. All three render as a direct child of
+ * `.dt-root` (see DataTable.tsx) and can extend past the table's own box — the
+ * menu and the popover are `position: fixed` and clamped only to the viewport,
+ * not to this table.
  */
 .dt-root:has(> .dt-panel),
-.dt-root:has(> .dt-menu) {
+.dt-root:has(> .dt-menu),
+.dt-root:has(> .dt-filter-popover) {
   z-index: 1;
 }
 
@@ -295,6 +297,18 @@
 .dt-sort-index {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * --dt-accent-text, not --dt-accent: this is accent-as-text, the same pairing
+ * `.dt-link` and the menu's current choices use. It clears WCAG 1.4.11's 3:1
+ * non-text minimum on --dt-header-bg in both themes, which matters because
+ * this mark is the only visual sign that a column is filtered.
+ */
+.dt-filtered {
+  flex: none;
+  display: inline-flex;
+  color: var(--dt-accent-text);
 }
 
 /* ---------- body ---------- */
@@ -889,6 +903,24 @@
   margin: 4px 6px;
   border: 0;
   background: var(--dt-border);
+}
+
+.dt-filter-popover {
+  position: fixed;
+  /*
+   * Inside `.dt-root`'s single stacking context: above the menu that opened it
+   * (20), the Columns panel (10), the progress bar (6), the drag indicator (5),
+   * the pinned header cells (4) and the sticky header (3) — every one of which
+   * would otherwise paint over a popover anchored above them. The `:has()`
+   * rule near the top of this file is a different question: it orders this
+   * whole table against the rest of the page.
+   */
+  z-index: 21;
+  width: 240px;
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-radius);
+  background: var(--dt-bg);
+  box-shadow: 0 12px 34px rgb(0 0 0 / 0.18);
 }
 
 /* ---------- footer ---------- */

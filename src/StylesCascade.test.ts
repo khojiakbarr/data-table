@@ -71,6 +71,27 @@ describe("stacking context", () => {
     expect(getComputedStyle(root).zIndex).toBe("auto")
     root.remove()
   })
+
+  it("lifts .dt-root while a filter popover is open, and paints it above the progress bar", () => {
+    // FilterPopover.tsx renders `.dt-filter-popover` as a direct child of
+    // `.dt-root`, structurally parallel to the menu and the panel. The lift
+    // only orders this table against the page, so the popover also needs a
+    // z-index of its own inside the root's single stacking context — without
+    // one it paints under the sticky header (3), the pinned header cells (4),
+    // the drag indicator (5) and the progress bar (6) it is anchored above.
+    const root = renderRoot("dt-filter-popover")
+    expect(getComputedStyle(root).zIndex).toBe("1")
+
+    const popover = root.firstElementChild as HTMLElement
+    const progress = document.createElement("div")
+    progress.className = "dt-progress"
+    root.appendChild(progress)
+
+    expect(Number(getComputedStyle(popover).zIndex)).toBeGreaterThan(
+      Number(getComputedStyle(progress).zIndex),
+    )
+    root.remove()
+  })
 })
 
 describe("striping vs. row-state cascade", () => {

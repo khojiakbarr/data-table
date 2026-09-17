@@ -4,6 +4,7 @@ import { classNames, insertAt } from "../core/classNames"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import { moveColumn, type DropSide } from "../core/reorder"
 import { useAutosize } from "../core/useAutosize"
+import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
@@ -11,6 +12,8 @@ import type { DataTableLabels } from "../types"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import { ColumnPanel } from "./ColumnPanel"
 import { QuickSearch } from "./QuickSearch"
+import { canFilterColumn } from "./FilterEditor"
+import { FilterPopover } from "./FilterPopover"
 import { HeaderCell } from "./HeaderCell"
 import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
@@ -218,6 +221,7 @@ export function DataTable<TData extends RowData>({
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState(false)
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
+  const [filterAt, setFilterAt] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLTableSectionElement>(null)
@@ -251,6 +255,55 @@ export function DataTable<TData extends RowData>({
     },
     [table],
   )
+
+  /*
+   * §8.2 asks for focus to return to the menu item that opened the popover.
+   * That item is gone — the menu closes as the popover opens — so focus goes
+   * to the control that opened the menu instead: the column's ⋮ button, which
+   * is the element still on screen in the same place.
+   *
+   * Which column to focus is recorded here and acted on one commit later, by
+   * the layout effect below. Moving the focus from this callback would move it
+   * while the popover is still mounted, and leaving the editor's value field
+   * is exactly what commits a typed draft (FilterEditor.tsx) — so Escape would
+   * apply the draft it exists to discard.
+   */
+  const restoreFocusRef = useRef<string | null>(null)
+  const closeFilter = useCallback(() => {
+    restoreFocusRef.current = filterAt?.columnId ?? null
+    setFilterAt(null)
+  }, [filterAt])
+
+  useIsomorphicLayoutEffect(() => {
+    const columnId = restoreFocusRef.current
+    // Only once the popover is really gone, and only for a close this
+    // component asked for: a first render, or the popover opening, must not
+    // pull the focus anywhere.
+    if (filterAt !== null || columnId === null) return
+    restoreFocusRef.current = null
+    /*
+     * Matched by walking the headers rather than by a `[data-column-id="…"]`
+     * selector: a column id is whatever the host's accessor or header string
+     * produced, and quotes or brackets in one would make that selector throw.
+     */
+    for (const header of tableRef.current?.querySelectorAll("th[data-column-id]") ?? []) {
+      if (header.getAttribute("data-column-id") !== columnId) continue
+      header.querySelector<HTMLButtonElement>(".dt-kebab")?.focus()
+      return
+    }
+  }, [filterAt])
+
+  /**
+   * Whether a column has a filter editor to offer at all.
+   *
+   * One gate for both of the menu's filter items, so the popover and the panel
+   * route can never disagree about which columns are filterable. Task 17 uses
+   * it again for the second item.
+   */
+  const canFilter = (columnId: string): boolean => {
+    const column = table.getColumn(columnId)
+    return column !== undefined && canFilterColumn(instance, column)
+  }
 
   const rows = table.getRowModel().rows
   const leafColumns = renderedLeafColumns(table)
@@ -382,7 +435,22 @@ export function DataTable<TData extends RowData>({
           labels={labels}
           onAutosize={() => autosize(menu.columnId)}
           onAutosizeAll={autosizeAll}
+          onOpenFilter={
+            canFilter(menu.columnId)
+              ? () => setFilterAt({ columnId: menu.columnId, at: menu.at })
+              : undefined
+          }
           onClose={() => setMenu(null)}
+        />
+      ) : null}
+
+      {filterAt ? (
+        <FilterPopover
+          instance={instance}
+          column={table.getColumn(filterAt.columnId)!}
+          position={filterAt.at}
+          labels={labels}
+          onClose={closeFilter}
         />
       ) : null}
 

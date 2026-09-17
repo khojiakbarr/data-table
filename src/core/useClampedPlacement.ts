@@ -26,6 +26,11 @@ export interface ClampedPoint {
  * one-time reflow. Give the overlay an explicit width, or bound it with
  * `width: max-content; max-width: …` (see `.dt-menu` in styles.css).
  *
+ * The overlay element may still be `null` on the render that first calls this
+ * hook — `{isOpen && <div ref={ref} />}` is an ordinary way to write an
+ * overlay. The element is picked up reactively once it mounts, on whichever
+ * later render that happens to be, not only on the hook's first run.
+ *
  * @param ref - The overlay element.
  * @param requested - Where the caller wants its top-left corner, in viewport
  *   pixels. Only `x`/`y` are compared across renders, so a fresh object every
@@ -58,8 +63,21 @@ export function useClampedPlacement(
     measureRef.current = measure
   })
 
+  // Mirrors `ref.current` into state so a late-attaching ref is noticed.
+  // `ref` is caller-owned (typically `useRef(null)`), so its *identity*
+  // never changes and can't be a dependency below; without this mirror, an
+  // overlay written as `{isOpen && <div ref={ref} />}` would run this hook
+  // once while `ref.current` is still null, bail out, and never clamp or
+  // observe even after the element mounts on a later render — silently and
+  // permanently. This effect has no dependency array so it checks after
+  // every commit, but only calls `setElement` when the node actually
+  // changed, so it does not loop.
+  const [element, setElement] = useState(ref.current)
   useIsomorphicLayoutEffect(() => {
-    const element = ref.current
+    if (ref.current !== element) setElement(ref.current)
+  })
+
+  useIsomorphicLayoutEffect(() => {
     if (!element) return
     const clamp = () => {
       const { width, height } = measureRef.current
@@ -86,8 +104,10 @@ export function useClampedPlacement(
     // measureRef on purpose, not depended on directly — see the JSDoc @param
     // notes: depending on their identities would re-run this effect (and
     // disconnect + reobserve) on every render regardless of whether the
-    // requested point actually moved.
-  }, [ref, requestedX, requestedY])
+    // requested point actually moved. `element` (not `ref`) is the
+    // dependency, so a ref that attaches after this hook's first run
+    // correctly re-triggers the clamp.
+  }, [element, requestedX, requestedY])
 
   return placement
 }

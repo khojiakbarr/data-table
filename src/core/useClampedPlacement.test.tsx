@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react"
-import { act, useRef } from "react"
+import { act, useRef, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { useClampedPlacement, type ClampedPoint } from "./useClampedPlacement"
 
@@ -110,18 +110,72 @@ describe("useClampedPlacement", () => {
 
   it("re-clamps when the overlay's own content resizes it", () => {
     vi.stubGlobal("ResizeObserver", ResizeObserverStub)
-    let tall = false
-    render(<Overlay at={{ x: 120, y: 700 }} measure={() => (tall ? rect(200, 400) : rect(200, 100))} />)
 
+    // `tall` must live in component state, not an outer `let`: a `measure`
+    // closure that reads a mutable outer variable still returns the current
+    // value even from a *stale* closure captured once at mount, so it cannot
+    // tell a working latest-ref refresh from a deleted one. Real component
+    // state forces a genuinely new `measure` closure on every render, which
+    // only a refresh that actually re-runs picks up.
+    function TallOverlay() {
+      const [tall, setTall] = useState(false)
+      const ref = useRef<HTMLDivElement>(null)
+      const placement = useClampedPlacement(ref, { x: 120, y: 700 }, () =>
+        tall ? rect(200, 400) : rect(200, 100),
+      )
+      return (
+        <div ref={ref} data-testid="overlay" style={{ position: "fixed", left: placement.x, top: placement.y }}>
+          <button type="button" onClick={() => setTall(true)}>
+            grow
+          </button>
+        </div>
+      )
+    }
+
+    render(<TallOverlay />)
     const overlay = screen.getByTestId("overlay")
     expect(overlay.style.top).toBe("660px")
 
     // Switching operator makes the popover taller; the layout effect has long
-    // since run, so only the observer can notice.
-    tall = true
+    // since run, so only the observer can notice — and only if it reads
+    // `measure` through something that refreshes on every render, not a
+    // closure captured once at mount.
+    act(() => {
+      screen.getByRole("button").click()
+    })
     act(() => ResizeObserverStub.fire())
 
     expect(overlay.style.top).toBe("360px")
+  })
+
+  it("clamps an overlay whose ref-bearing element mounts on a later render", () => {
+    // The shape a real caller writes: the hook runs unconditionally, but the
+    // ref-bearing element itself is gated behind `isOpen`, e.g.
+    // `{isOpen && <div ref={ref} />}`. `requested`/`measure` never change
+    // between renders here, so only a mirror of `ref.current` — not the
+    // requested point — can notice the element showing up late.
+    function LateOverlay({ isOpen }: { isOpen: boolean }) {
+      const ref = useRef<HTMLDivElement>(null)
+      const placement = useClampedPlacement(ref, FAR, () => rect(200, 100))
+      return isOpen ? (
+        <div
+          ref={ref}
+          data-testid="overlay"
+          style={{ position: "fixed", left: placement.x, top: placement.y }}
+        />
+      ) : null
+    }
+
+    const { rerender } = render(<LateOverlay isOpen={false} />)
+    expect(screen.queryByTestId("overlay")).not.toBeInTheDocument()
+
+    act(() => {
+      rerender(<LateOverlay isOpen={true} />)
+    })
+
+    // Clamped, not stuck at the raw `{x:2000,y:2000}` the hook started with
+    // while the element did not exist yet.
+    expect(screen.getByTestId("overlay").style.left).toBe("816px")
   })
 
   it("does not disconnect and reobserve on a render that passes fresh `requested`/`measure` identities", () => {

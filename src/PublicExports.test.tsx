@@ -52,6 +52,26 @@ describe("public API surface", () => {
     expect(document.querySelectorAll("tr.dt-skeleton-row")).toHaveLength(3)
   })
 
+  it("exports QuickSearch and renders it for a shell of its own", () => {
+    // Not merely typed as exported — actually present on the runtime barrel.
+    // `QuickSearch.test.tsx` imports it from `./components/QuickSearch`
+    // directly, which proves nothing about the entry point at `src/index.ts`;
+    // deleting the re-export there left the whole suite green.
+    expect(publicApi.QuickSearch).toBeTypeOf("function")
+
+    function Table() {
+      const instance = useDataTable<Row>({
+        id: "pub-quick-search",
+        columns,
+        data: [{ id: "r0", name: "Row 0" }],
+        getRowId: (r) => r.id,
+      })
+      return <publicApi.QuickSearch instance={instance} labels={publicApi.defaultLabels} />
+    }
+    render(<Table />)
+    expect(screen.getByRole("searchbox", { name: "Search rows" })).toBeInTheDocument()
+  })
+
   it("accepts the README's `{ ...defaultLabels, ...overrides }` recipe for TablePagination's required labels", () => {
     function Table() {
       const instance = useDataTable<Row>({

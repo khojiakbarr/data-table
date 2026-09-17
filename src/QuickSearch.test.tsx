@@ -51,6 +51,10 @@ describe("quick search box", () => {
     fireEvent.change(box, { target: { value: "temir" } })
     expect(box).toHaveValue("temir")
     expect(screen.getByText("Agro Ltd")).toBeInTheDocument()
+    // Before the debounce settles, nothing is announced yet — in particular
+    // not the unfiltered total, which is what `table.getRowModel()` still
+    // holds at this instant because `globalFilter` itself is debounced.
+    expect(screen.getByRole("status")).toHaveTextContent("")
 
     act(() => vi.advanceTimersByTime(300))
     expect(screen.queryByText("Agro Ltd")).not.toBeInTheDocument()
@@ -64,6 +68,11 @@ describe("quick search box", () => {
     const toolbar = container.querySelector(".dt-toolbar")!
     const classes = Array.from(toolbar.children).map((child) => child.className)
 
+    // Presence first: `indexOf` returns -1 for an absent element, and -1 is
+    // "less than" the spacer's index too, so an ordering assertion alone is
+    // satisfied by the search box having been removed entirely.
+    expect(classes).toContain("dt-search-box")
+    expect(classes).toContain("dt-spacer")
     expect(classes.indexOf("dt-search-box")).toBeLessThan(classes.indexOf("dt-spacer"))
   })
 
@@ -85,8 +94,43 @@ describe("quick search box", () => {
     expect(document.activeElement).toBe(document.body)
   })
 
+  it("returns focus to the search box when the clear button, which unmounts, is used", async () => {
+    const user = userEvent.setup()
+    render(<Table />)
+    const box = screen.getByRole("searchbox", { name: "Search rows" })
+
+    await user.type(box, "temir")
+    const clearButton = screen.getByRole("button", { name: "Clear search" })
+    clearButton.focus()
+    expect(document.activeElement).toBe(clearButton)
+
+    await user.click(clearButton)
+
+    // The button that was just focused has now unmounted (it only renders
+    // while there is text to clear) — without an explicit handoff, React
+    // does not relocate focus and it falls back to `<body>`.
+    expect(document.activeElement).toBe(box)
+  })
+
   it("renders no search box when filtering is off", () => {
     render(<Table filtering={false} />)
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument()
+  })
+
+  it("self-gates: the standalone component renders nothing against a filtering:false instance", () => {
+    function StandaloneOff() {
+      const instance = useDataTable<Row>({
+        id: "qs-standalone-off",
+        columns,
+        data,
+        getRowId: (row) => row.id,
+        filtering: false,
+      })
+      // Rendered directly, bypassing `<DataTable>`'s own gate entirely — this
+      // is what a host following the README's `toolbar={false}` recipe does.
+      return <QuickSearch instance={instance} labels={defaultLabels} />
+    }
+    render(<StandaloneOff />)
     expect(screen.queryByRole("searchbox")).not.toBeInTheDocument()
   })
 

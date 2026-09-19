@@ -33,10 +33,12 @@ function Table({
   rows = data,
   initialLayout,
   custom = false,
+  toolbar = true,
 }: {
   rows?: Row[]
   initialLayout?: Partial<TableLayout>
   custom?: boolean
+  toolbar?: boolean
 }) {
   const instance = useDataTable<Row>({
     id: "empty",
@@ -49,6 +51,7 @@ function Table({
     <DataTable
       instance={instance}
       virtualize={false}
+      toolbar={toolbar}
       {...(custom ? { emptyState: <p>Nothing here</p> } : {})}
     />
   )
@@ -99,5 +102,37 @@ describe("the filtered-empty state", () => {
     render(<Table initialLayout={{ filters: [matchesNothing] }} custom />)
     expect(screen.getAllByText("Nothing here")).toHaveLength(2)
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull()
+  })
+
+  it("returns focus to the search box when the clear-filters button, which unmounts, is used", () => {
+    vi.useFakeTimers()
+    render(<Table initialLayout={{ filters: [matchesNothing] }} />)
+
+    const clearButton = screen.getByRole("button", { name: "Clear filters" })
+    clearButton.focus()
+    expect(document.activeElement).toBe(clearButton)
+
+    fireEvent.click(clearButton)
+    // Clearing brings the rows back, which unmounts this button along with
+    // the rest of the empty state — see the focus handoff below.
+    act(() => vi.advanceTimersByTime(300))
+
+    // The button that was just focused has now unmounted — without an
+    // explicit handoff, React does not relocate focus and it falls back to
+    // `<body>`, the same defect `QuickSearch`'s own clear button avoids.
+    expect(document.activeElement).toBe(screen.getByRole("searchbox", { name: "Search rows" }))
+  })
+
+  it("falls back to the viewport when toolbar={false} leaves no search box to hand focus to", () => {
+    vi.useFakeTimers()
+    const { container } = render(<Table initialLayout={{ filters: [matchesNothing] }} toolbar={false} />)
+
+    const clearButton = screen.getByRole("button", { name: "Clear filters" })
+    clearButton.focus()
+
+    fireEvent.click(clearButton)
+    act(() => vi.advanceTimersByTime(300))
+
+    expect(document.activeElement).toBe(container.querySelector(".dt-viewport"))
   })
 })

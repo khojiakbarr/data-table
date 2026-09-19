@@ -248,6 +248,9 @@ export function DataTable<TData extends RowData>({
   const tableRef = useRef<HTMLTableElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLTableSectionElement>(null)
+  // Where the "Clear filters" button in the empty state sends focus once it
+  // clears itself out of existence — see the click handler below.
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const labels = { ...defaultLabels, ...labelOverrides }
   const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 
@@ -424,7 +427,7 @@ export function DataTable<TData extends RowData>({
         <div className="dt-toolbar">
           {toolbarContent}
           {instance.filtering.enabled ? (
-            <QuickSearch instance={instance} labels={labels} loading={loading} />
+            <QuickSearch instance={instance} labels={labels} loading={loading} inputRef={searchInputRef} />
           ) : null}
           <span className="dt-spacer" />
           {flags.hiding || flags.pinning ? (
@@ -498,6 +501,13 @@ export function DataTable<TData extends RowData>({
         className={classNames("dt-viewport", showProgress && "dt-loading")}
         data-dt-unbounded={unbounded ? "" : undefined}
         ref={viewportRef}
+        /*
+         * Not part of the Tab order — `-1` keeps it out of a sighted
+         * keyboard user's normal path across the table — but a legal target
+         * for the programmatic focus the "Clear filters" button below sends
+         * here when there is no search box of ours to take it instead.
+         */
+        tabIndex={-1}
       >
         <table
           ref={tableRef}
@@ -623,7 +633,24 @@ export function DataTable<TData extends RowData>({
                   <button
                     type="button"
                     className="dt-menu-button"
-                    onClick={instance.filtering.clearAll}
+                    onClick={() => {
+                      instance.filtering.clearAll()
+                      /*
+                       * This button disappears the instant the rows come
+                       * back (`showEmpty` goes false), and React does not
+                       * relocate focus for an element that unmounts under
+                       * it — the same defect `QuickSearch`'s own clear
+                       * button exists to avoid (WCAG 2.4.3; see its
+                       * comment). The toolbar's search box is the natural
+                       * landing spot when there is one; with `toolbar={false}`
+                       * there is nothing of ours left on screen to hold
+                       * focus, so it falls back to the viewport, which
+                       * `tabIndex={-1}` makes a legal target without adding
+                       * it to the Tab order.
+                       */
+                      const focusTarget = searchInputRef.current ?? viewportRef.current
+                      focusTarget?.focus()
+                    }}
                   >
                     {labels.clearFilters}
                   </button>

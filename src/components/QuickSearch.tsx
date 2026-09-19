@@ -1,5 +1,5 @@
 import type { RowData } from "@tanstack/react-table"
-import { useRef } from "react"
+import { useRef, type RefObject } from "react"
 import { useAnsweredQuery } from "../core/useAnsweredQuery"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -13,6 +13,13 @@ interface QuickSearchProps<TData extends RowData> {
    * the table last announced — see {@link useAnsweredQuery}.
    */
   loading?: boolean | undefined
+  /**
+   * Receives the search `<input>` element, for a caller that needs to move
+   * focus onto it — `<DataTable>`'s "Clear filters" button does, since that
+   * button unmounts the instant the rows come back and has nowhere else of
+   * its own to send focus.
+   */
+  inputRef?: RefObject<HTMLInputElement | null> | undefined
 }
 
 /**
@@ -29,9 +36,18 @@ interface QuickSearchProps<TData extends RowData> {
  * case, and a field that visibly accepts input but silently drops it is worse
  * than no field.
  */
-export function QuickSearch<TData extends RowData>({ instance, labels, loading = false }: QuickSearchProps<TData>) {
+export function QuickSearch<TData extends RowData>({
+  instance,
+  labels,
+  loading = false,
+  inputRef: externalInputRef,
+}: QuickSearchProps<TData>) {
   const { filtering, pagination, table } = instance
-  const inputRef = useRef<HTMLInputElement>(null)
+  // A host-supplied ref (see `inputRef` above) takes the DOM node directly;
+  // otherwise this component still needs one for its own clear-button
+  // handoff below, so it keeps its own.
+  const ownInputRef = useRef<HTMLInputElement>(null)
+  const inputRef = externalInputRef ?? ownInputRef
   /*
    * What the announced count answers to, and nothing else: the search text
    * and fields, plus the column filters. `useTableQuery` mints a fresh query

@@ -846,7 +846,7 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
-| `emptyState` | `ReactNode` | `labels.empty` | |
+| `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters button while `instance.filtering.isFiltered` | Supplying this replaces **both** defaults, including the filtered-empty exit — a host that wants its own art for "no data" but still wants a way out of a filtered-empty table should branch on `instance.filtering.isFiltered` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | |
 | `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |

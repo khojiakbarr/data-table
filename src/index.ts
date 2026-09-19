@@ -38,6 +38,8 @@ export { TableSideBar } from "./components/TableSideBar"
 export type { TableSideBarProps } from "./components/TableSideBar"
 export { ColumnsTab } from "./components/ColumnsTab"
 export type { ColumnsTabProps } from "./components/ColumnsTab"
+export { ColumnGroupRow } from "./components/ColumnGroupRow"
+export type { ColumnGroupRowProps } from "./components/ColumnGroupRow"
 export { FiltersTab } from "./components/FiltersTab"
 export type { FiltersTabProps } from "./components/FiltersTab"
 export { QuickSearch } from "./components/QuickSearch"
@@ -120,8 +122,21 @@ export type { PrunedSearchFields, SearchFieldsResult, SearchNeedle } from "./cor
 export { useDebouncedValue } from "./core/useDebouncedValue"
 
 /* Helpers worth borrowing rather than rewriting. */
-export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"
+export {
+  fillerIndex,
+  headerPinning,
+  orderedLeafColumns,
+  pinnedStyle,
+  renderedLeafColumns,
+} from "./core/pinning"
 export type { HeaderPinning } from "./core/pinning"
+export { buildColumnTree, groupVisibility, leafColumnsOfNode } from "./core/columnTree"
+export type {
+  ColumnTreeGroup,
+  ColumnTreeLeaf,
+  ColumnTreeNode,
+  GroupVisibility,
+} from "./core/columnTree"
 export { columnLabel } from "./core/columnLabel"
 export { dropAtIndex, dropSideAt, dropSlotId, moveColumn, reachableRange } from "./core/reorder"
 export type { DropSide } from "./core/reorder"

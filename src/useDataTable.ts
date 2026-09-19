@@ -42,7 +42,7 @@ import {
   type FilterValueOption,
 } from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
-import { renderedLeafColumns } from "./core/pinning"
+import { orderedLeafColumns } from "./core/pinning"
 import type { TableQuery, TableSearch } from "./core/query"
 import { moveColumn, type DropSide } from "./core/reorder"
 import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
@@ -1015,10 +1015,14 @@ export function useDataTable<TData extends RowData>({
            * "natural". The fallback must be the order the columns are RENDERED
            * in — `getAllLeafColumns()` groups pinned columns first, so using it
            * here scrambles every column on the very first drag.
+           *
+           * Hidden columns included: TanStack appends whatever an order does
+           * not name, so a fallback built from the visible columns alone would
+           * send every hidden one to the end of the table on the first drag.
            */
           const order = current.length
             ? current
-            : renderedLeafColumns(table).map((column) => column.id)
+            : orderedLeafColumns(table).map((column) => column.id)
           return moveColumn(order, draggedId, targetId, side)
         }),
         /*

@@ -1,22 +1,37 @@
 import type { Column, RowData } from "@tanstack/react-table"
-import { useRef, useState, type DragEvent, type KeyboardEvent } from "react"
+import { useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react"
+import {
+  buildColumnTree,
+  groupVisibility,
+  leafColumnsOfNode,
+  type ColumnTreeGroup,
+  type ColumnTreeLeaf,
+  type ColumnTreeNode,
+} from "../core/columnTree"
 import { columnLabel } from "../core/columnLabel"
 import { dropRegionOf } from "../core/dropRegion"
-import { renderedLeafColumns } from "../core/pinning"
+import { orderedLeafColumns } from "../core/pinning"
 import { reachableRange, type DropSide } from "../core/reorder"
 import { useDropSlot } from "../core/useDropSlot"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
+import { ColumnGroupRow } from "./ColumnGroupRow"
 
 /**
  * What is shown, and in what order.
  *
- * Columns are listed in the order they appear in the table and dragged into a
- * new order by their handle — with a pointer, or from the keyboard, which is
+ * Columns are listed as the tree the table actually has — a group, then its
+ * children indented beneath it, to whatever depth they nest — and dragged into
+ * a new order by their handle, with a pointer or from the keyboard, which is
  * the only reordering path a user who cannot drag has. Pinning lives in the
  * header's context menu, where it sits next to the other per-column actions
  * instead of as a pair of arrow buttons whose direction has to be decoded.
+ *
+ * Both list and drag work off ONE flat array of leaves in render order. The
+ * tree is a way of drawing that array, not a second model of it: every index
+ * a drop or a keyboard move is resolved against is an index into it, so the
+ * nesting cannot introduce an arithmetic of its own to be wrong in.
  */
 
 export interface ColumnsTabProps<TData extends RowData> {
@@ -29,7 +44,7 @@ export interface ColumnsTabProps<TData extends RowData> {
  * The side panel's Columns half.
  *
  * @param props - See {@link ColumnsTabProps}.
- * @returns The head, with Show all and Reset, and the list of columns.
+ * @returns The head, with Show all and Reset, and the column tree.
  */
 export function ColumnsTab<TData extends RowData>({
   instance,
@@ -42,10 +57,24 @@ export function ColumnsTab<TData extends RowData>({
    * Listed in render order, not `getAllLeafColumns()` order — the latter puts
    * pinned columns first, so the panel would disagree with the table about
    * where a column is, and dragging inside it would move the wrong one.
+   *
+   * Hidden columns are included, which is the difference from what the table
+   * itself renders from: a row is how a hidden column is shown again, so a
+   * list of only the visible ones would let a user hide a column and then
+   * have no way back to it.
    */
-  const columns = renderedLeafColumns(table)
+  const columns = orderedLeafColumns(table)
+  const tree = buildColumnTree(columns)
   const drop = useDropSlot(columns.map((column) => column.id))
   const [announcement, setAnnouncement] = useState("")
+  /**
+   * Which groups are folded away. Collapsed rather than expanded ids, so a
+   * group the user has never touched — including one that appears later —
+   * starts open without having to be enrolled first.
+   */
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  )
   const listRef = useRef<HTMLUListElement>(null)
   /*
    * A committed keyboard move reorders the list, and React moves the `<li>`
@@ -65,7 +94,7 @@ export function ColumnsTab<TData extends RowData>({
      * whatever the host's accessor produced, and a quote or a bracket in one
      * would make that selector throw.
      */
-    for (const item of listRef.current?.querySelectorAll("li[data-column-id]") ?? []) {
+    for (const item of listRef.current?.querySelectorAll("li.dt-panel-item") ?? []) {
       if (item.getAttribute("data-column-id") !== columnId) continue
       item.querySelector<HTMLElement>(".dt-drag-handle")?.focus()
       return
@@ -196,6 +225,152 @@ export function ColumnsTab<TData extends RowData>({
     filtering.setModel(model)
   }
 
+  /**
+   * Show or hide every leaf under a group in one state change.
+   *
+   * One `setColumnVisibility` rather than a `toggleVisibility` per column:
+   * the group's leaves go together, so they belong in one commit — and one
+   * undoable step, once a host wires the layout to undo.
+   *
+   * Hiding skips a column that may not be hidden; showing never does, because
+   * such a column is already visible and writing `true` says the same thing.
+   */
+  const setGroupVisible = (
+    leaves: readonly Column<DataTableFeatures, TData, unknown>[],
+    visible: boolean,
+  ) => {
+    table.setColumnVisibility((current) => {
+      const next = { ...current }
+      for (const leaf of leaves) {
+        if (visible) next[leaf.id] = true
+        else if (leaf.getCanHide()) next[leaf.id] = false
+      }
+      return next
+    })
+  }
+
+  const toggleCollapsed = (key: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
+  }
+
+  /** One leaf column: the drag surface, its checkbox, and how it is pinned. */
+  const renderLeaf = (node: ColumnTreeLeaf<TData>): ReactNode => {
+    const { column, index } = node
+    const name = columnLabel(column.id, column.columnDef.header)
+    const held = drop.isKeyboardGrab && drop.draggedId === column.id
+    const className = [
+      "dt-panel-item",
+      drop.draggedId === column.id ? "dt-panel-dragging" : "",
+      drop.slotId === column.id ? "dt-drop-slot" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")
+
+    return (
+      <li
+        key={column.id}
+        className={className}
+        data-column-id={column.id}
+        onDragOver={(event) => handleDragOver(event, column.id)}
+        onDragLeave={(event) => handleDragLeave(event, column.id)}
+        onDrop={(event) => handleDrop(event, column.id)}
+      >
+        {flags.reordering ? (
+          <span
+            className="dt-drag-handle"
+            draggable
+            role="button"
+            /*
+             * In the Tab order, unlike the decorative grip it used to be: this
+             * is the whole keyboard route to reordering, and the instructions
+             * ride on the label because there is nowhere else a screen reader
+             * would find them in time.
+             */
+            tabIndex={0}
+            aria-pressed={held}
+            aria-label={`${name}: ${labels.dragHint}. ${labels.reorderHint}`}
+            title={labels.dragHint}
+            onKeyDown={(event) => handleGripKeyDown(event, index)}
+            onDragStart={(event) => {
+              event.dataTransfer.effectAllowed = "move"
+              event.dataTransfer.setData("text/plain", column.id)
+              drop.start(column.id)
+            }}
+            onDragEnd={drop.end}
+          >
+            <GripIcon />
+          </span>
+        ) : null}
+
+        <input
+          id={`${instance.id}-col-${column.id}`}
+          type="checkbox"
+          checked={column.getIsVisible()}
+          disabled={!flags.hiding || !column.getCanHide()}
+          onChange={column.getToggleVisibilityHandler()}
+        />
+        <label className="dt-panel-label" htmlFor={`${instance.id}-col-${column.id}`}>
+          {name}
+        </label>
+
+        {column.getIsPinned() ? (
+          <span className="dt-pin-badge">
+            {column.getIsPinned() === "start" ? labels.pinnedStartBadge : labels.pinnedEndBadge}
+          </span>
+        ) : null}
+      </li>
+    )
+  }
+
+  /** One group: its own row, and a nested list of whatever stands under it. */
+  const renderGroup = (node: ColumnTreeGroup<TData>): ReactNode => {
+    const leaves = leafColumnsOfNode(node)
+    const { checked, indeterminate } = groupVisibility(leaves)
+    const collapsed = collapsedGroups.has(node.key)
+    /*
+     * Keyed by position, not by the group's id: an id is whatever the host's
+     * definition produced and may contain a space, which is not a valid
+     * IDREF — and `aria-controls` would then point at nothing.
+     */
+    const domId = `${instance.id}-colgroup-${node.index}`
+
+    return (
+      /*
+       * The group is a list item with a list inside it, which is the nesting
+       * itself rather than a picture of it: a screen reader announces the
+       * level, and the indent is left to the stylesheet.
+       *
+       * It carries `data-group-id` and not `data-column-id` — a group is not
+       * a column the table draws, and the drag surfaces select rows by the
+       * latter.
+       */
+      <li key={node.runKey} className="dt-panel-group" data-group-id={node.column.id}>
+        <ColumnGroupRow
+          name={columnLabel(node.column.id, node.column.columnDef.header)}
+          checkboxId={`${domId}-visible`}
+          sublistId={domId}
+          checked={checked}
+          indeterminate={indeterminate}
+          disabled={!flags.hiding || !leaves.some((leaf) => leaf.getCanHide())}
+          collapsed={collapsed}
+          labels={labels}
+          onToggleVisibility={(next) => setGroupVisible(leaves, next)}
+          onToggleCollapse={() => toggleCollapsed(node.key)}
+        />
+        <ul className="dt-panel-sublist" id={domId} hidden={collapsed}>
+          {renderNodes(node.children)}
+        </ul>
+      </li>
+    )
+  }
+
+  const renderNodes = (nodes: readonly ColumnTreeNode<TData>[]): ReactNode =>
+    nodes.map((node) => (node.kind === "leaf" ? renderLeaf(node) : renderGroup(node)))
+
   return (
     <>
       <div className="dt-panel-head">
@@ -216,77 +391,7 @@ export function ColumnsTab<TData extends RowData>({
       </div>
 
       <ul className="dt-panel-list" ref={listRef}>
-        {columns.map((column, index) => {
-          const name = columnLabel(column.id, column.columnDef.header)
-          const held = drop.isKeyboardGrab && drop.draggedId === column.id
-          const className = [
-            "dt-panel-item",
-            drop.draggedId === column.id ? "dt-panel-dragging" : "",
-            drop.slotId === column.id ? "dt-drop-slot" : "",
-          ]
-            .filter(Boolean)
-            .join(" ")
-
-          return (
-            <li
-              key={column.id}
-              className={className}
-              data-column-id={column.id}
-              onDragOver={(event) => handleDragOver(event, column.id)}
-              onDragLeave={(event) => handleDragLeave(event, column.id)}
-              onDrop={(event) => handleDrop(event, column.id)}
-            >
-              {flags.reordering ? (
-                <span
-                  className="dt-drag-handle"
-                  draggable
-                  role="button"
-                  /*
-                   * In the Tab order, unlike the decorative grip it used to
-                   * be: this is the whole keyboard route to reordering, and
-                   * the instructions ride on the label because there is
-                   * nowhere else a screen reader would find them in time.
-                   */
-                  tabIndex={0}
-                  aria-pressed={held}
-                  aria-label={`${name}: ${labels.dragHint}. ${labels.reorderHint}`}
-                  title={labels.dragHint}
-                  onKeyDown={(event) => handleGripKeyDown(event, index)}
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = "move"
-                    event.dataTransfer.setData("text/plain", column.id)
-                    drop.start(column.id)
-                  }}
-                  onDragEnd={drop.end}
-                >
-                  <GripIcon />
-                </span>
-              ) : null}
-
-              <input
-                id={`${instance.id}-col-${column.id}`}
-                type="checkbox"
-                checked={column.getIsVisible()}
-                disabled={!flags.hiding || !column.getCanHide()}
-                onChange={column.getToggleVisibilityHandler()}
-              />
-              <label
-                className="dt-panel-label"
-                htmlFor={`${instance.id}-col-${column.id}`}
-              >
-                {name}
-              </label>
-
-              {column.getIsPinned() ? (
-                <span className="dt-pin-badge">
-                  {column.getIsPinned() === "start"
-                    ? labels.pinnedStartBadge
-                    : labels.pinnedEndBadge}
-                </span>
-              ) : null}
-            </li>
-          )
-        })}
+        {renderNodes(tree)}
       </ul>
 
       {/*

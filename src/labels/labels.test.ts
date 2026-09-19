@@ -148,6 +148,7 @@ describe("Uzbek orthography", () => {
     uzLabels.searchResults(undefined),
     uzLabels.filterTitle("Summa"),
     uzLabels.reorderPosition("Summa", 1, 5),
+    uzLabels.columnGroup("Hujjat"),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -169,9 +170,10 @@ describe("Uzbek orthography", () => {
       .filter(([, value]) => typeof value === "function")
       .map(([key]) => key)
       .sort()
-    // A sixth function label added later would otherwise go unread: add it to
+    // A function label added later would otherwise go unread: add it to
     // FUNCTION_OUTPUTS and to this list together.
     expect(functionKeys).toEqual([
+      "columnGroup",
       "filterTitle",
       "page",
       "range",

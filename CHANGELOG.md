@@ -7,6 +7,23 @@ releases are summarised in one line rather than reconstructed.
 
 ### Changed
 
+- **The Columns tab shows the column tree** instead of a flat list of leaves.
+  A group is a row of its own with its children indented beneath it, to
+  whatever depth the columns nest, and it carries a checkbox that speaks for
+  every leaf under it: ticking shows them all, unticking hides them all, and it
+  is **indeterminate** when only some are visible. Each group collapses and
+  expands, per group, expanded by default.
+- **The Columns tab lists hidden columns too.** It was built from the visible
+  columns alone, so unticking a column took its own row away with it and the
+  only way back was Show all. A group keeps its row for the same reason, even
+  once every leaf under it is hidden — while its header does leave the table,
+  which is what hiding the columns means.
+- Reordering is unchanged: `dropRegionOf` still owns the group boundary, a
+  group row has no drag handle of its own, and both drag surfaces resolve every
+  move against the same flat order they always did.
+- **The playground's columns are grouped** — "Document" over Code and Partner,
+  "Payment" over Amount and Status, with Flagged and Date left flat, so the
+  header has a grouped half and a flat one.
 - **The built-in shell docks the Columns and Filters panels in a side bar** on
   the table's inline-end edge, instead of floating them over it. A rail of
   vertical tabs is now always visible; opening a panel takes width from the
@@ -43,6 +60,15 @@ releases are summarised in one line rather than reconstructed.
   behave two ways.
 - `DataTableLabels.sideBar`, the rail's accessible name. Hosts using the
   documented `{ ...defaultLabels, ...mine }` recipe are unaffected.
+- **`DataTableLabels.columnGroup`, `.expandGroup` and `.collapseGroup`** — the
+  group checkbox's accessible name and the collapse control's, in all three
+  label sets. Same recipe, same non-impact.
+- **`ColumnGroupRow`**, the group's row, and the tree helpers behind it —
+  `buildColumnTree`, `leafColumnsOfNode`, `groupVisibility` — exported for a
+  panel of one's own.
+- **`orderedLeafColumns(table)`**, the render order of every leaf column,
+  hidden ones included. `renderedLeafColumns` is unchanged and still answers
+  "what is on screen", which is what a `<colgroup>` wants.
 
 ### Unchanged
 

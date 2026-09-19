@@ -898,7 +898,8 @@
   font-size: 11px;
 }
 
-.dt-panel-item {
+.dt-panel-item,
+.dt-panel-group-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -914,7 +915,8 @@
   cursor: pointer;
 }
 
-.dt-panel-item:hover {
+.dt-panel-item:hover,
+.dt-panel-group-head:hover {
   background: var(--dt-row-hover);
 }
 
@@ -925,14 +927,82 @@
   white-space: nowrap;
 }
 
-.dt-panel-list {
+.dt-panel-list,
+.dt-panel-sublist {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/*
+ * The indent IS the nesting: one step per level, applied by the nested list
+ * rather than computed per row, so a tree three groups deep needs no depth
+ * arithmetic in the component and no per-level class in here.
+ *
+ * Bordered on the inline start so the run of columns a group owns reads as
+ * one block even when the group's own row has scrolled out of the panel.
+ */
+.dt-panel-sublist {
+  padding-inline-start: 12px;
+  margin-inline-start: 9px;
+  border-inline-start: 1px solid var(--dt-border);
+}
+
 .dt-panel-item {
   position: relative;
+}
+
+/* A group names a run of columns; its own name is the heavier of the two. */
+.dt-panel-group-label {
+  font-weight: 600;
+}
+
+/*
+ * The disclosure control. Sized to the grip beside it so a group row and a
+ * column row start at the same place, and given the 3:1 non-text contrast
+ * (WCAG 1.4.11) its chevron needs as the only mark of an expanded group.
+ */
+.dt-group-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dt-muted-fg);
+  cursor: pointer;
+}
+
+.dt-group-toggle:hover {
+  color: var(--dt-fg);
+}
+
+.dt-group-toggle:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: 1px;
+}
+
+/*
+ * Turned, not redrawn: a transform, which is the one property that can move
+ * here without relaying the panel's list out under it on every frame.
+ */
+.dt-chevron {
+  transition: transform 150ms ease-out;
+}
+
+.dt-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The arrow still points the other way; it just gets there at once. */
+  .dt-chevron {
+    transition: none;
+  }
 }
 
 /*

@@ -125,6 +125,19 @@ export interface DataTableLabels {
   /** Badge on an already-pinned column, as a state and not an action. */
   pinnedStartBadge: string
   pinnedEndBadge: string
+  /**
+   * A column group's checkbox in the Columns panel, named for a screen reader.
+   *
+   * The visible text beside it is the group's header alone, which a leaf
+   * column could carry just as well; this says which of the two is being
+   * ticked. The group's own name is kept at the front of the result so the
+   * accessible name still begins with the visible one (WCAG 2.5.3).
+   */
+  columnGroup: (group: string) => string
+  /** The collapse control, while the group is collapsed. */
+  expandGroup: string
+  /** The collapse control, while the group is expanded. */
+  collapseGroup: string
   /** Footer: total rows. */
   rows: string
   rowsPerPage: string

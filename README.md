@@ -831,6 +831,24 @@ the side panel with both tabs, for a shell that wants to choose which one opens;
 filterable column, **hidden ones included and marked** — a hidden column's
 filter goes on applying and its header is not there to say so.
 
+The Columns tab lists the column **tree**, not a flat run of leaves: a group,
+then its children indented beneath it, to whatever depth the columns nest.
+
+- A group carries its own checkbox. Ticking it shows every leaf under it,
+  unticking hides them all, and it is **indeterminate** when only some are
+  visible — clicking it then shows the rest rather than hiding what is left.
+- A group collapses, per group, expanded by default. Collapsed state is UI
+  state and not part of the saved layout, so `resetLayout` does not touch it.
+- **Every column keeps its row, hidden or not**, and a group keeps its row even
+  when every leaf under it is hidden. A row is how a hidden column is shown
+  again; a list of only the visible ones is a one-way door.
+- Dragging inside the tree still refuses to cross a group boundary, which is
+  `dropRegionOf`'s rule and not the tree's — a leaf that left its group would
+  tear the group's header apart.
+- A group split by pinning — TanStack draws its header twice, once over the
+  pinned part and once over the rest — is listed twice, the same way, and each
+  half answers for its own run.
+
 `presentation` decides how the panel behaves, and it is a prop rather than
 something inferred from where the panel is mounted:
 

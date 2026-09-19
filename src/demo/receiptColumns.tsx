@@ -21,7 +21,7 @@ const STATUS_LABELS: Record<Language, Record<string, string>> = {
 const FLAG_LABELS: Record<Language, [yes: string, no: string]> = {
   en: ["Yes", "No"],
   ru: ["Да", "Нет"],
-  uz: ["Ha", "Yo'q"],
+  uz: ["Ha", "Yoʻq"],
 }
 
 /**

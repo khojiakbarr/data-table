@@ -120,3 +120,46 @@ describe("Uzbek has no plural agreement after a numeral", () => {
     expect(uzLabels.searchResults(11)).toBe("11 ta qator topildi")
   })
 })
+
+describe("Uzbek orthography", () => {
+  // Uzbek Latin writes oʻ/gʻ with U+02BB and the glottal stop with U+02BC. The
+  // ASCII apostrophe is a different character that most editors draw the same
+  // way, so it survives review and then sits on screen beside the app's correct
+  // forms — "O'sish bo'yicha" one line under "Ustun kengligini oʻzgartirish".
+  const ASCII_APOSTROPHE = /'/
+
+  // Every function-shaped label, called: their text never reaches Object.values.
+  const FUNCTION_OUTPUTS = [
+    uzLabels.range(1, 50, 1000),
+    uzLabels.range(1, 50, undefined),
+    uzLabels.page(1, 20),
+    uzLabels.page(1, undefined),
+    uzLabels.searchResults(0),
+    uzLabels.searchResults(undefined),
+    uzLabels.filterTitle("Summa"),
+  ]
+
+  it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
+    for (const [key, value] of Object.entries(uzLabels)) {
+      if (typeof value !== "string") continue
+      expect(value, `uzLabels.${key} uses U+0027 — write ʻ (U+02BB) or ʼ (U+02BC)`).not.toMatch(
+        ASCII_APOSTROPHE,
+      )
+    }
+    for (const text of FUNCTION_OUTPUTS) {
+      expect(text, `a function-shaped label returned "${text}" with U+0027 in it`).not.toMatch(
+        ASCII_APOSTROPHE,
+      )
+    }
+  })
+
+  it("calls every function-shaped label, so none escapes the check above", () => {
+    const functionKeys = Object.entries(uzLabels)
+      .filter(([, value]) => typeof value === "function")
+      .map(([key]) => key)
+      .sort()
+    // A fifth function label added later would otherwise go unread: add it to
+    // FUNCTION_OUTPUTS and to this list together.
+    expect(functionKeys).toEqual(["filterTitle", "page", "range", "searchResults"])
+  })
+})

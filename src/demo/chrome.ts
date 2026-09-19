@@ -100,8 +100,9 @@ const en: ChromeStrings = {
 
 const ru: ChromeStrings = {
   lede:
-    "Живая площадка: каждый переключатель и каждый цвет ниже меняет настоящий проп или опцию, " +
-    "ничего не имитируется. Таблица справа всегда обращается к фиктивному серверу со 100 000 строк.",
+    "Интерактивная песочница: каждый переключатель и каждый цвет ниже меняет настоящий проп " +
+    "или опцию — всё по-настоящему. Таблица справа всегда обращается к фиктивному серверу " +
+    "на 100 000 строк.",
   language: { legend: "Язык", groupLabel: "Язык страницы и таблицы" },
   features: {
     groupLabel: "Переключатели возможностей",
@@ -122,9 +123,9 @@ const ru: ChromeStrings = {
       detailPanel: "Панель подробностей",
     },
     hints: {
-      filtering: "Быстрый поиск идёт вместе с ней",
+      filtering: "Быстрый поиск включается вместе с фильтрацией",
       pagination:
-        "Серверному режиму нужна постраничность — без неё видна одна страница из 50 строк, " +
+        "Серверному режиму нужна разбивка на страницы — без неё видна одна страница из 50 строк, " +
         "а до остальных не добраться",
       detailPanel: "Разверните строку, чтобы увидеть больше",
     },
@@ -156,14 +157,15 @@ const ru: ChromeStrings = {
     },
     reset: "Сбросить тему",
   },
-  failNext: "Провалить следующий запрос",
+  failNext: "Сымитировать ошибку в следующем запросе",
   resetAll: "Сбросить всё",
 }
 
 const uz: ChromeStrings = {
   lede:
-    "Jonli maydon: quyidagi har bir kalit va har bir rang haqiqiy prop yoki opsiyani boshqaradi, " +
-    "hech narsa soxta emas. Oʻngdagi jadval doimo 100 000 qatorli soxta serverga murojaat qiladi.",
+    "Interaktiv sinov maydoni: quyidagi har bir kalit va har bir rang haqiqiy prop yoki opsiyani " +
+    "boshqaradi, hech biri koʻrinish uchun emas. Oʻngdagi jadval doimo 100 000 qatorli soxta " +
+    "serverga murojaat qiladi.",
   language: { legend: "Til", groupLabel: "Sahifa va jadval tili" },
   features: {
     groupLabel: "Imkoniyat kalitlari",
@@ -184,10 +186,10 @@ const uz: ChromeStrings = {
       detailPanel: "Tafsilotlar paneli",
     },
     hints: {
-      filtering: "Tezkor qidiruv shu bilan birga keladi",
+      filtering: "Tezkor qidiruv filtrlash bilan birga yoqiladi",
       pagination:
         "Server rejimiga sahifalash kerak — oʻchirilganda 50 qatorlik bitta sahifa koʻrinadi, " +
-        "qolganiga yoʻl qolmaydi",
+        "qolgan qatorlarga yoʻl boʻlmaydi",
       detailPanel: "Batafsil koʻrish uchun qatorni yoying",
     },
   },
@@ -196,7 +198,7 @@ const uz: ChromeStrings = {
     legends: { appearance: "Koʻrinish", colors: "Ranglar", sizing: "Oʻlchamlar" },
     appearance: "Asosiy mavzu",
     fontFamily: "Shrift",
-    modes: { light: "Yorugʻ", dark: "Toʻq", system: "Tizim" },
+    modes: { light: "Yorugʻ", dark: "Qorongʻi", system: "Tizim" },
     fonts: { system: "Tizim shrifti", mono: "Monospace", serif: "Serif", sans: "Sans-serif" },
     colors: {
       background: "Fon",
@@ -207,7 +209,7 @@ const uz: ChromeStrings = {
       headerBackground: "Sarlavha foni",
       headerForeground: "Sarlavha matni",
       rowHover: "Kursor ostidagi qator",
-      rowStripe: "Navbatdagi qator",
+      rowStripe: "Navbatma-navbat qator",
       detailBackground: "Tafsilotlar foni",
     },
     sizes: {

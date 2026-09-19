@@ -80,7 +80,7 @@ export const ruLabels: DataTableLabels = {
   searchResults: (count) =>
     count === undefined ? "Идёт поиск" : `Найдено: ${count} ${plural(count, "строка", "строки", "строк")}`,
   filter: "Фильтр…",
-  filterInPanel: "Фильтр на панели…",
+  filterInPanel: "Фильтр в панели…",
   filterTitle: (column) => `Фильтр: ${column}`,
   filteredBadge: "Отфильтровано",
   apply: "Применить",
@@ -102,7 +102,9 @@ export const ruLabels: DataTableLabels = {
   opGt: "Больше",
   opGte: "Больше или равно",
   opBetween: "В диапазоне",
-  opDateIs: "Дата равна",
+  // The column is already a date one and its own name sits above this list, so
+  // "Дата равна" repeats what the reader can see; the operator alone is enough.
+  opDateIs: "Равно",
   opDateBefore: "До",
   opDateAfter: "После",
   opDateBetween: "В диапазоне",

@@ -32,6 +32,9 @@ export interface ReceiptsQueryResult {
  * box ticked mid-flight survive an unrelated response, and what stops a
  * failed request re-reading a still-armed flag on retry.
  *
+ * A superseded request is aborted, not merely ignored — see the comment in the
+ * effect for why both that and the `cancelled` guard are needed.
+ *
  * @param query - The table's current query, or undefined before the first one lands.
  * @returns The latest page (if any), loading/error state, a retry trigger,
  *   and the fail-next control the playground's own UI offers.
@@ -48,12 +51,26 @@ export function useReceiptsQuery(query: TableQuery | undefined): ReceiptsQueryRe
 
   useEffect(() => {
     if (!query) return
+    /*
+     * Two mechanisms, because they answer two different questions.
+     *
+     * `controller` cancels the work: a query the table has already moved past
+     * stops occupying the server the moment it is superseded, rather than
+     * running to completion and having its answer thrown away.
+     *
+     * `cancelled` guards the state writes. Aborting rejects the promise, so
+     * the `catch` below still runs for a request we deliberately killed — and
+     * an AbortError rendered in the error banner would tell the user their
+     * perfectly healthy table had failed. Without this flag a slow answer
+     * could also still `setPage` for a query two keystrokes out of date.
+     */
+    const controller = new AbortController()
     let cancelled = false
     setLoading(true)
     setError(null)
     const shouldFail = failNext
     if (shouldFail) setFailNext(false)
-    fetchReceipts(query, { fail: shouldFail })
+    fetchReceipts(query, { fail: shouldFail, signal: controller.signal })
       .then((result) => {
         if (!cancelled) setPage(result)
       })
@@ -65,6 +82,7 @@ export function useReceiptsQuery(query: TableQuery | undefined): ReceiptsQueryRe
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
     /*
      * `failNext` is read once when the request starts (captured into

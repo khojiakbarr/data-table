@@ -6,6 +6,7 @@ import type { DataTableLabels } from "../types"
 import { useDataTable } from "../useDataTable"
 import { ruLabels } from "../labels/ru"
 import { uzLabels } from "../labels/uz"
+import { CHROME } from "./chrome"
 import { FeatureControls } from "./FeatureControls"
 import { LanguageSwitcher } from "./LanguageSwitcher"
 import { ThemeControls } from "./ThemeControls"
@@ -35,6 +36,10 @@ const EMPTY: ServerReceipt[] = []
  * client/server switch would double every control for a comparison nobody
  * asked for. There is deliberately no CSS-export button either — see
  * {@link ThemeControls}'s docblock.
+ *
+ * The switcher moves the page as well as the table: the table reads the
+ * shipped `DataTableLabels` sets, while the sidebar reads `CHROME`, which is
+ * demo furniture and so lives here rather than in `src/labels/`.
  */
 export function Playground() {
   const [language, setLanguage] = useState<Language>("en")
@@ -44,6 +49,7 @@ export function Playground() {
 
   const { page, loading, error, retry, failNext, setFailNext } = useReceiptsQuery(query)
   const columns = useMemo(() => buildReceiptColumns(language), [language])
+  const chrome = CHROME[language]
 
   const table = useDataTable({
     id: "playground",
@@ -73,15 +79,12 @@ export function Playground() {
   return (
     <div className="pg-root">
       <aside className="pg-sidebar">
+        {/* The package name is a proper noun — it is not translated. */}
         <h1>@khojiakbarr/data-table</h1>
-        <p className="pg-lede">
-          A live playground: every toggle and every color below drives a real prop or option,
-          nothing is faked. The table on the right always talks to a fake server, 100 000 rows
-          deep.
-        </p>
-        <LanguageSwitcher value={language} onChange={setLanguage} />
-        <FeatureControls value={features} onChange={setFeatures} />
-        <ThemeControls value={theme} onChange={setTheme} />
+        <p className="pg-lede">{chrome.lede}</p>
+        <LanguageSwitcher value={language} onChange={setLanguage} chrome={chrome} />
+        <FeatureControls value={features} onChange={setFeatures} chrome={chrome} />
+        <ThemeControls value={theme} onChange={setTheme} chrome={chrome} />
         <button
           type="button"
           className="pg-reset"
@@ -90,14 +93,14 @@ export function Playground() {
             setTheme(DEFAULT_THEME)
           }}
         >
-          Reset everything
+          {chrome.resetAll}
         </button>
       </aside>
 
       <main className="pg-main">
         <label className="pg-fail-toggle">
           <input type="checkbox" checked={failNext} onChange={(event) => setFailNext(event.target.checked)} />
-          Fail the next request
+          {chrome.failNext}
         </label>
 
         <style>{themeStyleRule(theme)}</style>

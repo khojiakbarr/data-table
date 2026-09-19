@@ -1,45 +1,51 @@
 import type { ChangeEvent } from "react"
+import type { ChromeStrings } from "./chrome"
 import type { FeatureState } from "./playgroundState"
+
+/** Which hint, if any, a toggle carries under its label. */
+type HintKey = keyof ChromeStrings["features"]["hints"]
 
 interface ToggleDef {
   key: keyof FeatureState
-  label: string
-  hint?: string
+  hint?: HintKey
 }
 
 /** One fieldset's worth of toggles, each mapped to a real option or prop. */
 interface Group {
-  legend: string
+  legend: keyof ChromeStrings["features"]["legends"]
   toggles: ToggleDef[]
 }
 
+/**
+ * The layout of the panel, with no copy in it.
+ *
+ * Only keys live here; every visible string comes from `chrome.features`, so
+ * the panel follows the language switcher along with the table.
+ */
 const GROUPS: Group[] = [
   {
-    legend: "Interactions",
+    legend: "interactions",
     toggles: [
-      { key: "sorting", label: "Sorting" },
-      { key: "resizing", label: "Column resizing" },
-      { key: "reordering", label: "Column reordering" },
-      { key: "pinning", label: "Column pinning" },
-      { key: "hiding", label: "Column hiding" },
+      { key: "sorting" },
+      { key: "resizing" },
+      { key: "reordering" },
+      { key: "pinning" },
+      { key: "hiding" },
     ],
   },
   {
-    legend: "Data",
-    toggles: [
-      { key: "filtering", label: "Filtering", hint: "Quick search rides with this" },
-      { key: "pagination", label: "Pagination" },
-    ],
+    legend: "data",
+    toggles: [{ key: "filtering", hint: "filtering" }, { key: "pagination" }],
   },
   {
-    legend: "Layout",
+    legend: "layout",
     toggles: [
-      { key: "striped", label: "Striped rows" },
-      { key: "toolbar", label: "Toolbar" },
-      { key: "footer", label: "Footer" },
-      { key: "virtualize", label: "Virtualize" },
-      { key: "stickyHeader", label: "Sticky header" },
-      { key: "detailPanel", label: "Detail panel", hint: "Expand a row for more" },
+      { key: "striped" },
+      { key: "toolbar" },
+      { key: "footer" },
+      { key: "virtualize" },
+      { key: "stickyHeader" },
+      { key: "detailPanel", hint: "detailPanel" },
     ],
   },
 ]
@@ -47,6 +53,7 @@ const GROUPS: Group[] = [
 interface FeatureControlsProps {
   value: FeatureState
   onChange: (next: FeatureState) => void
+  chrome: ChromeStrings
 }
 
 /**
@@ -54,24 +61,28 @@ interface FeatureControlsProps {
  * exposes — nothing here is faked: each one flows straight into
  * `useDataTable({ features, filtering, pagination })` or a `<DataTable>` prop.
  *
+ * @param props.value - The whole feature state, as one object.
+ * @param props.onChange - Called with a new state object; the old one is never mutated.
+ * @param props.chrome - The page copy for the current language.
+ *
  * @example
- * <FeatureControls value={features} onChange={setFeatures} />
+ * <FeatureControls value={features} onChange={setFeatures} chrome={CHROME[language]} />
  */
-export function FeatureControls({ value, onChange }: FeatureControlsProps) {
+export function FeatureControls({ value, onChange, chrome }: FeatureControlsProps) {
   const toggle = (key: keyof FeatureState) => (event: ChangeEvent<HTMLInputElement>) =>
     onChange({ ...value, [key]: event.target.checked })
 
   return (
-    <div className="pg-controls" aria-label="Feature toggles">
+    <div className="pg-controls" aria-label={chrome.features.groupLabel}>
       {GROUPS.map((group) => (
         <fieldset key={group.legend} className="pg-fieldset">
-          <legend>{group.legend}</legend>
+          <legend>{chrome.features.legends[group.legend]}</legend>
           {group.toggles.map((def) => (
             <label key={def.key} className="pg-toggle">
               <input type="checkbox" checked={value[def.key]} onChange={toggle(def.key)} />
               <span>
-                {def.label}
-                {def.hint ? <small className="pg-hint">{def.hint}</small> : null}
+                {chrome.features.labels[def.key]}
+                {def.hint ? <small className="pg-hint">{chrome.features.hints[def.hint]}</small> : null}
               </span>
             </label>
           ))}

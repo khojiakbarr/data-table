@@ -73,6 +73,37 @@ export interface ThemeTokenState {
   rowHeight: number
 }
 
+/**
+ * The tokens {@link ThemeControls} edits with a color picker.
+ *
+ * Declared here rather than inside the control, so the translated labels in
+ * `chrome.ts` are keyed by the same union: adding a color to the state without
+ * naming it in all three languages becomes a compile error instead of a field
+ * that renders with no label.
+ */
+export type ThemeColorKey = Extract<
+  keyof ThemeTokenState,
+  | "background"
+  | "foreground"
+  | "accent"
+  | "accentText"
+  | "border"
+  | "headerBackground"
+  | "headerForeground"
+  | "rowHover"
+  | "rowStripe"
+  | "detailBackground"
+>
+
+/** The numeric controls, sliders rather than pickers. Same key-parity reason as {@link ThemeColorKey}. */
+export type ThemeSizeKey = Extract<
+  keyof ThemeTokenState,
+  "headerHeight" | "rowHeight" | "radius" | "fontSize"
+>
+
+/** Which font stack the font-family control is on; the stacks themselves live in {@link ThemeControls}. */
+export type FontChoiceKey = "system" | "mono" | "serif" | "sans"
+
 /** The light defaults from `styles.css`, restated here so "Reset" has a value to return to. */
 export const DEFAULT_THEME: ThemeTokenState = {
   theme: "system",

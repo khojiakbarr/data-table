@@ -157,7 +157,7 @@ body {
   background: none;
   cursor: pointer;
 }
-.pg-field-range output {
+.pg-field-range .pg-readout {
   color: var(--pg-muted);
   font-variant-numeric: tabular-nums;
 }

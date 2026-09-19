@@ -261,20 +261,40 @@ function compareValues(a: unknown, b: unknown): number {
  * Filter, search, sort, slice and reply after a delay — the way a real
  * endpoint would.
  *
+ * `signal` aborts a superseded request, the same way {@link fetchValues}
+ * does: a query the table has already moved past must not still be able to
+ * publish rows, and a slow first answer must not land on top of a faster
+ * second one. Cancelling the work is stronger than ignoring its result — the
+ * abandoned request stops occupying the (fake) server at all.
+ *
  * @param query - The current filters, search, sort and page, built by {@link useDataTable}.
- * @param options - `fail` simulates a network error; `delayMs` simulates latency.
+ * @param options - `fail` simulates a network error, `delayMs` simulates latency,
+ *   `signal` cancels a request that has been superseded.
  * @returns The requested page of rows plus the total that matched.
  *
  * @example
- * const page = await fetchReceipts(query)
+ * const page = await fetchReceipts(query, { signal: controller.signal })
  */
 export function fetchReceipts(
   query: TableQuery,
-  options: { fail?: boolean; delayMs?: number } = {},
+  options: { fail?: boolean; delayMs?: number; signal?: AbortSignal } = {},
 ): Promise<ServerPage> {
-  const { fail = false, delayMs = 300 } = options
+  const { fail = false, delayMs = 300, signal } = options
   return new Promise((resolve, reject) => {
-    setTimeout(() => {
+    const abortError = (): DOMException => new DOMException("Aborted", "AbortError")
+    // A signal that is already aborted fires no `abort` event, so a request
+    // superseded before it even started would never settle — and a caller that
+    // clears its in-flight state on settle would wait on it forever.
+    if (signal?.aborted) {
+      reject(abortError())
+      return
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(abortError())
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort)
       if (fail) {
         reject(new Error("Simulated network failure"))
         return
@@ -297,6 +317,7 @@ export function fetchReceipts(
       // counts and what the page clamp is measured against.
       resolve({ rows: sorted.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize), total: matched.length })
     }, delayMs)
+    signal?.addEventListener("abort", onAbort, { once: true })
   })
 }
 

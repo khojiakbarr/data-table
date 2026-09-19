@@ -296,6 +296,32 @@ describe("fetchReceipts — the injected failure", () => {
   })
 })
 
+describe("fetchReceipts — cancelling a superseded request", () => {
+  it("rejects with AbortError when the signal aborts in flight", async () => {
+    const controller = new AbortController()
+    const pending = fetchReceipts(query([SCOPE]), { delayMs: 50, signal: controller.signal })
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" })
+  })
+
+  it("settles rather than hanging when the signal is already aborted", async () => {
+    const controller = new AbortController()
+    // A request superseded before it even started: the signal fires no `abort`
+    // event, so a naive listener would leave this promise pending forever and
+    // a caller that clears its loading flag on settle would spin indefinitely.
+    controller.abort()
+    await expect(
+      fetchReceipts(query([SCOPE]), { delayMs: 0, signal: controller.signal }),
+    ).rejects.toMatchObject({ name: "AbortError" })
+  })
+
+  it("still resolves normally when the signal never aborts", async () => {
+    const controller = new AbortController()
+    const page = await fetchReceipts(query([SCOPE]), { delayMs: 0, signal: controller.signal })
+    expect(page.total).toBe(10)
+  })
+})
+
 describe("fetchValues", () => {
   it("returns every distinct value with its count", async () => {
     const controller = new AbortController()

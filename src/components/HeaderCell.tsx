@@ -1,7 +1,6 @@
 import type { Header, RowData } from "@tanstack/react-table"
 import { flexRender } from "@tanstack/react-table"
 import {
-  useState,
   type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
@@ -14,6 +13,7 @@ import { classNames } from "../core/classNames"
 import { columnLabel } from "../core/columnLabel"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
 import { dropSideAt, type DropSide } from "../core/reorder"
+import type { DropSlot } from "../core/useDropSlot"
 import { clampColumnWidth } from "../core/sizing"
 
 /**
@@ -41,6 +41,14 @@ interface HeaderCellProps<TData extends RowData> {
   /** Open the per-column action menu at a viewport position. */
   onOpenMenu: (at: { x: number; y: number }) => void
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
+  /**
+   * The drag shared by every header cell.
+   *
+   * It cannot live in this component: the slot is drawn on the column that
+   * stands at the DESTINATION, which is almost never the cell the pointer is
+   * over, so no cell can decide on its own whether it is wearing the slot.
+   */
+  drop: DropSlot
   /** Fit a leaf column to its content. A group's handle fits each of its leaves. */
   onAutosize: (columnId: string) => void
 }
@@ -53,10 +61,11 @@ export function HeaderCell<TData extends RowData>({
   onReorder,
   onOpenMenu,
   onAutosize,
+  drop,
 }: HeaderCellProps<TData>) {
   const { column } = header
-  const [dropSide, setDropSide] = useState<DropSide | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const isDragging = drop.draggedId === column.id
+  const isDropSlot = drop.slotId === column.id
 
   /**
    * A group header spans several leaf columns. Sorting and reordering act on
@@ -91,23 +100,47 @@ export function HeaderCell<TData extends RowData>({
     }
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData("text/plain", column.id)
-    setIsDragging(true)
+    // `getData` is unreadable during `dragover` in every browser's protected
+    // drag mode, so who is moving has to be remembered here or the slot could
+    // never be resolved until the drop.
+    drop.start(column.id)
   }
 
   const handleDragOver = (event: DragEvent<HTMLTableCellElement>) => {
+    /*
+     * A pinned column, a group header and the filler are not drop targets, and
+     * refusing here is what keeps the slot honest: with no `preventDefault`
+     * the browser will not drop, and with no `over` the slot does not appear
+     * somewhere the drop would ignore. The cell just left has already cleared
+     * it, so the slot simply goes away over these.
+     */
     if (!canDrag) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
-    // State here drives the caret only; the drop reads the event again.
-    setDropSide(dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect()))
+    // State here drives the slot only; the drop reads the event again.
+    drop.over(column.id, dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect()))
   }
 
   const handleDrop = (event: DragEvent<HTMLTableCellElement>) => {
     event.preventDefault()
     const draggedId = event.dataTransfer.getData("text/plain")
     const side = dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect())
-    setDropSide(null)
+    drop.end()
+    // The same (target, side) the slot was resolved from, so the column lands
+    // in the slot the user was looking at — see `dropSlotId`.
     if (draggedId && draggedId !== column.id) onReorder(draggedId, column.id, side)
+  }
+
+  const handleDragLeave = (event: DragEvent<HTMLTableCellElement>) => {
+    /*
+     * `dragleave` bubbles from descendants, so crossing from the label to the
+     * resize handle fires one without the pointer having left the cell at all.
+     * Acting on those would blink the slot — and replay its opening animation
+     * — several times per column. `relatedTarget` is the element being
+     * entered; when it is inside this cell, nothing has been left.
+     */
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    drop.leave(column.id)
   }
 
   const startResize = (event: MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>) => {
@@ -155,8 +188,7 @@ export function HeaderCell<TData extends RowData>({
     isResizing && "dt-resizing",
     canDrag && "dt-draggable",
     isDragging && "dt-dragging",
-    dropSide === "start" && "dt-drop-start",
-    dropSide === "end" && "dt-drop-end",
+    isDropSlot && "dt-drop-slot",
   )
 
   /**
@@ -184,12 +216,14 @@ export function HeaderCell<TData extends RowData>({
       aria-sort={canSort ? ariaSort : undefined}
       draggable={canDrag && !isResizing}
       onDragStart={canDrag ? handleDragStart : undefined}
-      onDragEnd={() => {
-        setIsDragging(false)
-        setDropSide(null)
-      }}
+      /*
+       * Every way a drag can end arrives here: a drop, Escape, and the pointer
+       * released outside the window all fire `dragend` on the source. The slot
+       * must not survive any of them.
+       */
+      onDragEnd={drop.end}
       onDragOver={handleDragOver}
-      onDragLeave={() => setDropSide(null)}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onContextMenu={
         isGroup

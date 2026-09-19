@@ -3,6 +3,7 @@ import { useCallback, useRef, useState, type CSSProperties, type ReactNode } fro
 import { classNames, insertAt } from "../core/classNames"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import { moveColumn, type DropSide } from "../core/reorder"
+import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
@@ -34,6 +35,8 @@ export const defaultLabels: DataTableLabels = {
   clearSort: "Clear sort",
   empty: "No rows",
   dragHint: "Drag to reorder",
+  reorderHint: "Press Space to pick up, arrow keys to move, Space to drop, Escape to cancel",
+  reorderPosition: (column, position, total) => `${column}: position ${position} of ${total}`,
   resizeColumn: "resize column",
   expandRow: "Expand row",
   collapseRow: "Collapse row",
@@ -335,6 +338,15 @@ export function DataTable<TData extends RowData>({
   const leafColumns = renderedLeafColumns(table)
   const fillerAt = fillerIndex(table)
   /*
+   * Resolved against the RENDERED order, which is what the user is looking at
+   * and what `handleReorder` falls back to on the first drag. The dragged and
+   * target columns are both unpinned — `HeaderCell` refuses a drag or a drop
+   * on anything else — so the slot always resolves inside the centre section,
+   * and the relative move it describes is the same one `moveColumn` performs
+   * on the stored column order.
+   */
+  const drop = useDropSlot(leafColumns.map((column) => column.id))
+  /*
    * Header rows are assembled per pinning section rather than from the merged
    * `getHeaderGroups()`. The merged tree keeps a group in one piece even when
    * only some of its leaves are pinned, so its header would have to choose
@@ -565,6 +577,7 @@ export function DataTable<TData extends RowData>({
                       onReorder={handleReorder}
                       onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
                       onAutosize={autosize}
+                      drop={drop}
                     />
                   )),
               )

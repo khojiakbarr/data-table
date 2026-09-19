@@ -36,6 +36,9 @@ export const uzLabels: DataTableLabels = {
   clearSort: "Saralashni bekor qilish",
   empty: "Qator yoʻq",
   dragHint: "Tartibni oʻzgartirish uchun torting",
+  reorderHint:
+    "Probel — olish, strelkalar — koʻchirish, probel — qoʻyish, Escape — bekor qilish",
+  reorderPosition: (column, position, total) => `${column}: ${total} tadan ${position}-oʻrin`,
   resizeColumn: "ustun kengligini oʻzgartirish",
   expandRow: "Qatorni ochish",
   collapseRow: "Qatorni yopish",

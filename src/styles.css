@@ -426,32 +426,89 @@
   border-inline: 0;
 }
 
-/* ---------- reordering ---------- */
+/* ---------- reordering ---------- *
+ * One look for both surfaces: a column header and a row of the Columns tab
+ * are separate code paths, and they used to draw two different indicators —
+ * a caret on one edge — which taught the seam a column falls THROUGH rather
+ * than the place it lands IN. The slot below replaces both.
+ */
 
 .dt-draggable {
   cursor: grab;
 }
 
-.dt-dragging {
-  opacity: 0.4;
+/*
+ * The thing in flight: dimmed and a shade smaller, so the eye goes to the
+ * slot rather than back to the original. Transform and opacity only — the
+ * header is `table-layout: fixed` with a <colgroup>, so animating a width
+ * here would relayout every column, and the body under it, on every pointer
+ * move.
+ */
+.dt-dragging,
+.dt-panel-dragging {
+  transform: scale(0.98);
+  cursor: grabbing;
 }
 
-.dt-drop-start::before,
-.dt-drop-end::after {
+/*
+ * The CONTENT is what fades, not the element. When the pointer sits over the
+ * column it is dragging, the answer is "no move" and the slot belongs on that
+ * same cell — an `opacity` on the element would take the slot down with it,
+ * and the one case where nothing will happen is the case that would have
+ * become invisible. `*` matches elements, never `::after`, so the band below
+ * keeps its full strength.
+ */
+.dt-dragging > *,
+.dt-panel-dragging > * {
+  opacity: 0.5;
+}
+
+/*
+ * The slot the dragged thing will occupy, worn by whatever stands at the
+ * destination today. Drawn as a pseudo-element so the cell keeps its own
+ * background, and `pointer-events: none` so the band never swallows the
+ * `dragover` that keeps it alive.
+ *
+ * Built from --dt-drop-indicator alone: every preset already maps that token
+ * (themes.test.ts enforces it), and a slot needing a token of its own would
+ * be a slot that some themes simply do not have.
+ */
+.dt-drop-slot::after {
   content: "";
   position: absolute;
-  inset-block: 0;
-  width: 2px;
-  background: var(--dt-drop-indicator);
+  inset: 2px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--dt-drop-indicator) 12%, transparent);
+  outline: 1px dashed var(--dt-drop-indicator);
+  outline-offset: -1px;
+  pointer-events: none;
+  /* The order documented on .dt-progress: header 3, pinned 4, this 5. */
   z-index: 5;
+  animation: dt-slot-open 150ms ease-out;
 }
 
-.dt-drop-start::before {
-  inset-inline-start: 0;
+/*
+ * The slot opens rather than blinking into place. 150ms is the short end of
+ * the scale on purpose: this follows the pointer, and anything slower reads
+ * as the table lagging behind the hand.
+ */
+@keyframes dt-slot-open {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
-.dt-drop-end::after {
-  inset-inline-end: 0;
+@media (prefers-reduced-motion: reduce) {
+  /* The slot still appears; it just stops moving. What it says is in the
+     band, not in the way the band arrives, so nothing is lost. */
+  .dt-drop-slot::after {
+    animation: none;
+  }
 }
 
 /* ---------- column panel ---------- */
@@ -672,11 +729,11 @@
 
 /*
  * --dt-muted-fg at full opacity, not dimmed further: this grip is the sole
- * visual affordance for column reordering (drag-and-drop only, no keyboard
- * equivalent), so WCAG 1.4.11's 3:1 non-text minimum applies squarely, and
- * the extra opacity pushed it under that floor in both themes. --dt-muted-fg
- * already clears 3:1 (and 4.5:1) against --dt-bg on its own — see
- * themes.test.ts "base palette".
+ * visual affordance for column reordering, and the only control that carries
+ * it, so WCAG 1.4.11's 3:1 non-text minimum applies squarely and the extra
+ * opacity pushed it under that floor in both themes. --dt-muted-fg already
+ * clears 3:1 (and 4.5:1) against --dt-bg on its own — see themes.test.ts
+ * "base palette".
  */
 .dt-drag-handle {
   flex: none;
@@ -685,34 +742,20 @@
   justify-content: center;
   width: 16px;
   height: 20px;
+  border-radius: 4px;
   color: var(--dt-muted-fg);
   cursor: grab;
 }
 
+/* It is in the Tab order — it is the keyboard's whole route to reordering —
+   so it needs a ring like any other control. */
+.dt-drag-handle:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: 1px;
+}
+
 .dt-panel-item:hover .dt-drag-handle {
   color: var(--dt-fg);
-}
-
-.dt-panel-dragging {
-  opacity: 0.4;
-}
-
-.dt-panel-drop-before::before,
-.dt-panel-drop-after::after {
-  content: "";
-  position: absolute;
-  inset-inline: 4px;
-  height: 2px;
-  background: var(--dt-drop-indicator);
-  border-radius: 2px;
-}
-
-.dt-panel-drop-before::before {
-  top: -1px;
-}
-
-.dt-panel-drop-after::after {
-  bottom: -1px;
 }
 
 .dt-pin-badge,

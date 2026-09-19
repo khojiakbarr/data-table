@@ -627,7 +627,7 @@ darkened (light mode) or lightened (dark mode) variant of it instead of the same
 | `--dt-accent-text` | `--dt-accent`'s colour printed AS text on `--dt-bg` (`.dt-link`, and the current choice in a header menu — active sort direction and active pin; needs 4.5:1 there) — set alongside `--dt-accent`, see above |
 | `--dt-focus-ring` | Focus outline |
 | `--dt-resize-handle` `--dt-resize-handle-active` | Resize handle |
-| `--dt-drop-indicator` | Reorder caret |
+| `--dt-drop-indicator` | The drop slot a dragged column will land in |
 | `--dt-pin-shadow-start` `--dt-pin-shadow-end` | Pinned column seams |
 | `--dt-indent` `--dt-detail-bg` | Nested rows and detail panels |
 | `--dt-viewport-max-height` | Fallback height for a table nobody bounded; see [Large data](#large-data) |

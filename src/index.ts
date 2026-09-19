@@ -25,7 +25,7 @@ export type { PaginationApi } from "./core/usePagination"
 
 /*
  * The shell's own parts. Exported so a different layout can reuse the pieces
- * that are fiddly to get right — sticky offsets, drag carets, menu placement —
+ * that are fiddly to get right — sticky offsets, the drop slot, menu placement —
  * instead of reimplementing them.
  */
 export { HeaderCell } from "./components/HeaderCell"
@@ -121,8 +121,10 @@ export { useDebouncedValue } from "./core/useDebouncedValue"
 export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"
 export type { HeaderPinning } from "./core/pinning"
 export { columnLabel } from "./core/columnLabel"
-export { dropSideAt, moveColumn } from "./core/reorder"
+export { dropAtIndex, dropSideAt, dropSlotId, moveColumn, reachableRange } from "./core/reorder"
 export type { DropSide } from "./core/reorder"
+export { useDropSlot } from "./core/useDropSlot"
+export type { DropSlot } from "./core/useDropSlot"
 export { measureColumnWidth, measureHeaderWidth } from "./core/autosize"
 export type { AutosizeBounds } from "./core/autosize"
 export { useAutosize } from "./core/useAutosize"

@@ -427,10 +427,10 @@ describe("base palette", () => {
   })
 
   it("prints the column-panel drag handle at the WCAG 1.4.11 non-text minimum in both themes", () => {
-    // .dt-drag-handle is the sole visual affordance for column reordering
-    // (pointer drag-and-drop only, no keyboard equivalent), so its 3:1 floor
-    // is load-bearing. Full --dt-muted-fg on --dt-bg replaced an opacity
-    // fraction that fell under 3:1 in both themes.
+    // .dt-drag-handle is the sole visual affordance for column reordering,
+    // and now the only control that carries it for the keyboard too, so its
+    // 3:1 floor is load-bearing. Full --dt-muted-fg on --dt-bg replaced an
+    // opacity fraction that fell under 3:1 in both themes.
     expect(contrastRatio(baseTokenValue("--dt-muted-fg"), baseTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
     expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
   })

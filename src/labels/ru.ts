@@ -52,6 +52,9 @@ export const ruLabels: DataTableLabels = {
   clearSort: "Отменить сортировку",
   empty: "Нет строк",
   dragHint: "Перетащите, чтобы изменить порядок",
+  reorderHint:
+    "Пробел — взять, стрелки — переместить, пробел — отпустить, Escape — отменить",
+  reorderPosition: (column, position, total) => `${column}: позиция ${position} из ${total}`,
   resizeColumn: "изменить ширину столбца",
   expandRow: "Развернуть строку",
   collapseRow: "Свернуть строку",

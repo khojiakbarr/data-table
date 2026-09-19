@@ -73,6 +73,16 @@ describe("function-shaped labels return sensible text", () => {
     it(`${name}Labels.filterTitle names the column`, () => {
       expect(labels.filterTitle("Сумма")).toContain("Сумма")
     })
+
+    it(`${name}Labels.reorderPosition names the column and both numbers`, () => {
+      // What a screen reader hears on every step of a keyboard reorder: the
+      // column, where it is now, and out of how many. A translation that drops
+      // the total leaves the listener with no idea how far there is to go.
+      const announced = labels.reorderPosition("Сумма", 3, 7)
+      expect(announced).toContain("Сумма")
+      expect(announced).toContain("3")
+      expect(announced).toContain("7")
+    })
   }
 })
 
@@ -137,6 +147,7 @@ describe("Uzbek orthography", () => {
     uzLabels.searchResults(0),
     uzLabels.searchResults(undefined),
     uzLabels.filterTitle("Summa"),
+    uzLabels.reorderPosition("Summa", 1, 5),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -158,8 +169,14 @@ describe("Uzbek orthography", () => {
       .filter(([, value]) => typeof value === "function")
       .map(([key]) => key)
       .sort()
-    // A fifth function label added later would otherwise go unread: add it to
+    // A sixth function label added later would otherwise go unread: add it to
     // FUNCTION_OUTPUTS and to this list together.
-    expect(functionKeys).toEqual(["filterTitle", "page", "range", "searchResults"])
+    expect(functionKeys).toEqual([
+      "filterTitle",
+      "page",
+      "range",
+      "reorderPosition",
+      "searchResults",
+    ])
   })
 })

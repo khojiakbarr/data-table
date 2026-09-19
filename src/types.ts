@@ -99,6 +99,14 @@ export interface DataTableLabels {
   clearSort: string
   empty: string
   dragHint: string
+  /**
+   * How the keyboard reorders a column, spoken on the drag handle: the
+   * handle is the only route a user who cannot drag has, and a screen
+   * reader has nowhere else to find the keys in time.
+   */
+  reorderHint: string
+  /** Where a held column now sits, announced politely as it moves. */
+  reorderPosition: (column: string, position: number, total: number) => string
   resizeColumn: string
   expandRow: string
   collapseRow: string

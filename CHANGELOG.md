@@ -7,6 +7,14 @@ releases are summarised in one line rather than reconstructed.
 
 ### Breaking
 
+- **`HeaderCell` takes a `drop` prop**, the shared drag returned by
+  `useDropSlot`. The slot is drawn on the column at the DESTINATION, which is
+  almost never the cell the pointer is over, so no cell can decide on its own
+  whether it is wearing it. A shell of its own calls `useDropSlot` over its
+  rendered leaf column ids and passes the result to every header cell.
+- `DataTableLabels` gains `reorderHint` and `reorderPosition` for the keyboard
+  reorder path. Hosts using the documented `{ ...defaultLabels, ...mine }`
+  recipe are unaffected.
 - **`TableQuery.columnFilters` and `TableQuery.globalFilter` are removed**, and
   replaced by `filters: FilterCondition[]` and `search: TableSearch | null`.
   Both removed fields had only ever been `[]` and `""`, so no host can have read
@@ -48,6 +56,18 @@ releases are summarised in one line rather than reconstructed.
   `getModel`, `setModel`, `loadValues`. Plus `columnLabel`,
   `useClampedPlacement` and the editors' draft helpers, for a shell of your own.
 - A distinct empty state for "a filter excluded every row", with a way out of it.
+- **Reordering shows a drop slot** instead of a caret on the seam: the column
+  standing where the dragged one will land is outlined and tinted, in the
+  header and in the Columns tab alike, so the preview is the destination rather
+  than the gap. Built from `--dt-drop-indicator`, which every preset already
+  maps; it opens with a 150ms transform/opacity animation and simply appears
+  under `prefers-reduced-motion`. `dropSlotId`, `dropAtIndex`, `reachableRange`
+  and `useDropSlot` are exported for a shell of your own.
+- **Columns can be reordered from the keyboard.** The Columns tab's drag handle
+  is in the Tab order: Space picks a column up, the arrows move the slot, Space
+  drops it and Escape gives it back, with each position announced politely. The
+  slot stops at a group or pinning boundary rather than promising a move the
+  table would refuse.
 - `ruLabels` and `uzLabels`: complete Russian and Uzbek translations of
   `DataTableLabels`, filtering keys included. Each is typed as the whole
   interface rather than a `Partial`, so `labels={ruLabels}` needs no

@@ -210,33 +210,58 @@ export function useArrangement({
   useDebouncedSave(store, id, persistedRef.current, arrangement.hasUnsavedChanges)
 
   /**
-   * Record a change to one slice of the layout.
+   * Record changes to several slices of the layout as ONE state transition.
    *
-   * A change that leaves the slice as it was is dropped: TanStack commits a
+   * Some rearrangements are not confined to a single slice: moving a column
+   * that is pinned rewrites `columnOrder` and `columnPinning` together, and
+   * either one alone is a layout that contradicts itself — an order the screen
+   * does not show, or a screen the stored order disagrees with. Landing both in
+   * one commit means no render, and no debounced save, ever sees the half of it.
+   *
+   * A change that leaves its slice as it was is dropped: TanStack commits a
    * width on every mouseup, so a press-and-release on a resize handle would
    * otherwise mark the table as customised and write an identical layout.
+   *
+   * @param changes - Built by {@link sliceChange}, applied left to right.
+   */
+  const updateSlices = useCallback((changes: readonly SliceChange[]) => {
+    setArrangement((previous) => {
+      let layout = previous.layout
+      let isCustomised = previous.isCustomised
+      let hasUnsavedChanges = previous.hasUnsavedChanges
+
+      for (const change of changes) {
+        const next = change.applyTo(layout)
+        // Applied against the layout the previous change produced, not against
+        // `previous.layout`, so the slices of one move compose instead of the
+        // last one overwriting the rest.
+        if (next === layout) continue
+        layout = next
+        const isFilterSlice = FILTER_SLICES.has(change.key)
+        // A search does not make a Reset link appear in the Columns tab for a
+        // reason that has nothing to do with columns.
+        isCustomised = isCustomised || !isFilterSlice
+        hasUnsavedChanges = hasUnsavedChanges || !isFilterSlice || keepFiltersRef.current
+      }
+
+      return layout === previous.layout ? previous : { layout, isCustomised, hasUnsavedChanges }
+    })
+  }, [])
+
+  /**
+   * Record a change to one slice of the layout.
+   *
+   * The single-slice spelling of {@link updateSlices}, which is what almost
+   * every caller wants — and expressed in terms of it, so there is one place
+   * that decides what a change does to `isCustomised` and to the save.
    */
   const updateSlice = useCallback(
     <TKey extends keyof TableLayout>(
       key: TKey,
       updater: Updater<TableLayout[TKey]>,
-      normalise: (slice: TableLayout[TKey]) => TableLayout[TKey] = (slice) => slice,
-    ) => {
-      setArrangement((previous) => {
-        const next = normalise(apply(updater, previous.layout[key]))
-        if (layoutSliceEqual(next, previous.layout[key])) return previous
-        const isFilterSlice = FILTER_SLICES.has(key)
-        return {
-          layout: { ...previous.layout, [key]: next },
-          // A search does not make a Reset link appear in the Columns tab for
-          // a reason that has nothing to do with columns.
-          isCustomised: previous.isCustomised || !isFilterSlice,
-          hasUnsavedChanges:
-            previous.hasUnsavedChanges || !isFilterSlice || keepFiltersRef.current,
-        }
-      })
-    },
-    [],
+      normalise?: (slice: TableLayout[TKey]) => TableLayout[TKey],
+    ) => updateSlices([sliceChange(key, updater, normalise)]),
+    [updateSlices],
   )
 
   const resetLayout = useCallback(() => {
@@ -248,10 +273,65 @@ export function useArrangement({
     })
   }, [store, id, columnIds, filterKinds, filteringEnabled])
 
-  return { layout: arrangement.layout, isCustomised: arrangement.isCustomised, updateSlice, resetLayout }
+  return {
+    layout: arrangement.layout,
+    isCustomised: arrangement.isCustomised,
+    updateSlice,
+    updateSlices,
+    resetLayout,
+  }
 }
 
-/** What {@link useArrangement} returns: the layout, its provenance flag, and the two ways to change it. */
+/**
+ * One slice's next value, ready to be applied to a layout.
+ *
+ * Opaque on purpose. A list of changes has to be walked by a caller that knows
+ * nothing about which keys are in it, and a loop over `keyof TableLayout`
+ * cannot write `layout[key] = next` — the write slot narrows to `never` once
+ * the key is a union. {@link sliceChange} captures each slice's own type at the
+ * call site instead, where it is exact, and hands back a closure.
+ */
+export interface SliceChange {
+  /** Which slice this changes, so the caller can tell arrangement from filter state. */
+  key: keyof TableLayout
+  /** Applies the change, returning `layout` itself when it is a no-op. */
+  applyTo: (layout: TableLayout) => TableLayout
+}
+
+/**
+ * Stage a change to one slice, for {@link useArrangement}'s `updateSlices`.
+ *
+ * @param key - Which slice.
+ * @param updater - Its next value, or a function of its current one. Read
+ *   against the layout the change is applied to, so changes staged together
+ *   compose rather than each starting from the same stale slice.
+ * @param normalise - Applied to the result before it is compared and stored.
+ * @returns A change that leaves the layout alone unless the slice really moves.
+ *
+ * @example
+ * updateSlices([
+ *   sliceChange("columnOrder", (order) => moveColumn(order, "a", "b", "end")),
+ *   sliceChange("columnPinning", (pinning) => ({ ...pinning, start: ["b", "a"] })),
+ * ])
+ */
+export function sliceChange<TKey extends keyof TableLayout>(
+  key: TKey,
+  updater: Updater<TableLayout[TKey]>,
+  normalise: (slice: TableLayout[TKey]) => TableLayout[TKey] = (slice) => slice,
+): SliceChange {
+  return {
+    key,
+    applyTo: (layout) => {
+      const next = normalise(apply(updater, layout[key]))
+      if (layoutSliceEqual(next, layout[key])) return layout
+      const changed = { ...layout }
+      changed[key] = next
+      return changed
+    },
+  }
+}
+
+/** What {@link useArrangement} returns: the layout, its provenance flag, and the ways to change it. */
 export type UseArrangementResult = ReturnType<typeof useArrangement>
 
 /**

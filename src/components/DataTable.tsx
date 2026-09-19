@@ -1,9 +1,7 @@
 import type { RowData } from "@tanstack/react-table"
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { classNames, insertAt } from "../core/classNames"
-import { dropRegionOf } from "../core/dropRegion"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
-import { moveColumn, type DropSide } from "../core/reorder"
 import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
@@ -258,35 +256,13 @@ export function DataTable<TData extends RowData>({
   const labels = { ...defaultLabels, ...labelOverrides }
   const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 
-  const handleReorder = useCallback(
-    (draggedId: string, targetId: string, side: DropSide) => {
-      /*
-       * The order is a flat list, so a move across a group or a pinning
-       * boundary would either be ignored or tear a group's header apart.
-       * Refusing it is the honest outcome — and both drag surfaces ask
-       * `dropRegionOf` the same question before they draw a slot, so nothing
-       * that reaches here should ever be refused.
-       */
-      const dragged = table.getColumn(draggedId)
-      const target = table.getColumn(targetId)
-      if (!dragged || !target) return
-      if (dropRegionOf(dragged) !== dropRegionOf(target)) return
-
-      table.setColumnOrder((current) => {
-        /*
-         * When nothing has been reordered yet the order is empty, meaning
-         * "natural". The fallback must be the order the columns are RENDERED
-         * in — `getAllLeafColumns()` groups pinned columns first, so using it
-         * here scrambles every column on the very first drag.
-         */
-        const order = current.length
-          ? current
-          : renderedLeafColumns(table).map((column) => column.id)
-        return moveColumn(order, draggedId, targetId, side)
-      })
-    },
-    [table],
-  )
+  /*
+   * The move itself belongs to the hook, not to this shell: a move can touch
+   * two layout slices at once — `columnOrder` and, for a pinned column, the
+   * pinning array that decides the order of its section — and only the hook
+   * can land both in one state transition. See `reorderColumn`.
+   */
+  const handleReorder = instance.reorderColumn
 
   /*
    * §8.2 asks for focus to return to the menu item that opened the popover.

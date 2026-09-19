@@ -34,12 +34,24 @@ const columns = [
   helper.accessor("d", { header: "D", size: 100 }),
 ]
 
-function Table({ pinned = false }: { pinned?: boolean }) {
+/**
+ * @param pinned - Pin D to the start, so there is a boundary to refuse at.
+ * @param pinnedPair - Pin C and D to the start, so the pinned section has
+ *   somewhere to move WITHIN it.
+ */
+function Table({
+  pinned = false,
+  pinnedPair = false,
+}: {
+  pinned?: boolean
+  pinnedPair?: boolean
+}) {
+  const start = pinnedPair ? ["c", "d"] : pinned ? ["d"] : null
   const instance = useDataTable({
     id: "panel-reorder",
     data: rows,
     columns,
-    ...(pinned ? { initialLayout: { columnPinning: { start: ["d"], end: [] } } } : {}),
+    ...(start ? { initialLayout: { columnPinning: { start, end: [] } } } : {}),
   })
   return <DataTable instance={instance} />
 }
@@ -280,6 +292,34 @@ describe("reordering from the keyboard in the Columns tab", () => {
     fireEvent.keyDown(handle, { key: "Escape" })
 
     expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("really moves a pinned column within its own section", async () => {
+    /*
+     * The complement of the test below, and the defect it was written for:
+     * the slot and the announcement were already right here, but the rendered
+     * order never followed. TanStack renders a pinned section in
+     * `columnPinning.start` order, so a move that rewrote only `columnOrder`
+     * promised something the screen could not show — and left storage holding
+     * an order that would spring into effect on the next unpin.
+     */
+    render(<Table pinnedPair />)
+    await openPanel()
+    expect(panelOrder()).toEqual(["C", "D", "A", "B"])
+
+    const handle = handleFor("C")
+    fireEvent.keyDown(handle, { key: " " })
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+    expect(slotRow()).toBe("D")
+    expect(announced()).toBe("C: position 2 of 4")
+
+    fireEvent.keyDown(handle, { key: " " })
+    expect(panelOrder()).toEqual(["D", "C", "A", "B"])
+    // The header, not only the panel: the panel lists the rendered order, and
+    // the rendered order is the thing that used to stay put.
+    expect(
+      screen.getAllByRole("columnheader").map((th) => th.getAttribute("data-column-id")),
+    ).toEqual(["d", "c", "a", "b"])
   })
 
   it("stops the slot at a pinned boundary", async () => {

@@ -4,11 +4,18 @@ import type { DataTableFeatures } from "../useDataTable"
 /**
  * Which run of the order a column may be moved within.
  *
- * Two boundaries are impassable, and for the same reason: the order the table
- * stores is one flat list, so a move that crosses either is refused rather than
- * carried out wrongly. A leaf cannot leave its group — moving it would tear the
- * group's header apart — and a pinned column keeps its section however the
- * stored order changes, so a move into another section would simply not show.
+ * Two boundaries are impassable, and for the same reason: a move that crosses
+ * either would be carried out wrongly rather than as promised. A leaf cannot
+ * leave its group — moving it would tear the group's header apart — and a
+ * pinned column keeps its section however the stored order changes, so a move
+ * into another section would simply not show.
+ *
+ * WITHIN a region the move is always real, which is what makes the boundary
+ * the only thing this has to decide. A pinned column moving among its own
+ * neighbours is carried out in `columnPinning`, the array its section is
+ * rendered from, as well as in the flat order — see `reorderColumn`. Region
+ * keys carry the pinned side for the boundary's sake, not because a pinned
+ * column is frozen where it stands.
  *
  * Every surface that previews a move has to ask this question before it draws
  * anything: a slot outside the dragged column's own region would promise a move

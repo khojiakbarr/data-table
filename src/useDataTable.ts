@@ -31,6 +31,7 @@ import {
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
 import { deriveColumnId } from "./core/columnIds"
+import { dropRegionOf } from "./core/dropRegion"
 import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
 import {
@@ -41,10 +42,12 @@ import {
   type FilterValueOption,
 } from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
+import { renderedLeafColumns } from "./core/pinning"
 import type { TableQuery, TableSearch } from "./core/query"
+import { moveColumn, type DropSide } from "./core/reorder"
 import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
-import { apply, layoutSliceEqual, useArrangement } from "./core/useArrangement"
+import { apply, layoutSliceEqual, sliceChange, useArrangement } from "./core/useArrangement"
 import { useDebouncedValue } from "./core/useDebouncedValue"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
 import { usePagination, type PaginationApi } from "./core/usePagination"
@@ -399,6 +402,7 @@ export function useDataTable<TData extends RowData>({
     layout,
     isCustomised,
     updateSlice,
+    updateSlices,
     resetLayout: resetArrangement,
   } = useArrangement({
     id,
@@ -963,6 +967,80 @@ export function useDataTable<TData extends RowData>({
     onGlobalFilterChange: (updater: Updater<string>) => updateSearch(apply(updater, layout.search)),
   })
 
+  /**
+   * Move a column next to another one, the way both drag surfaces ask for.
+   *
+   * Lives here, with the layout, because a move is not always one slice. The
+   * rendered order is `columnPinning.start`, then `columnOrder` minus the
+   * pinned columns, then `columnPinning.end` — so moving a PINNED column has
+   * to rewrite the pinning array as well, or the order changes underneath a
+   * header that renders exactly as before. That was the bug: the panel drew
+   * the slot, the live region announced the new position, the screen did not
+   * move, and storage kept an order it did not show, waiting to spring on the
+   * next unpin.
+   *
+   * Both slices go in one {@link updateSlices} call. Two calls would each be
+   * honest on their own and leave a window — one render, one debounced save —
+   * in which the table has the new pinning and the old order, which is the
+   * self-contradicting layout this exists to prevent.
+   *
+   * @param draggedId - The column being moved.
+   * @param targetId - The column it was dropped on.
+   * @param side - Which edge of the target it was dropped on.
+   */
+  const reorderColumn = useCallback(
+    (draggedId: string, targetId: string, side: DropSide) => {
+      /*
+       * The order is a flat list, so a move across a group or a pinning
+       * boundary would either be ignored or tear a group's header apart.
+       * Refusing it is the honest outcome — and both drag surfaces ask
+       * `dropRegionOf` the same question before they draw a slot, so nothing
+       * that reaches here should ever be refused.
+       */
+      const dragged = table.getColumn(draggedId)
+      const target = table.getColumn(targetId)
+      if (!dragged || !target) return
+      if (dropRegionOf(dragged) !== dropRegionOf(target)) return
+
+      /*
+       * Same region, so the target is pinned exactly as the dragged column is
+       * — this is which array, if any, also has to move.
+       */
+      const pinnedSide = dragged.getIsPinned()
+
+      updateSlices([
+        sliceChange("columnOrder", (current) => {
+          /*
+           * When nothing has been reordered yet the order is empty, meaning
+           * "natural". The fallback must be the order the columns are RENDERED
+           * in — `getAllLeafColumns()` groups pinned columns first, so using it
+           * here scrambles every column on the very first drag.
+           */
+          const order = current.length
+            ? current
+            : renderedLeafColumns(table).map((column) => column.id)
+          return moveColumn(order, draggedId, targetId, side)
+        }),
+        /*
+         * Written even for a pinned move, where it changes nothing on screen:
+         * the pinned columns are not rendered from it. It is what the move
+         * means once the column is unpinned again, and leaving it behind is
+         * the same silent disagreement one slice over.
+         */
+        ...(pinnedSide === false
+          ? []
+          : [
+              sliceChange("columnPinning", (current) =>
+                pinnedSide === "start"
+                  ? { ...current, start: moveColumn(current.start, draggedId, targetId, side) }
+                  : { ...current, end: moveColumn(current.end, draggedId, targetId, side) },
+              ),
+            ]),
+      ])
+    },
+    [table, updateSlices],
+  )
+
   /*
    * In client mode the total is whatever survived filtering, which only the
    * table knows; in server mode it is `rowCount` and the table never sees the
@@ -1166,6 +1244,7 @@ export function useDataTable<TData extends RowData>({
     id,
     flags,
     bounds,
+    reorderColumn,
     resetLayout,
     isCustomised,
     expanded,

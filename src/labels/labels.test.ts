@@ -149,6 +149,7 @@ describe("Uzbek orthography", () => {
     uzLabels.filterTitle("Summa"),
     uzLabels.reorderPosition("Summa", 1, 5),
     uzLabels.columnGroup("Hujjat"),
+    uzLabels.tableHeight(420),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -179,6 +180,7 @@ describe("Uzbek orthography", () => {
       "range",
       "reorderPosition",
       "searchResults",
+      "tableHeight",
     ])
   })
 })

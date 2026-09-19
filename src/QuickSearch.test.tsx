@@ -40,6 +40,20 @@ function Table({ filtering, toolbar = true }: { filtering?: boolean; toolbar?: b
   )
 }
 
+/**
+ * The search box's own live region.
+ *
+ * Scoped to `.dt-search-box` rather than found by role: a table has more than one
+ * polite region — the height grip announces what it resized to, the Columns
+ * tab where a held column landed — so an unscoped `getByRole("status")` is
+ * ambiguous the moment another one is on screen.
+ */
+function searchStatus(): HTMLElement {
+  const status = document.querySelector<HTMLElement>(".dt-search-box [role='status']")
+  if (!status) throw new Error("the search box rendered no live region")
+  return status
+}
+
 afterEach(() => vi.useRealTimers())
 
 describe("quick search box", () => {
@@ -54,11 +68,11 @@ describe("quick search box", () => {
     // Before the debounce settles, nothing is announced yet — in particular
     // not the unfiltered total, which is what `table.getRowModel()` still
     // holds at this instant because `globalFilter` itself is debounced.
-    expect(screen.getByRole("status")).toHaveTextContent("")
+    expect(searchStatus()).toHaveTextContent("")
 
     act(() => vi.advanceTimersByTime(300))
     expect(screen.queryByText("Agro Ltd")).not.toBeInTheDocument()
-    const status = screen.getByRole("status")
+    const status = searchStatus()
     expect(status).toHaveTextContent("1 matching rows")
     expect(status).toHaveAttribute("aria-live", "polite")
   })
@@ -86,7 +100,7 @@ describe("quick search box", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search rows" }), { target: { value: "match" } })
     act(() => vi.advanceTimersByTime(300))
 
-    expect(screen.getByRole("status")).toHaveTextContent("12 matching rows")
+    expect(searchStatus()).toHaveTextContent("12 matching rows")
   })
 
   it("does not change its announcement when a matching row's children are expanded", () => {
@@ -128,7 +142,7 @@ describe("quick search box", () => {
 
     fireEvent.change(screen.getByRole("searchbox", { name: "Search rows" }), { target: { value: "alpha" } })
     act(() => vi.advanceTimersByTime(300))
-    const status = screen.getByRole("status")
+    const status = searchStatus()
     expect(status).toHaveTextContent("1 matching rows")
 
     fireEvent.click(screen.getByRole("button", { name: /expand row/i }))
@@ -249,7 +263,7 @@ describe("quick search box", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search rows" }), { target: { value: "temir" } })
     act(() => vi.advanceTimersByTime(300))
 
-    const status = screen.getByRole("status")
+    const status = searchStatus()
     expect(status).not.toHaveTextContent("100")
     expect(status).toHaveTextContent("Searching")
 
@@ -286,7 +300,7 @@ describe("quick search box", () => {
     act(() => vi.advanceTimersByTime(300))
     // The host answers with the page and count for that search.
     rerender(<Server rows={[data[1]!]} rowCount={60} />)
-    const status = screen.getByRole("status")
+    const status = searchStatus()
     expect(status).toHaveTextContent("60 matching rows")
 
     fireEvent.click(screen.getByRole("button", { name: "Next page" }))
@@ -314,7 +328,7 @@ describe("quick search box", () => {
     }
     const { rerender } = render(<Server rows={data} rowCount={2} />)
     const box = screen.getByRole("searchbox", { name: "Search rows" })
-    const status = screen.getByRole("status")
+    const status = searchStatus()
 
     fireEvent.change(box, { target: { value: "temir" } })
     act(() => vi.advanceTimersByTime(300))

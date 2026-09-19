@@ -41,6 +41,10 @@ export const uzLabels: DataTableLabels = {
     "Probel — olish, strelkalar — koʻchirish, probel — qoʻyish, Escape — bekor qilish",
   reorderPosition: (column, position, total) => `${column}: ${total} tadan ${position}-oʻrin`,
   resizeColumn: "ustun kengligini oʻzgartirish",
+  resizeTable: "Jadval balandligini oʻzgartirish",
+  resizeTableHint:
+    "Balandlikni oʻzgartirish uchun yuqoriga va pastga strelkalar, Shift bilan katta qadam",
+  tableHeight: (pixels) => `Jadval balandligi ${pixels} piksel`,
   expandRow: "Qatorni ochish",
   collapseRow: "Qatorni yopish",
   columnActions: "Ustun amallari",

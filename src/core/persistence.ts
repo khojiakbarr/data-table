@@ -171,5 +171,21 @@ export function pruneLayout(
     pruned.pageSize = stored.pageSize
   }
 
+  /*
+   * The table height the grip left behind. Only sanity is checked here — a
+   * finite, positive number — and not the minimum, which depends on the
+   * table's row height and so is not knowable from a layout alone;
+   * `clampTableHeight` applies that where the height is used. An entry that
+   * fails this check is dropped rather than repaired, which puts the `height`
+   * prop back in charge instead of rendering `height: NaN` on the root.
+   *
+   * `height` is an ADDITIVE key: `FORMAT_VERSION` deliberately does not move
+   * for it, because a bump discards every stored layout — every user's column
+   * widths, order and pinning — to gain a slice they have never set.
+   */
+  if (typeof stored.height === "number" && Number.isFinite(stored.height) && stored.height > 0) {
+    pruned.height = stored.height
+  }
+
   return pruned
 }

@@ -1,5 +1,5 @@
 import { createColumnHelper } from "@tanstack/react-table"
-import { act, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DataTable } from "./components/DataTable"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
@@ -95,14 +95,24 @@ class ResizeObserverStub {
   }
 }
 
-function Table({ count, virtualize = true }: { count: number; virtualize?: boolean }) {
+function Table({
+  count,
+  virtualize = true,
+  height,
+}: {
+  count: number
+  virtualize?: boolean
+  height?: number
+}) {
   const instance = useDataTable<Row>({
     id: "bounds",
     columns,
     data: rows(count),
     getRowId: (r) => r.id,
   })
-  return <DataTable instance={instance} virtualize={virtualize} />
+  return (
+    <DataTable instance={instance} virtualize={virtualize} {...(height === undefined ? {} : { height })} />
+  )
 }
 
 const bounded = (container: HTMLElement) =>
@@ -178,6 +188,36 @@ describe("a viewport nobody gave a height", () => {
     const { container } = render(<Table count={1000} />)
     expect(bounded(container)).toBe(false)
     expect(warn).not.toHaveBeenCalled()
+  })
+
+  it("leaves a table the height prop already bounds alone", () => {
+    // The readings say "nothing scrolls", but a height was given: the rescue
+    // is for a table nobody bounded, and clipping this one to 70vh would
+    // override the host's own layout.
+    box = stubScrollBox({ client: 40_000, scroll: 40_000 })
+    const { container } = render(<Table count={1000} height={600} />)
+    expect(bounded(container)).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
+  it("gives up the fallback bound once the grip has given the table a height", () => {
+    /*
+     * The misfire the grip could cause. This table really was unbounded, so
+     * the rescue latched — and the latch never clears. Dragging the grip then
+     * makes the table short, which is a height like any other: leaving
+     * `--dt-viewport-max-height` on top of it would clip the viewport to 70vh
+     * while the root stood at whatever the user dragged, and the rows would
+     * stop short of the bottom edge.
+     */
+    box = stubScrollBox({ client: 40_000, scroll: 40_000 })
+    const { container } = render(<Table count={1000} />)
+    expect(bounded(container)).toBe(true)
+
+    fireEvent.keyDown(screen.getByRole("button", { name: /Resize table height/ }), {
+      key: "ArrowDown",
+    })
+    expect(container.querySelector<HTMLElement>(".dt-root")?.style.height).not.toBe("")
+    expect(bounded(container)).toBe(false)
   })
 
   it("notices one revealed later, which gets no render of its own", () => {

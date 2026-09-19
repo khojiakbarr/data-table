@@ -448,6 +448,73 @@
   user-select: none;
 }
 
+/* ---------- the height grip ---------- *
+ * A handle along the bottom edge of the whole table, dragged (or stepped with
+ * the arrows) to change its height. Absolutely positioned rather than a flex
+ * child: `.dt-root` is a row of the table and the side bar, and a third child
+ * in that row would take WIDTH from them.
+ */
+
+.dt-grip {
+  position: absolute;
+  inset-inline: 0;
+  /* Straddles the border so the whole edge is grabbable from either side. */
+  bottom: -4px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: row-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * The visible bar: a short pill centred on the edge.
+ *
+ * --dt-muted-fg at full opacity, and not --dt-resize-handle: this pill is the
+ * only thing that says the edge is draggable at all, so WCAG 1.4.11 wants 3:1
+ * against the surface behind it, and --dt-muted-fg is the token the palette
+ * already guarantees that for in both themes (themes.test.ts, "base palette").
+ * Dimming it with an opacity would push it straight back under that floor —
+ * the same trap noted on `.dt-drag-handle`. The hover and focus state moves to
+ * the accent the column handle uses, so the two read as one family.
+ */
+.dt-grip::after {
+  content: "";
+  width: 40px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--dt-muted-fg);
+  /* `transform` only — a width transition would relayout the table's bottom
+     edge on every frame of the hover. */
+  transition: transform 120ms ease;
+  transform: scaleX(0.6);
+}
+
+.dt-grip:hover::after,
+.dt-grip:focus-visible::after {
+  background: var(--dt-resize-handle-active);
+  transform: scaleX(1);
+}
+
+/*
+ * A shield over the window for the length of a drag: it keeps the
+ * `row-resize` cursor while the pointer is far from the 10px handle and stops
+ * the drag from selecting text across the page. `.dt-is-resizing` does the
+ * same job for a column, on the root — which cannot work here, because a
+ * height drag takes the pointer off the table entirely.
+ */
+.dt-grip-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  cursor: row-resize;
+  user-select: none;
+}
+
 /* ---------- filler column ---------- *
  * Columns are never stretched to fill the container; whatever is left over
  * goes here, between the scrolling columns and the end-pinned ones. It has no
@@ -1078,7 +1145,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dt-root * {
+  /*
+   * Pseudo-elements listed too: `.dt-root *` matches ELEMENTS, and the two
+   * resize affordances — the column handle's line and the height grip's pill —
+   * do all of their moving in an `::after`, so a selector without these left
+   * both of them animating for a user who asked for no animation. The result
+   * still lands; only the movement to it goes.
+   */
+  .dt-root *,
+  .dt-root *::before,
+  .dt-root *::after {
     transition-duration: 0.01ms !important;
   }
 }

@@ -31,6 +31,14 @@ export interface ChromeStrings {
     fonts: Record<FontChoiceKey, string>
     colors: Record<ThemeColorKey, string>
     sizes: Record<ThemeSizeKey, string>
+    /**
+     * The table-height field.
+     *
+     * Not in `sizes`: those keys are theme tokens the playground owns, and the
+     * height is the LIBRARY's own layout slice — the same value the grip on
+     * the table's bottom edge writes.
+     */
+    tableHeight: string
     reset: string
   }
   /** The control that arms the injected failure, so the error banner is reachable. */
@@ -92,6 +100,7 @@ const en: ChromeStrings = {
       radius: "Corner radius",
       fontSize: "Font size",
     },
+    tableHeight: "Table height",
     reset: "Reset theme",
   },
   failNext: "Fail the next request",
@@ -155,6 +164,7 @@ const ru: ChromeStrings = {
       radius: "Скругление углов",
       fontSize: "Размер шрифта",
     },
+    tableHeight: "Высота таблицы",
     reset: "Сбросить тему",
   },
   failNext: "Сымитировать ошибку в следующем запросе",
@@ -218,6 +228,7 @@ const uz: ChromeStrings = {
       radius: "Burchak radiusi",
       fontSize: "Shrift oʻlchami",
     },
+    tableHeight: "Jadval balandligi",
     reset: "Mavzuni tiklash",
   },
   failNext: "Keyingi soʻrovni xatoga uchratish",

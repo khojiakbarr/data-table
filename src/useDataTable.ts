@@ -47,6 +47,7 @@ import type { TableQuery, TableSearch } from "./core/query"
 import { moveColumn, type DropSide } from "./core/reorder"
 import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
+import { clampTableHeight, minTableHeight, tableHeightStep } from "./core/tableHeight"
 import { apply, layoutSliceEqual, sliceChange, useArrangement } from "./core/useArrangement"
 import { useDebouncedValue } from "./core/useDebouncedValue"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
@@ -355,6 +356,7 @@ export function useDataTable<TData extends RowData>({
       reordering: features?.reordering ?? true,
       pinning: features?.pinning ?? true,
       hiding: features?.hiding ?? true,
+      heightGrip: features?.heightGrip ?? true,
     }),
     [features],
   )
@@ -475,6 +477,35 @@ export function useDataTable<TData extends RowData>({
     resetArrangement()
     resetPage()
   }, [resetArrangement, resetPage])
+
+  /*
+   * The table's own height, as the grip (or a host control) last left it.
+   *
+   * It is a layout slice like a column width: it persists, it makes the table
+   * "customised", and `resetLayout` drops it — which is what puts the `height`
+   * prop back in charge, since `undefined` here means "nobody has overridden
+   * it". Clamped on the way in, so a stored or typed value below the minimum
+   * cannot render a table with no rows in it.
+   */
+  const setTableHeight = useCallback(
+    (pixels: number) => updateSlice("height", clampTableHeight(pixels, rowHeight)),
+    [updateSlice, rowHeight],
+  )
+  const tableHeight = useMemo(
+    () => ({
+      /** Whether the grip is offered at all. */
+      enabled: flags.heightGrip,
+      /** The override in pixels, or undefined while the `height` prop rules. */
+      value: layout.height === undefined ? undefined : clampTableHeight(layout.height, rowHeight),
+      /** The shortest the table may be: chrome plus a row or two. */
+      min: minTableHeight(rowHeight),
+      /** One arrow press, in pixels; Shift holds the coarse step. */
+      step: tableHeightStep(rowHeight, false),
+      coarseStep: tableHeightStep(rowHeight, true),
+      set: setTableHeight,
+    }),
+    [flags.heightGrip, layout.height, rowHeight, setTableHeight],
+  )
 
   /*
    * Filters and search change the result set exactly as sorting does, so both
@@ -1256,6 +1287,7 @@ export function useDataTable<TData extends RowData>({
     query,
     pagination: paginationApi,
     filtering: filteringApi,
+    tableHeight,
     rowHeight,
     getRowHeight,
     heightVersion,

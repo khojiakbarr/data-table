@@ -54,6 +54,7 @@ const ARRANGEMENT_SLICES = Object.keys({
   columnSizing: true,
   sorting: true,
   pageSize: true,
+  height: true,
 } satisfies Record<ArrangementSlice, true>) as ArrangementSlice[]
 
 /** The layout plus what the table knows about where it came from. */

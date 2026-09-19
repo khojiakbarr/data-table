@@ -57,6 +57,10 @@ export const ruLabels: DataTableLabels = {
     "Пробел — взять, стрелки — переместить, пробел — отпустить, Escape — отменить",
   reorderPosition: (column, position, total) => `${column}: позиция ${position} из ${total}`,
   resizeColumn: "изменить ширину столбца",
+  resizeTable: "Изменить высоту таблицы",
+  resizeTableHint: "Стрелки вверх и вниз меняют высоту, Shift — крупный шаг",
+  tableHeight: (pixels) =>
+    `Высота таблицы ${pixels} ${plural(pixels, "пиксель", "пикселя", "пикселей")}`,
   expandRow: "Развернуть строку",
   collapseRow: "Свернуть строку",
   columnActions: "Действия со столбцом",

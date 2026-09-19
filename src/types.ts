@@ -25,6 +25,14 @@ export interface TableLayout {
   search: string
   /** Rows per page the user chose. Absent until they change it. */
   pageSize?: number
+  /**
+   * How tall the whole table is, in pixels, after the user dragged the grip.
+   *
+   * Absent until they do, which is what leaves the `height` prop in charge:
+   * the prop is the starting height, this overrides it, and `resetLayout`
+   * drops it so the prop is back.
+   */
+  height?: number
 }
 
 /**
@@ -82,6 +90,14 @@ export interface DataTableFeatureFlags {
   pinning?: boolean
   /** Hide columns. Default true. */
   hiding?: boolean
+  /**
+   * Drag the grip on the bottom edge to change the table's height. Default true.
+   *
+   * Turn it off in a host that owns the height itself — a table sized by a
+   * grid row or a pane splitter — where a grip would let the user set a height
+   * the surrounding layout immediately overrides.
+   */
+  heightGrip?: boolean
 }
 
 /** Text shown in the built-in shell, for translation. */
@@ -116,6 +132,23 @@ export interface DataTableLabels {
   /** Where a held column now sits, announced politely as it moves. */
   reorderPosition: (column: string, position: number, total: number) => string
   resizeColumn: string
+  /**
+   * The height grip, named for a screen reader.
+   *
+   * The grip is a bare handle with nothing written on it, so this is the only
+   * name it has.
+   */
+  resizeTable: string
+  /**
+   * How the keyboard moves the grip, spoken on it.
+   *
+   * Same reasoning as {@link DataTableLabels.reorderHint}: dragging is the
+   * only obvious route, so a user who cannot drag has nowhere else to find
+   * the keys in time.
+   */
+  resizeTableHint: string
+  /** The table's height after a keyboard step, announced politely. */
+  tableHeight: (pixels: number) => string
   expandRow: string
   collapseRow: string
   columnActions: string

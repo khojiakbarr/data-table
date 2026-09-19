@@ -27,6 +27,14 @@ import { useReceiptsQuery } from "./useReceiptsQuery"
 
 const LABELS: Record<Language, DataTableLabels> = { en: defaultLabels, ru: ruLabels, uz: uzLabels }
 const storage = localStorageLayout()
+/**
+ * The `height` prop the table starts at.
+ *
+ * Only the starting point: the grip on the bottom edge and the Sizing group's
+ * height field both write an override into the saved layout, which is what the
+ * table then renders at until "Reset" clears it.
+ */
+const START_HEIGHT = 620
 const EMPTY: ServerReceipt[] = []
 
 /**
@@ -92,7 +100,22 @@ export function Playground() {
         <p className="pg-lede">{chrome.lede}</p>
         <LanguageSwitcher value={language} onChange={setLanguage} chrome={chrome} />
         <FeatureControls value={features} onChange={setFeatures} chrome={chrome} />
-        <ThemeControls value={theme} resolved={themeValues} onChange={setTheme} chrome={chrome} />
+        <ThemeControls
+          value={theme}
+          resolved={themeValues}
+          onChange={setTheme}
+          /*
+           * The field and the table's own grip are one control in two places:
+           * both read `instance.tableHeight` and both write through its
+           * setter, so neither can show a height the other has moved past.
+           * Until the first change there is no override, and the field shows
+           * the `height` prop below — the value actually on screen.
+           */
+          tableHeight={table.tableHeight.value ?? START_HEIGHT}
+          minTableHeight={table.tableHeight.min}
+          onTableHeightChange={table.tableHeight.set}
+          chrome={chrome}
+        />
         <button
           type="button"
           className="pg-reset"
@@ -115,7 +138,7 @@ export function Playground() {
         <DataTable
           instance={table}
           className={THEME_CLASS}
-          height={620}
+          height={START_HEIGHT}
           striped={features.striped}
           toolbar={features.toolbar}
           footer={features.footer}

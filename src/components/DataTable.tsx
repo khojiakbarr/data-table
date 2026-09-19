@@ -16,6 +16,7 @@ import { QuickSearch } from "./QuickSearch"
 import { canFilterColumn } from "./FilterEditor"
 import { FilterPopover } from "./FilterPopover"
 import { HeaderCell } from "./HeaderCell"
+import { HeightGrip } from "./HeightGrip"
 import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
 import { SkeletonRows, TableStatus } from "./TableStatus"
@@ -39,6 +40,9 @@ export const defaultLabels: DataTableLabels = {
   reorderHint: "Press Space to pick up, arrow keys to move, Space to drop, Escape to cancel",
   reorderPosition: (column, position, total) => `${column}: position ${position} of ${total}`,
   resizeColumn: "resize column",
+  resizeTable: "Resize table height",
+  resizeTableHint: "Press the up and down arrows to resize, Shift for larger steps",
+  tableHeight: (pixels) => `Table height ${pixels} pixels`,
   expandRow: "Expand row",
   collapseRow: "Collapse row",
   columnActions: "Column actions",
@@ -144,6 +148,12 @@ export interface DataTableProps<TData extends RowData> {
    * fit its rows and every row renders. A table that ends up unbounded falls
    * back to `--dt-viewport-max-height` and warns in development, but the
    * height belongs here, where the layout is decided.
+   *
+   * This is the STARTING height. The grip on the bottom edge overrides it and
+   * the override is part of the saved layout, so it survives a reload the way
+   * a column width does; `instance.resetLayout()` drops it and this prop is
+   * back in force. A host that owns the height itself turns the grip off with
+   * `features: { heightGrip: false }`.
    */
   height?: number | string
   /**
@@ -252,6 +262,7 @@ export function DataTable<TData extends RowData>({
   const focusNonceRef = useRef(0)
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const [filterAt, setFilterAt] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLTableSectionElement>(null)
@@ -396,10 +407,29 @@ export function DataTable<TData extends RowData>({
    * already bounded — by the prop, by an ancestor, by anything — never enters
    * it. See {@link useUnboundedViewport}.
    */
+  /*
+   * The height actually in force. The `height` prop is the starting height and
+   * the grip overrides it; `resetLayout` drops the override, which puts the
+   * prop back. Only one of the two is ever on the root, so the two can never
+   * be half-applied.
+   */
+  const tableHeight = instance.tableHeight
+  const resolvedHeight = tableHeight.value ?? height
   const unbounded = useUnboundedViewport({
     viewportRef,
     rows: rows.length,
-    enabled: virtualize && !showSkeleton,
+    /*
+     * A table with a height is bounded, however it got one — so a grip drag
+     * takes it out of the rescue's scope the same way the prop does. Without
+     * this the check would go on watching a table that has just been given a
+     * height, and a table that had ALREADY latched (rendered tall, with no
+     * height at all) would keep `--dt-viewport-max-height` clamping its
+     * viewport to 70vh while the root stood at whatever the user dragged: the
+     * rows would stop short of the bottom edge and the gap would grow with
+     * every further drag. The latch never clears, so the attribute below is
+     * gated on the same condition rather than on the latch alone.
+     */
+    enabled: virtualize && !showSkeleton && resolvedHeight === undefined,
     id: instance.id,
   })
   /*
@@ -409,7 +439,7 @@ export function DataTable<TData extends RowData>({
    * per row. Publishing the instance's value here keeps the two in step.
    */
   const rootStyle = {
-    ...(height === undefined ? undefined : { height }),
+    ...(resolvedHeight === undefined ? undefined : { height: resolvedHeight }),
     "--dt-row-height": `${instance.rowHeight}px`,
   } as CSSProperties
 
@@ -443,6 +473,7 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div
+      ref={rootRef}
       className={classNames("dt-root", className, isResizing && "dt-is-resizing")}
       style={rootStyle}
       data-dt-theme={theme}
@@ -490,7 +521,7 @@ export function DataTable<TData extends RowData>({
 
         <div
           className={classNames("dt-viewport", showProgress && "dt-loading")}
-          data-dt-unbounded={unbounded ? "" : undefined}
+          data-dt-unbounded={unbounded && resolvedHeight === undefined ? "" : undefined}
           ref={viewportRef}
           /*
            * Not part of the Tab order — `-1` keeps it out of a sighted
@@ -676,6 +707,18 @@ export function DataTable<TData extends RowData>({
           onClose={closePanel}
           focusColumnId={panelOpen.focusColumnId}
           focusNonce={panelOpen.focusNonce}
+        />
+      ) : null}
+
+      {tableHeight.enabled ? (
+        <HeightGrip
+          rootRef={rootRef}
+          value={tableHeight.value}
+          rowHeight={instance.rowHeight}
+          step={tableHeight.step}
+          coarseStep={tableHeight.coarseStep}
+          onChange={tableHeight.set}
+          labels={labels}
         />
       ) : null}
 

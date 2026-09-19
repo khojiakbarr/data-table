@@ -1,19 +1,21 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { defaultLabels } from "../components/DataTable"
 import { CHROME } from "./chrome"
 import { Playground } from "./Playground"
 import { THEME_CLASS } from "./playgroundState"
 
 /**
- * A smoke test for the playground page, not a second copy of the library's
- * own suite.
+ * What the playground page itself owns: that every control reaches the real
+ * option or prop behind it, and that the four states a server-backed table can
+ * be in are all reachable from this page.
  *
- * What is worth asserting here is only what the page itself owns: that it
- * mounts and gets rows out of the fake server, that a control really reaches
- * the table rather than only moving its own checkbox, and that the language
- * switcher moves the page chrome and the table together. Whether sorting
- * sorts is `useDataTable`'s test's business.
+ * Deliberately not a second copy of the library's suite — whether sorting
+ * sorts is `useDataTable`'s test's business. But "it renders" is not a test of
+ * wiring either: each assertion below is written so that deleting the one line
+ * of `Playground.tsx` it covers turns it red, which a check for the page's
+ * existence never does.
  */
 
 /** The fake server's own delay is 300ms; give a request room without being flaky. */
@@ -22,6 +24,11 @@ const SERVER_TIMEOUT = 5_000
 /** Waits for the first page of rows to land, which is when the skeleton gives way. */
 async function waitForRows(): Promise<void> {
   await screen.findByText("KR-10000", {}, { timeout: SERVER_TIMEOUT })
+}
+
+/** The playground's `<style>` block, which is empty until a token is edited. */
+function themeRule(): string {
+  return document.querySelector(".pg-main style")?.textContent ?? ""
 }
 
 beforeEach(() => {
@@ -42,47 +49,149 @@ describe("playground", () => {
     expect(screen.getByText("KR-10001")).toBeInTheDocument()
   })
 
-  it("lets a feature toggle change the table", async () => {
+  it("sends the layout toggles through to <DataTable>'s own props", async () => {
     const user = userEvent.setup()
     render(<Playground />)
     await waitForRows()
 
-    const footer = document.querySelector(".dt-footer")
-    expect(footer).not.toBeNull()
+    // Three separate props, each with its own mark in the DOM, so a toggle
+    // that stops at its own checkbox cannot pass here.
+    expect(document.querySelector(".dt-footer")).not.toBeNull()
+    expect(document.querySelector(".dt-table")).toHaveClass("dt-striped")
+    // `stickyHeader` is what gives the filler header cell an offset to stick at.
+    expect(document.querySelector<HTMLElement>(".dt-th-filler")?.style.top).toBe("0px")
 
     const toggles = screen.getByLabelText(CHROME.en.features.groupLabel)
     await user.click(within(toggles).getByLabelText(CHROME.en.features.labels.footer))
+    await user.click(within(toggles).getByLabelText(CHROME.en.features.labels.striped))
+    await user.click(within(toggles).getByLabelText(CHROME.en.features.labels.stickyHeader))
 
-    // The prop is gone, so the footer is gone — the toggle reached `<DataTable>`
-    // rather than only flipping its own checkbox.
     await waitFor(() => expect(document.querySelector(".dt-footer")).toBeNull())
+    expect(document.querySelector(".dt-table")).not.toHaveClass("dt-striped")
+    expect(document.querySelector<HTMLElement>(".dt-th-filler")?.style.top).toBe("")
   })
 
-  it("lets a theme control change a token", async () => {
+  it("sends the row-height slider through the `rowHeight` option", async () => {
     render(<Playground />)
     await waitForRows()
 
-    const themePanel = screen.getByLabelText(CHROME.en.theme.groupLabel)
-    // By role, not by label: the control's `<label>` also wraps the `<output>`
-    // showing the current value, and that is a labelable element too, so
-    // `getByLabelText` can hand back the readout instead of the slider.
-    const radius = within(themePanel).getByRole("slider", {
-      name: new RegExp(CHROME.en.theme.sizes.radius),
-    })
-    expect(document.querySelector("style")?.textContent).toContain("--dt-radius: 8px")
+    // Row height is the one size control that is NOT a CSS override: the table
+    // writes `--dt-row-height` inline on its own root from the option, so a
+    // rule in the playground's `<style>` would lose to it. Reading the root's
+    // own inline value is the only place the option's arrival shows.
+    const root = document.querySelector<HTMLElement>(".dt-root")
+    expect(root?.style.getPropertyValue("--dt-row-height")).toBe("40px")
 
+    const themePanel = screen.getByLabelText(CHROME.en.theme.groupLabel)
+    const rowHeight = within(themePanel).getByRole("slider", {
+      name: new RegExp(CHROME.en.theme.sizes.rowHeight),
+    })
     // `fireEvent.change` rather than a keypress: jsdom gives a range input no
     // native arrow-key behaviour, so `user.keyboard` would move the focus ring
     // and nothing else. Dragging a slider is not something jsdom can model.
+    fireEvent.change(rowHeight, { target: { value: "64" } })
+
+    await waitFor(() => expect(root?.style.getPropertyValue("--dt-row-height")).toBe("64px"))
+    expect(themeRule()).not.toContain("--dt-row-height")
+  })
+
+  it("overrides no theme token until one is edited, then only that one", async () => {
+    render(<Playground />)
+    await waitForRows()
+
+    // The page must leave the cascade alone while nothing is edited, or the
+    // Light/Dark/System control has nothing left to move — an `!important`
+    // copy of the light palette beats the stylesheet's own dark rules.
+    expect(themeRule()).toBe("")
+
+    const themePanel = screen.getByLabelText(CHROME.en.theme.groupLabel)
+    const radius = within(themePanel).getByRole("slider", {
+      name: new RegExp(CHROME.en.theme.sizes.radius),
+    })
     fireEvent.change(radius, { target: { value: "20" } })
 
-    // The injected override is what the table actually reads — see
-    // `themeStyleRule` for why it has to match `.dt-root` directly.
     await waitFor(() => {
-      const rule = document.querySelector("style")?.textContent ?? ""
-      expect(rule).toContain(`.${THEME_CLASS}.dt-root`)
-      expect(rule).toContain("--dt-radius: 20px")
+      // Doubled class, because every token is declared on `.dt-root` itself;
+      // `!important`, because the dark rules match at the same specificity.
+      expect(themeRule()).toContain(`.${THEME_CLASS}.dt-root`)
+      expect(themeRule()).toContain("--dt-radius: 20px !important;")
     })
+    // Still nothing else: the colours stay the base theme's to decide.
+    expect(themeRule()).not.toContain("--dt-bg")
+    expect(themeRule()).not.toContain("--dt-fg")
+  })
+
+  it("fills a values list from the server, through `filtering.loadValues`", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    await user.click(screen.getByRole("button", { name: /status: column actions/i }))
+    await user.click(screen.getByText(defaultLabels.filter))
+
+    // These are the raw stored values, which only the server knows: the cells
+    // render them translated ("In process"), and one page of 50 rows could not
+    // produce the 25 000 count beside each. A bare `filtering: true` drops
+    // `loadValues` and the editor falls back to "no values to choose from".
+    expect(await screen.findByText("in_process", {}, { timeout: SERVER_TIMEOUT })).toBeInTheDocument()
+    expect(screen.queryByText(defaultLabels.noValues)).not.toBeInTheDocument()
+  })
+
+  it("reaches the error state and comes back from it through Retry", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // The control only arms the failure; something has to ask the server for
+    // the next request to be the one that fails.
+    await user.click(screen.getByLabelText(CHROME.en.failNext))
+    await user.click(screen.getByRole("button", { name: defaultLabels.nextPage }))
+
+    await waitFor(
+      () => expect(screen.getByText(new RegExp(defaultLabels.loadFailed))).toBeInTheDocument(),
+      { timeout: SERVER_TIMEOUT },
+    )
+
+    await user.click(screen.getByRole("button", { name: defaultLabels.retry }))
+
+    // Page two's first row, so this cannot pass on the rows left over from the
+    // failed request's page.
+    expect(await screen.findByText("KR-10050", {}, { timeout: SERVER_TIMEOUT })).toBeInTheDocument()
+    expect(screen.queryByText(new RegExp(defaultLabels.loadFailed))).not.toBeInTheDocument()
+  })
+
+  it("reaches the filtered-empty state when a search matches nothing", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    await user.type(screen.getByRole("searchbox"), "zzzzzz")
+
+    // Not `labels.empty`: the table knows a filter is what emptied it, and
+    // says so with a way out rather than "No rows".
+    await waitFor(() => expect(screen.getByText(defaultLabels.noMatches)).toBeInTheDocument(), {
+      timeout: SERVER_TIMEOUT,
+    })
+  })
+
+  it("warns on the Pagination toggle that server mode needs paging", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // Unticking this drops the table into the state `useDataTable` warns about
+    // in the console — one page of 50 out of 100 000, and no footer to reach
+    // the rest. The hint is the only thing on screen that says so.
+    for (const language of ["en", "ru", "uz"] as const) {
+      if (language !== "en") {
+        await user.click(screen.getByLabelText(language === "ru" ? "Русский" : "Oʻzbekcha"))
+      }
+      const chrome = CHROME[language]
+      const hint = await screen.findByText(chrome.features.hints.pagination)
+      const toggle = hint.closest("label")
+      expect(toggle?.textContent).toContain(chrome.features.labels.pagination)
+      expect(toggle?.querySelector('input[type="checkbox"]')).not.toBeNull()
+    }
   })
 
   it("switches the table labels and the page chrome together", async () => {
@@ -106,5 +215,76 @@ describe("playground", () => {
     await user.click(screen.getByLabelText("Oʻzbekcha"))
     await waitFor(() => expect(screen.getByText("Kontragent")).toBeInTheDocument())
     expect(screen.getByText(CHROME.uz.resetAll)).toBeInTheDocument()
+  })
+})
+
+/**
+ * The virtualiser is the one prop with nothing to show for itself until the
+ * viewport has a size: jsdom lays nothing out, so an unmeasured table renders
+ * its whole page either way (`useRowVirtualizer`'s `unmeasuredFloor`, which is
+ * deliberate — a server render must not hand out a page with rows missing).
+ * Stubbing the scroll box's height is what makes the windowing observable, so
+ * it is scoped to this one suite rather than left on for the rest.
+ */
+describe("playground virtualisation", () => {
+  const VIEWPORT_PX = 300
+
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+
+  let restoreSizes: () => void
+
+  beforeEach(() => {
+    localStorage.clear()
+    ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = ResizeObserverStub
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight")
+    const width = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth")
+    const sizeOf = (element: HTMLElement, size: number): number =>
+      element.classList.contains("dt-viewport") ? size : 0
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(): number {
+        return sizeOf(this as HTMLElement, VIEWPORT_PX)
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get(): number {
+        return sizeOf(this as HTMLElement, 800)
+      },
+    })
+    restoreSizes = () => {
+      // Deleting matters: jsdom may not define these at all, and a stub left
+      // on the prototype would size every later suite's elements.
+      if (height) Object.defineProperty(HTMLElement.prototype, "offsetHeight", height)
+      else delete (HTMLElement.prototype as { offsetHeight?: unknown }).offsetHeight
+      if (width) Object.defineProperty(HTMLElement.prototype, "offsetWidth", width)
+      else delete (HTMLElement.prototype as { offsetWidth?: unknown }).offsetWidth
+    }
+  })
+
+  afterEach(() => restoreSizes())
+
+  it("windows the rows only while the Virtualize toggle is on", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    const bodyRows = (): number => document.querySelectorAll("tbody tr").length
+    const pageSize = 50
+
+    // A 300px window over 40px rows: a fraction of the page, plus overscan and
+    // the two spacer rows that hold the scroll height open.
+    expect(bodyRows()).toBeLessThan(pageSize)
+
+    const toggles = screen.getByLabelText(CHROME.en.features.groupLabel)
+    await user.click(within(toggles).getByLabelText(CHROME.en.features.labels.virtualize))
+
+    // Off, every row of the page is in the DOM — which is the cost the toggle
+    // exists to make visible.
+    await waitFor(() => expect(bodyRows()).toBe(pageSize))
   })
 })

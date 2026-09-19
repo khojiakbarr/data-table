@@ -48,6 +48,11 @@ releases are summarised in one line rather than reconstructed.
   `getModel`, `setModel`, `loadValues`. Plus `columnLabel`,
   `useClampedPlacement` and the editors' draft helpers, for a shell of your own.
 - A distinct empty state for "a filter excluded every row", with a way out of it.
+- `ruLabels` and `uzLabels`: complete Russian and Uzbek translations of
+  `DataTableLabels`, filtering keys included. Each is typed as the whole
+  interface rather than a `Partial`, so `labels={ruLabels}` needs no
+  `defaultLabels` spread under it. See the labels recipe under **Headless
+  use** in the README.
 
 ## 0.4.0 and earlier
 

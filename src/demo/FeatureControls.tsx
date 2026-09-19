@@ -35,7 +35,12 @@ const GROUPS: Group[] = [
   },
   {
     legend: "data",
-    toggles: [{ key: "filtering", hint: "filtering" }, { key: "pagination" }],
+    toggles: [
+      { key: "filtering", hint: "filtering" },
+      // Server mode with pagination off is a state `useDataTable` warns about
+      // in the console; without the hint the truncated table reads as a bug.
+      { key: "pagination", hint: "pagination" },
+    ],
   },
   {
     legend: "layout",

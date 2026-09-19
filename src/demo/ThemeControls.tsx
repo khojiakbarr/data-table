@@ -2,10 +2,13 @@ import type { ChangeEvent } from "react"
 import type { ChromeStrings } from "./chrome"
 import {
   DEFAULT_THEME,
+  SYSTEM_FONT_STACK,
   type FontChoiceKey,
   type ThemeColorKey,
+  type ThemeMode,
   type ThemeSizeKey,
   type ThemeTokenState,
+  type ThemeTokenValues,
 } from "./playgroundState"
 
 /** The colour tokens, in the order they read best — surface first, then chrome. */
@@ -31,7 +34,7 @@ interface NumberFieldDef {
 
 const NUMBER_FIELDS: NumberFieldDef[] = [
   { key: "headerHeight", min: 28, max: 64 },
-  // Row height is not a CSS token — see the note on `ThemeTokenState` — but it
+  // Row height is not a CSS token — see the note on `ThemeTokenValues` — but it
   // belongs next to the other size controls, not in a section of its own.
   { key: "rowHeight", min: 28, max: 72 },
   { key: "radius", min: 0, max: 24 },
@@ -40,7 +43,7 @@ const NUMBER_FIELDS: NumberFieldDef[] = [
 
 /** The CSS font stack behind each named choice. The names themselves are translated. */
 const FONT_STACKS: Record<FontChoiceKey, string> = {
-  system: DEFAULT_THEME.fontFamily,
+  system: SYSTEM_FONT_STACK,
   mono: "'IBM Plex Mono', ui-monospace, monospace",
   serif: "Georgia, 'Times New Roman', serif",
   sans: "'Inter', 'Segoe UI', sans-serif",
@@ -49,10 +52,13 @@ const FONT_STACKS: Record<FontChoiceKey, string> = {
 const FONT_KEYS = Object.keys(FONT_STACKS) as FontChoiceKey[]
 
 /** The three values `<DataTable theme>` understands, plus the "follow the OS" case. */
-const THEME_MODES: ThemeTokenState["theme"][] = ["light", "dark", "system"]
+const THEME_MODES: ThemeMode[] = ["light", "dark", "system"]
 
 interface ThemeControlsProps {
+  /** What the user has changed: the base theme, and the tokens they have moved. */
   value: ThemeTokenState
+  /** What every control displays — `value`'s overrides over the base theme's own defaults. */
+  resolved: ThemeTokenValues
   onChange: (next: ThemeTokenState) => void
   chrome: ChromeStrings
 }
@@ -60,25 +66,30 @@ interface ThemeControlsProps {
 /**
  * Every theme control: the light/dark/system switch, one color picker per
  * `--dt-*` color token, one slider per numeric token (plus `rowHeight`, which
- * is not a token — see `ThemeTokenState`), and a font-family choice.
+ * is not a token — see `ThemeTokenValues`), and a font-family choice.
  *
  * Deliberately has no "Export CSS" button — the playground's author decided
  * against one; copying a value out of a color picker is enough for trying a
  * look, and a real integration sets its tokens in a stylesheet, not by
  * scraping a demo page.
  *
- * @param props.value - The whole theme state, as one object.
+ * A control the user has not touched shows the base theme's own value and
+ * writes nothing to the page: only a moved token becomes an override, which is
+ * what leaves the Light/Dark switch free to move everything else.
+ *
+ * @param props.value - The base theme and the overrides, as one object.
+ * @param props.resolved - The values to display, from `resolveThemeValues`.
  * @param props.onChange - Called with a new state object; the old one is never mutated.
  * @param props.chrome - The page copy for the current language.
  *
  * @example
- * <ThemeControls value={theme} onChange={setTheme} chrome={CHROME[language]} />
+ * <ThemeControls value={theme} resolved={values} onChange={setTheme} chrome={CHROME[language]} />
  */
-export function ThemeControls({ value, onChange, chrome }: ThemeControlsProps) {
+export function ThemeControls({ value, resolved, onChange, chrome }: ThemeControlsProps) {
   const setColor = (key: ThemeColorKey) => (event: ChangeEvent<HTMLInputElement>) =>
-    onChange({ ...value, [key]: event.target.value })
+    onChange({ ...value, overrides: { ...value.overrides, [key]: event.target.value } })
   const setNumber = (key: ThemeSizeKey) => (event: ChangeEvent<HTMLInputElement>) =>
-    onChange({ ...value, [key]: Number(event.target.value) })
+    onChange({ ...value, overrides: { ...value.overrides, [key]: Number(event.target.value) } })
 
   return (
     <div className="pg-controls" aria-label={chrome.theme.groupLabel}>
@@ -88,9 +99,7 @@ export function ThemeControls({ value, onChange, chrome }: ThemeControlsProps) {
           <span>{chrome.theme.appearance}</span>
           <select
             value={value.theme}
-            onChange={(event) =>
-              onChange({ ...value, theme: event.target.value as ThemeTokenState["theme"] })
-            }
+            onChange={(event) => onChange({ ...value, theme: event.target.value as ThemeMode })}
           >
             {THEME_MODES.map((mode) => (
               <option key={mode} value={mode}>
@@ -102,8 +111,10 @@ export function ThemeControls({ value, onChange, chrome }: ThemeControlsProps) {
         <label className="pg-field">
           <span>{chrome.theme.fontFamily}</span>
           <select
-            value={value.fontFamily}
-            onChange={(event) => onChange({ ...value, fontFamily: event.target.value })}
+            value={resolved.fontFamily}
+            onChange={(event) =>
+              onChange({ ...value, overrides: { ...value.overrides, fontFamily: event.target.value } })
+            }
           >
             {FONT_KEYS.map((key) => (
               <option key={key} value={FONT_STACKS[key]}>
@@ -119,7 +130,7 @@ export function ThemeControls({ value, onChange, chrome }: ThemeControlsProps) {
         {COLOR_FIELDS.map((key) => (
           <label key={key} className="pg-field pg-field-color">
             <span>{chrome.theme.colors[key]}</span>
-            <input type="color" value={value[key]} onChange={setColor(key)} />
+            <input type="color" value={resolved[key]} onChange={setColor(key)} />
           </label>
         ))}
       </fieldset>
@@ -140,14 +151,14 @@ export function ThemeControls({ value, onChange, chrome }: ThemeControlsProps) {
                 number twice.
               */}
               <span className="pg-readout" aria-hidden="true">
-                {value[field.key]}px
+                {resolved[field.key]}px
               </span>
             </span>
             <input
               type="range"
               min={field.min}
               max={field.max}
-              value={value[field.key]}
+              value={resolved[field.key]}
               onChange={setNumber(field.key)}
             />
           </label>

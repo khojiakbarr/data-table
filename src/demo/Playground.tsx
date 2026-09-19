@@ -15,8 +15,10 @@ import { fetchValues, type ServerReceipt } from "./fakeServer"
 import {
   DEFAULT_FEATURES,
   DEFAULT_THEME,
+  resolveThemeValues,
   THEME_CLASS,
   themeStyleRule,
+  useBaseThemeMode,
   type FeatureState,
   type Language,
   type ThemeTokenState,
@@ -51,6 +53,12 @@ export function Playground() {
   const columns = useMemo(() => buildReceiptColumns(language), [language])
   const chrome = CHROME[language]
 
+  // The controls show, and the table reads, the base theme's own value for
+  // every token the user has not moved — so "System" on a dark OS starts the
+  // pickers at the dark palette rather than at the light one it is not using.
+  const baseMode = useBaseThemeMode(theme.theme)
+  const themeValues = resolveThemeValues(theme, baseMode)
+
   const table = useDataTable({
     id: "playground",
     columns,
@@ -62,7 +70,7 @@ export function Playground() {
     getRowId: (row) => row.id,
     onQueryChange: setQuery,
     storage,
-    rowHeight: theme.rowHeight,
+    rowHeight: themeValues.rowHeight,
     features: {
       sorting: features.sorting,
       resizing: features.resizing,
@@ -84,7 +92,7 @@ export function Playground() {
         <p className="pg-lede">{chrome.lede}</p>
         <LanguageSwitcher value={language} onChange={setLanguage} chrome={chrome} />
         <FeatureControls value={features} onChange={setFeatures} chrome={chrome} />
-        <ThemeControls value={theme} onChange={setTheme} chrome={chrome} />
+        <ThemeControls value={theme} resolved={themeValues} onChange={setTheme} chrome={chrome} />
         <button
           type="button"
           className="pg-reset"

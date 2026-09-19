@@ -784,6 +784,25 @@ search placeholder, the tab names, the clear actions and the no-matches copy.
 Spread `defaultLabels` and override what you need; building the object by hand
 means adding every new key on each minor release.
 
+`ruLabels` and `uzLabels` — Russian and Uzbek translations of the whole label
+set, shipped so those two hosts do not have to translate 100-odd keys by hand.
+Pass one straight through:
+
+```tsx
+import { DataTable, ruLabels, uzLabels } from "@khojiakbarr/data-table"
+
+<DataTable instance={instance} labels={ruLabels} />
+
+// Or keep the translation and change the wording that is yours:
+<DataTable instance={instance} labels={{ ...ruLabels, empty: "Накладных пока нет" }} />
+```
+
+Both are typed as the full `DataTableLabels` rather than a `Partial`, so a key
+added to the interface fails to compile in this package instead of silently
+staying English in yours — which also means spreading `defaultLabels` under
+them is unnecessary. `<DataTable labels>` itself still takes a `Partial`, so
+the spread form above needs no filler for the keys you are not changing.
+
 `<TableStatus loading={…} error={…} onRetry={…} labels={…} />` and `<SkeletonRows
 widths={…} count={…} />` — the loading, error and skeleton states `<DataTable>` renders
 above and in place of its rows (the **States** paragraph under [Server-side

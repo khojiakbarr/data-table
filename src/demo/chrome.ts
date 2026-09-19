@@ -20,7 +20,7 @@ export interface ChromeStrings {
     groupLabel: string
     legends: Record<"interactions" | "data" | "layout", string>
     labels: Record<keyof FeatureState, string>
-    hints: Record<"filtering" | "detailPanel", string>
+    hints: Record<"filtering" | "pagination" | "detailPanel", string>
   }
   theme: {
     groupLabel: string
@@ -61,7 +61,11 @@ const en: ChromeStrings = {
       stickyHeader: "Sticky header",
       detailPanel: "Detail panel",
     },
-    hints: { filtering: "Quick search rides with this", detailPanel: "Expand a row for more" },
+    hints: {
+      filtering: "Quick search rides with this",
+      pagination: "Server mode needs paging — with it off you see one page of 50 and no way to the rest",
+      detailPanel: "Expand a row for more",
+    },
   },
   theme: {
     groupLabel: "Theme tokens",
@@ -119,6 +123,9 @@ const ru: ChromeStrings = {
     },
     hints: {
       filtering: "Быстрый поиск идёт вместе с ней",
+      pagination:
+        "Серверному режиму нужна постраничность — без неё видна одна страница из 50 строк, " +
+        "а до остальных не добраться",
       detailPanel: "Разверните строку, чтобы увидеть больше",
     },
   },
@@ -178,6 +185,9 @@ const uz: ChromeStrings = {
     },
     hints: {
       filtering: "Tezkor qidiruv shu bilan birga keladi",
+      pagination:
+        "Server rejimiga sahifalash kerak — oʻchirilganda 50 qatorlik bitta sahifa koʻrinadi, " +
+        "qolganiga yoʻl qolmaydi",
       detailPanel: "Batafsil koʻrish uchun qatorni yoying",
     },
   },

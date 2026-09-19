@@ -30,6 +30,15 @@ export interface TablePanelProps<TData extends RowData> {
   onTabChange: (tab: PanelTab) => void
   /** On the Filters tab, open this column's editor and focus it. */
   focusColumnId?: string | undefined
+  /**
+   * Identifies this particular focus request. A host that wants a repeat
+   * request for the SAME `focusColumnId` to be honoured again — not just the
+   * first time that column is named — bumps this on every request; the
+   * built-in shell does, from the header menu. Omit it and only the first
+   * request for a given column takes effect while this component stays
+   * mounted.
+   */
+  focusNonce?: number | undefined
 }
 
 /**
@@ -52,6 +61,7 @@ export function TablePanel<TData extends RowData>({
   tab,
   onTabChange,
   focusColumnId,
+  focusNonce,
 }: TablePanelProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
   const tabbed = instance.filtering.enabled
@@ -126,7 +136,12 @@ export function TablePanel<TData extends RowData>({
           : {})}
       >
         {current === "filters" ? (
-          <FiltersTab instance={instance} labels={labels} focusColumnId={focusColumnId} />
+          <FiltersTab
+            instance={instance}
+            labels={labels}
+            focusColumnId={focusColumnId}
+            focusNonce={focusNonce}
+          />
         ) : (
           <ColumnsTab instance={instance} labels={labels} onReorder={onReorder} />
         )}

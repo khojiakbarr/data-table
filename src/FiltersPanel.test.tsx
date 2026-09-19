@@ -136,6 +136,33 @@ describe("the side panel's tabs", () => {
     expect(entries()[1]).toContain("Name")
   })
 
+  it("keeps an expanded entry in place across a commit made from its own editor", async () => {
+    render(<Table />)
+    const user = await openFilters()
+
+    expect(entries()[0]).toContain("Name")
+    expect(entries()[1]).toContain("Amount")
+
+    await user.click(within(panel()).getByRole("button", { name: /^Amount/ }))
+
+    /*
+     * `handleOperator` commits at once. Without freezing the order, "filtered
+     * columns sort first" would move this very entry to the top the instant
+     * its own filter committed — with its editor still expanded.
+     */
+    fireEvent.change(screen.getByLabelText("Amount: Operator"), { target: { value: "blank" } })
+
+    expect(entries()[0]).toContain("Name")
+    expect(entries()[1]).toContain("Amount")
+    expect(screen.getByLabelText("Amount: Operator")).toBeInTheDocument()
+
+    // Closing the entry releases the freeze: the now-filtered column takes
+    // its place at the top, exactly as the spec's own rule asks for.
+    await user.click(within(panel()).getByRole("button", { name: /^Amount/ }))
+    expect(entries()[0]).toContain("Amount")
+    expect(entries()[1]).toContain("Name")
+  })
+
   it("commits from an entry's own editor", async () => {
     render(<Table />)
     const user = await openFilters()
@@ -156,6 +183,26 @@ describe("the side panel's tabs", () => {
 
     expect(shown()).toHaveLength(3)
     expect(within(panel()).getByText("No filters applied")).toBeInTheDocument()
+  })
+
+  it("clears filters from the foot of the tab without touching the quick search", async () => {
+    render(<Table initialLayout={{ filters: [over100] }} />)
+    const user = await openFilters()
+    fireEvent.change(screen.getByLabelText("Search rows"), { target: { value: "500" } })
+    expect(within(panel()).getByRole("button", { name: "Clear all filters" })).toBeEnabled()
+
+    await user.click(within(panel()).getByRole("button", { name: "Clear all filters" }))
+
+    /*
+     * The column filter is gone — the button disables again, on the same
+     * `hasFilters` signal `clearAll` used to — but the search this tab
+     * neither shows nor names must survive: this is `filtering.clearAll`'s
+     * own bug, wiping `updateSearch("")` alongside the filters it was asked
+     * to clear.
+     */
+    expect(within(panel()).getByText("No filters applied")).toBeInTheDocument()
+    expect(within(panel()).getByRole("button", { name: "Clear all filters" })).toBeDisabled()
+    expect(screen.getByLabelText("Search rows")).toHaveValue("500")
   })
 
   it("gates its note and Clear all filters on column filters, not on the quick search", async () => {
@@ -252,6 +299,63 @@ describe("the side panel's tabs", () => {
     expect(screen.queryByRole("menu")).toBeNull()
     expect(screen.getByRole("tab", { name: "Filters" })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+  })
+
+  /*
+   * Open Amount's editor through the header menu's "Filter in panel…" item,
+   * by keyboard only — no `user.click` anywhere in it. A pointer click on the
+   * header button lands OUTSIDE `.dt-panel`, and `TablePanel`'s
+   * outside-pointerdown handler closes and remounts the panel on it, which
+   * would reset `FiltersTab`'s own state and mask the very bug these cases
+   * exist to catch (the same reason `openFilters`'s and this helper's own
+   * sibling case above go by keyboard).
+   */
+  const openAmountFromMenu = async (user: ReturnType<typeof userEvent.setup>) => {
+    screen.getByRole("button", { name: "Amount: Column actions" }).focus()
+    await user.keyboard("{Enter}")
+    await user.tab()
+    expect(screen.getByRole("menuitem", { name: "Filter in panel…" })).toBe(document.activeElement)
+    await user.keyboard("{Enter}")
+  }
+
+  it("follows a repeat focusColumnId request for the column already open", async () => {
+    const user = userEvent.setup()
+    render(<Table />)
+
+    await openAmountFromMenu(user)
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+
+    // Collapsed from the list — a click inside the panel, which the
+    // outside-pointerdown handler leaves alone — so `focusColumnId` stays
+    // "amount" in the shell's own state and only `openId` changed.
+    await user.click(within(panel()).getByRole("button", { name: /^Amount/ }))
+    expect(screen.queryByLabelText("Amount: Value")).toBeNull()
+
+    // The menu asks for Amount again. A comparison against the last
+    // `focusColumnId` honoured would see the identical string and do
+    // nothing — this is the bug the nonce exists to prevent.
+    await openAmountFromMenu(user)
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+  })
+
+  it("follows a repeat focusColumnId request after a different entry opened in between", async () => {
+    const user = userEvent.setup()
+    render(<Table />)
+
+    await openAmountFromMenu(user)
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+
+    // A different entry opened from the list (inside the panel, so still no
+    // remount): its editor expands, but a manual click never autofocuses
+    // into it the way the menu's own route does.
+    await user.click(within(panel()).getByRole("button", { name: /^Name/ }))
+    expect(screen.getByLabelText("Name: Value")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Amount: Value")).toBeNull()
+
+    // Asked for Amount again: it reopens, focused, and Name closes with it.
+    await openAmountFromMenu(user)
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+    expect(screen.queryByLabelText("Name: Value")).toBeNull()
   })
 
   it("shows in the tab the condition the header popover set", async () => {

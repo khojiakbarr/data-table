@@ -109,11 +109,20 @@ export const defaultLabels: DataTableLabels = {
 /**
  * Whether the side panel is open, which tab it is on, and — for a shell that
  * opens it on one column — whose filter to expand.
+ *
+ * `focusNonce` gives a focus request its own identity, separate from
+ * `focusColumnId`'s value: the header menu's "Filter in panel…" item can ask
+ * for the SAME column twice in a row (open Amount, collapse it, ask for
+ * Amount again), and a value-only comparison cannot tell that repeat apart
+ * from an unrelated re-render — `focusColumnId` would already equal the
+ * previous request. Bumping the nonce on every menu choice makes each
+ * request distinguishable even when the column does not change.
  */
 interface PanelState {
   open: boolean
   tab: PanelTab
   focusColumnId?: string | undefined
+  focusNonce?: number | undefined
 }
 
 export interface DataTableProps<TData extends RowData> {
@@ -230,6 +239,10 @@ export function DataTable<TData extends RowData>({
 }: DataTableProps<TData>) {
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState<PanelState>({ open: false, tab: "columns" })
+  // A plain counter, bumped only from the menu's own click handler — never
+  // during render — so each "Filter in panel…" choice gets a fresh identity
+  // for `PanelState.focusNonce` to carry.
+  const focusNonceRef = useRef(0)
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const [filterAt, setFilterAt] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const tableRef = useRef<HTMLTableElement>(null)
@@ -437,6 +450,7 @@ export function DataTable<TData extends RowData>({
           tab={panelOpen.tab}
           onTabChange={(tab) => setPanelOpen({ open: true, tab })}
           focusColumnId={panelOpen.focusColumnId}
+          focusNonce={panelOpen.focusNonce}
         />
       ) : null}
 
@@ -455,7 +469,13 @@ export function DataTable<TData extends RowData>({
           }
           onOpenFilterInPanel={
             canFilter(menu.columnId)
-              ? () => setPanelOpen({ open: true, tab: "filters", focusColumnId: menu.columnId })
+              ? () =>
+                  setPanelOpen({
+                    open: true,
+                    tab: "filters",
+                    focusColumnId: menu.columnId,
+                    focusNonce: ++focusNonceRef.current,
+                  })
               : undefined
           }
           onClose={() => setMenu(null)}

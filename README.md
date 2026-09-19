@@ -38,6 +38,8 @@ function Receipts({ data, columns }) {
 | **Resize columns** | Drag the right edge of a header; double-click it to fit the column to its content. A group header's edge resizes every column under it. Columns are never stretched to fill the container. |
 | **Reorder columns** | Drag a header onto another; a caret shows which side it will land on. |
 | **Sort** | Click a header: ascending, descending, off. Multi-sort shows its position. |
+| **Quick search** | One box over every searchable column. Every token must appear somewhere on the row; different tokens may match different columns. |
+| **Filter columns** | Text, number, date, boolean and values-list filters, from the header menu or the side panel's Filters tab. Each one is published as an explicit operator a backend can translate. |
 | **Hide columns** | From the **Columns** panel. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
 | **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. |
@@ -868,6 +870,17 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 - The Columns panel closes on `Escape` and on an outside click.
 - The per-column menu opens from a button as well as from right-click, and is reachable
   by keyboard; it closes on `Escape`.
+- The quick-search box announces its result count politely and never takes focus.
+- The header menu's **Filter…** item opens a popover rather than putting form controls inside a
+  `role="menu"`, which would be invalid. The popover is a labelled `role="dialog"`, keeps `Tab`
+  inside itself, closes on `Escape` **discarding the draft**, and returns focus to the column's ⋮
+  button. **Filter in panel…** beside it opens the side panel's Filters tab instead, with that
+  column's editor expanded and focused.
+- A filtered column is marked in its header with a labelled icon. The side panel's Filters tab
+  lists hidden columns too, marked as hidden — a hidden column's filter goes on applying and has no
+  header to say so.
+- The panel's two tabs are a `tablist` with arrow-key movement and a single roving tab stop.
+- An empty table says whether it has no rows or no *matching* rows, and the second offers a way out.
 - Row toggles report `aria-expanded` and name themselves.
 - Reordering is drag-only today. If you need a keyboard path, the Columns panel is the
   place to add it — see [#1](https://github.com/khojiakbarr/data-table/issues).

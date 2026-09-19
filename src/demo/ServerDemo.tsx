@@ -4,7 +4,7 @@ import { DataTable } from "../components/DataTable"
 import type { TableQuery } from "../core/query"
 import { localStorageLayout } from "../core/persistence"
 import { useDataTable, type DataTableFeatures } from "../useDataTable"
-import { fetchReceipts, type ServerPage, type ServerReceipt } from "./fakeServer"
+import { fetchReceipts, fetchValues, type ServerPage, type ServerReceipt } from "./fakeServer"
 
 const storage = localStorageLayout()
 const columnHelper = createColumnHelper<DataTableFeatures, ServerReceipt>()
@@ -16,8 +16,10 @@ const columns = [
     size: 160,
     cell: (info) => <span className="num">{info.getValue().toLocaleString("ru-RU")}</span>,
   }),
-  columnHelper.accessor("status", { header: "Holat", size: 130 }),
-  columnHelper.accessor("date", { header: "Sana", size: 120 }),
+  // In server mode there is nothing to facet from — one page is all the client
+  // holds — so the values list comes from `loadValues` below.
+  columnHelper.accessor("status", { header: "Holat", size: 130, meta: { filter: "list" } }),
+  columnHelper.accessor("date", { header: "Sana", size: 120, meta: { filter: "date" } }),
 ]
 const EMPTY: ServerReceipt[] = []
 
@@ -95,6 +97,7 @@ export function ServerDemo() {
     getRowId: (row) => row.id,
     onQueryChange: setQuery,
     storage,
+    filtering: { loadValues: fetchValues },
   })
 
   return (

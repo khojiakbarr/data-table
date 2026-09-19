@@ -752,6 +752,10 @@
   color: var(--dt-muted-fg);
 }
 
+.dt-empty-text {
+  margin: 0 0 10px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dt-root * {
     transition-duration: 0.01ms !important;

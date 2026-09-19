@@ -197,8 +197,8 @@ export function Demo() {
         header: "Hujjat",
         columns: receiptCols.columns([
           receiptCols.accessor("partner", { header: "Kontragent", size: 240 }),
-          receiptCols.accessor("warehouse", { header: "Ombor", size: 170 }),
-          receiptCols.accessor("date", { header: "Sana", size: 120 }),
+          receiptCols.accessor("warehouse", { header: "Ombor", size: 170, meta: { filter: "list" } }),
+          receiptCols.accessor("date", { header: "Sana", size: 120, meta: { filter: "date" } }),
         ]),
       }),
       receiptCols.group({
@@ -208,6 +208,9 @@ export function Demo() {
           receiptCols.accessor("quantity", {
             header: "Miqdor",
             size: 130,
+            // Numbers are searched by default; this one is noise in a search
+            // box, so it opts out while keeping its number filter.
+            meta: { searchable: false },
             cell: (info) => <span className="num">{qty.format(info.getValue())}</span>,
           }),
           receiptCols.group({
@@ -224,7 +227,7 @@ export function Demo() {
           }),
         ]),
       }),
-      receiptCols.accessor("status", { header: "Holat", size: 130 }),
+      receiptCols.accessor("status", { header: "Holat", size: 130, meta: { filter: "list" } }),
     ],
     [],
   )
@@ -287,8 +290,10 @@ export function Demo() {
       <p className="lede">
         Drag a header to reorder. Drag its right edge to resize, double-click the edge to
         fit the column to its content. Click a header to sort, click again to reverse. Use{" "}
-        <b>Columns</b> to pin or hide. Both tables remember their own layout — rearrange one,
-        reload, and the other is exactly as you left it.
+        <b>Columns</b> to pin or hide, or its <b>Filters</b> tab to see every filter at once.
+        Type in the search box to search every text column, or open a column's ⋮ menu and choose{" "}
+        <b>Filter…</b>. Both tables remember their own layout — and their filters — so rearrange
+        one, reload, and the other is exactly as you left it.
       </p>
 
       <h2>Kirim hujjatlari — pinned start + end, 60 rows</h2>

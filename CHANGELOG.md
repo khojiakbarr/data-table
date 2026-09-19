@@ -35,6 +35,19 @@ releases are summarised in one line rather than reconstructed.
   days, and every day is parsed in the viewer's own calendar.
 - `filterFn_dt`, the single registered filter function that dispatches on a
   condition, with `resolveCondition` and `isBlankValue` beside it.
+- Quick search in the toolbar (`QuickSearch`), published on a debounce, and a
+  per-column filter editor reachable from the header menu (`FilterEditor`,
+  `FilterPopover`) or from the side panel's new Filters tab (`TablePanel`,
+  `ColumnsTab`, `FiltersTab`). `ColumnPanel` keeps the four props it always
+  had and opens on the Columns tab.
+- Values lists (`FilterValues`): distinct values with counts from the data in
+  client mode, `filtering.loadValues` in server mode, `meta.values` in either,
+  and an explanatory label rather than an empty list when a column has none.
+- `instance.filtering`: `enabled`, `kinds`, `conditions`, `search`,
+  `isFiltered`, `setCondition`, `clearColumn`, `clearAll`, `setSearch`,
+  `getModel`, `setModel`, `loadValues`. Plus `columnLabel`,
+  `useClampedPlacement` and the editors' draft helpers, for a shell of your own.
+- A distinct empty state for "a filter excluded every row", with a way out of it.
 
 ## 0.4.0 and earlier
 

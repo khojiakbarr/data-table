@@ -609,7 +609,29 @@ export function DataTable<TData extends RowData>({
         </table>
 
         {showEmpty ? (
-          <div className="dt-empty">{emptyState ?? labels.empty}</div>
+          <div className="dt-empty">
+            {/*
+              An empty state with no exit is the classic filter dead end: "No
+              rows" is true of a table with no data and of a table filtered to
+              nothing, and only one of them is something the user can undo.
+              A host's own `emptyState` still wins over both.
+            */}
+            {emptyState ??
+              (instance.filtering.isFiltered ? (
+                <>
+                  <p className="dt-empty-text">{labels.noMatches}</p>
+                  <button
+                    type="button"
+                    className="dt-menu-button"
+                    onClick={instance.filtering.clearAll}
+                  >
+                    {labels.clearFilters}
+                  </button>
+                </>
+              ) : (
+                labels.empty
+              ))}
+          </div>
         ) : null}
       </div>
 

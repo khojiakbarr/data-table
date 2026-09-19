@@ -15,6 +15,7 @@ import { layoutSliceEqual } from "../core/useArrangement"
 import type { FilterKind } from "../core/filters"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
+import { FilterValues } from "./FilterValues"
 
 /**
  * One column's filter, as a set of form controls.
@@ -211,11 +212,13 @@ function FilterEditorBody<TData extends RowData>({
 
   /*
    * The operator select takes the focus only when there is no field to type
-   * in. A list draft belongs here too: `DraftFields` renders the `noValues`
-   * note for it (Task 18 brings the real values list), which is not
-   * focusable, so without this an `autoFocus` mount on a list column leaves
-   * focus on `<body>` — a keyboard user's next Tab then starts from the top
-   * of the document instead of from the editor it opened (WCAG 2.4.3).
+   * in. A list draft belongs here too: `DraftFields` renders `FilterValues`
+   * for it, whose first control is a search box over the choices rather than
+   * the value being filled in — and when no source can supply choices it is
+   * the `noValues` note, which is not focusable at all. Without this, an
+   * `autoFocus` mount on such a column leaves focus on `<body>` — a keyboard
+   * user's next Tab then starts from the top of the document instead of from
+   * the editor it opened (WCAG 2.4.3).
    */
   const focusSelect = takeFocus && (isBlankOperator(draft) || draft.kind === "boolean" || draft.kind === "list")
 
@@ -236,6 +239,8 @@ function FilterEditorBody<TData extends RowData>({
       </select>
 
       <DraftFields
+        instance={instance}
+        column={column}
         draft={draft}
         name={name}
         labels={labels}
@@ -257,7 +262,9 @@ function FilterEditorBody<TData extends RowData>({
   )
 }
 
-interface DraftFieldsProps {
+interface DraftFieldsProps<TData extends RowData> {
+  instance: DataTableInstance<TData>
+  column: Column<DataTableFeatures, TData, unknown>
   draft: FilterDraft
   /** The column's name, so every field says which column it belongs to. */
   name: string
@@ -274,7 +281,16 @@ interface DraftFieldsProps {
  * §6.2's, and the difference is what keeps a half-typed number out of the
  * query while a chosen date reaches it at once.
  */
-function DraftFields({ draft, name, labels, autoFocus, onDraft, onCommit }: DraftFieldsProps) {
+function DraftFields<TData extends RowData>({
+  instance,
+  column,
+  draft,
+  name,
+  labels,
+  autoFocus,
+  onDraft,
+  onCommit,
+}: DraftFieldsProps<TData>) {
   /** A discrete choice: recorded and applied at once. */
   const choose = (next: FilterDraft) => {
     onDraft(next)
@@ -282,13 +298,17 @@ function DraftFields({ draft, name, labels, autoFocus, onDraft, onCommit }: Draf
   }
 
   if (draft.kind === "list") {
-    /*
-     * Task 18 replaces this with the real values list. Until then a list
-     * column has no source of choices in either mode, which is exactly what
-     * this line says: §5.3 refuses to show an empty checkbox list, because
-     * silence there reads as "there is no data".
-     */
-    return <p className="dt-filter-note">{labels.noValues}</p>
+    // Ticking a value is a discrete act, so it goes through `choose`: applied
+    // at once, like an operator choice and unlike a keystroke (§6.2).
+    return (
+      <FilterValues
+        instance={instance}
+        column={column}
+        labels={labels}
+        draft={draft}
+        onDraft={choose}
+      />
+    )
   }
   if (isBlankOperator(draft) || draft.kind === "boolean") return null
 

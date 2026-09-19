@@ -1217,3 +1217,70 @@
   color: var(--dt-muted-fg);
   font-size: 12px;
 }
+
+.dt-values {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dt-values-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  /* Long enough to be worth scrolling, short enough to leave the popover a
+     shape. A high-cardinality column is what the search box above is for. */
+  max-height: 180px;
+  overflow: auto;
+}
+
+/*
+ * A list showing the previous answer while a new one is in flight: the same
+ * dimming `.dt-loading tbody` gives the rows, so the one async surface this
+ * stage adds reads the way the one the table already had does. Driven off
+ * `aria-busy` rather than a class, so the visual state and the announced one
+ * cannot come apart.
+ */
+.dt-values-list[aria-busy="true"] {
+  opacity: 0.6;
+  transition: opacity 200ms ease;
+}
+
+.dt-values-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.dt-values-label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.dt-values-count {
+  flex: none;
+  color: var(--dt-muted-fg);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The same failure treatment the rows already have: what failed, and a way to
+ * try again. Never an empty list, which would read as "there is no data".
+ */
+.dt-values-failed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--dt-muted-fg);
+  font-size: 12px;
+}

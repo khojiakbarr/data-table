@@ -1086,6 +1086,12 @@ export function useDataTable<TData extends RowData>({
        * another.
        */
       kinds: filterKinds,
+      /*
+       * Forwarded so a values editor can reach it. Never called in client
+       * mode, where faceting computes the list for free and for nothing; in
+       * server mode it is the only source of choices a host can supply.
+       */
+      loadValues: filteringOptions?.loadValues,
       conditions: layout.filters as readonly FilterCondition[],
       search: layout.search,
       isFiltered: layout.filters.length > 0 || layout.search.trim() !== "",
@@ -1096,7 +1102,18 @@ export function useDataTable<TData extends RowData>({
       getModel: (): FilterModel => ({ filters: [...layout.filters], search: layout.search }),
       setModel,
     }),
-    [filteringEnabled, filterKinds, layout.filters, layout.search, setCondition, clearColumn, clearAll, updateSearch, setModel],
+    [
+      filteringEnabled,
+      filterKinds,
+      filteringOptions?.loadValues,
+      layout.filters,
+      layout.search,
+      setCondition,
+      clearColumn,
+      clearAll,
+      updateSearch,
+      setModel,
+    ],
   )
 
   /*

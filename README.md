@@ -449,6 +449,18 @@ and `setModel()` publish their search with their filters, in one query, so
 clearing the toolbar or restoring a shared URL never announces an intermediate
 request a host would fetch.
 
+**A values filter's choices come from exactly one source**, in this order:
+`meta.values` on the column, wherever it is declared and in either mode, shown
+without counts; otherwise, in client mode, the data itself, with counts, and
+narrowed by whatever the *other* columns are filtered by; otherwise, in server
+mode, `filtering.loadValues(columnId, { search, signal })`. A server-mode list
+column with neither is disabled with a label rather than shown an empty list —
+an empty list reads as "there is no data". While a request is out the previous
+answer stays on screen, dimmed and `aria-busy`, and a rejected one keeps it and
+offers a retry; `signal` aborts a superseded request. Declaring `meta.values` on
+a client-mode column trades the free counts for fixed labels, which is a real
+trade.
+
 ---
 
 ## Expandable rows

@@ -200,12 +200,16 @@ describe("the filter editor", () => {
     expect(screen.getByLabelText("Name: Value")).toHaveValue("temir")
   })
 
-  it("says a list column has no choices yet rather than showing an empty list", () => {
+  it("gives a list column its values list rather than a value field", () => {
     render(<Table columnId="tag" />)
 
-    // Task 18 brings the real values list. Until then §5.3's rule holds: an
-    // empty checkbox list reads as "there is no data".
-    expect(screen.getByText(defaultLabels.noValues)).toBeInTheDocument()
+    // The editor hands a list draft to `FilterValues`, which in client mode
+    // fills it from faceting — §5.3's first available source here. What it
+    // never renders is the single value input every other kind gets, nor an
+    // empty checkbox list, which would read as "there is no data".
+    expect(screen.getByLabelText("open")).toBeInTheDocument()
+    expect(screen.getByLabelText("closed")).toBeInTheDocument()
+    expect(screen.queryByText(defaultLabels.noValues)).toBeNull()
     expect(screen.queryByLabelText("Tag: Value")).toBeNull()
   })
 
@@ -305,11 +309,13 @@ describe("the filter editor", () => {
     expect(screen.getByLabelText("Name: Operator")).toHaveFocus()
   })
 
-  it("focuses the operator select for a list column, whose fields offer nothing focusable", () => {
+  it("focuses the operator select for a list column, whose fields are not a value input", () => {
     // A list draft's default operator is "in", not "blank": `DraftFields`
-    // renders the `noValues` note for it (Task 18 brings the real values
-    // list), and a note is not focusable. Without the fallback this leaves
-    // focus on `<body>`.
+    // renders `FilterValues` for it, whose own first control is a search box
+    // over the choices rather than the field being filled in. The focus
+    // belongs on the operator — and when no source can supply choices the
+    // list is a plain note, which is not focusable at all, so without this
+    // fallback that case leaves focus on `<body>`.
     render(<Table columnId="tag" autoFocus />)
 
     expect(screen.getByLabelText("Tag: Operator")).toHaveFocus()

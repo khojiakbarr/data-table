@@ -9187,6 +9187,10 @@ git push origin khojiakbar
 - Modify: `src/styles.css`
 - Modify: `src/index.ts`
 - Modify: `README.md`
+- Modify: `src/FilterEditor.test.tsx` — its list-column case asserts the Task 15
+  placeholder (`noValues` for a client-mode `tag` column that faceting can now
+  fill), so it has to become an assertion about the real list. Rewrite it, never
+  delete it: the count must not go down.
 - Test: `src/FilterValues.test.tsx`
 
 The checkbox list a `list` column gets, and the one place this stage adds a new async surface.
@@ -9709,13 +9713,17 @@ function useLoadedValues<TData extends RowData>(
 }
 ```
 
-In `src/components/FilterEditor.tsx`, import the list — add beneath the `filterDraft` import block:
+In `src/components/FilterEditor.tsx`, import the list — add one line beneath the
+existing `../types` import:
 
 ```tsx
-import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
-import type { DataTableLabels } from "../types"
 import { FilterValues } from "./FilterValues"
 ```
+
+The file already imports `Column`/`RowData` from `@tanstack/react-table` and
+`DataTableFeatures`/`DataTableInstance`/`DataTableLabels`, which is everything
+the generic `DraftFields` below needs; re-importing them would be a duplicate
+identifier.
 
 give `DraftFields` the two things a values list needs — replace
 
@@ -9949,12 +9957,15 @@ pnpm vitest run src/FilterValues.test.tsx src/FilterEditor.test.tsx src/ServerMo
 pnpm typecheck && pnpm test && pnpm build
 ```
 
-`pnpm test` must report **434 tests** (425 plus 9).
+`pnpm test` must add **9 tests** to whatever the suite already reports — the
+printed absolute totals in this plan are stale, because the review rounds added
+regression tests of their own. Count before and after rather than matching a
+number. (Run of record: 550 across 40 files → 559 across 41.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/FilterValues.tsx src/components/FilterEditor.tsx src/useDataTable.ts src/styles.css src/index.ts src/FilterValues.test.tsx README.md
+git add src/components/FilterValues.tsx src/components/FilterEditor.tsx src/useDataTable.ts src/styles.css src/index.ts src/FilterValues.test.tsx src/FilterEditor.test.tsx README.md
 git commit -m "feat(filters): values lists from faceting and from the host"
 git push origin khojiakbar
 ```

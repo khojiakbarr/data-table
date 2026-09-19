@@ -158,6 +158,28 @@ describe("the side panel's tabs", () => {
     expect(within(panel()).getByText("No filters applied")).toBeInTheDocument()
   })
 
+  it("gates its note and Clear all filters on column filters, not on the quick search", async () => {
+    render(<Table />)
+    const user = await openFilters()
+
+    // The quick search alone makes `filtering.isFiltered` true, but this tab
+    // shows column filters only. Its note must still say there are none, and
+    // its one action — labelled "filters", nothing else — must not be armed
+    // to quietly empty text the user typed somewhere else.
+    fireEvent.change(screen.getByLabelText("Search rows"), { target: { value: "temir" } })
+
+    expect(within(panel()).getByText("No filters applied")).toBeInTheDocument()
+    expect(within(panel()).getByRole("button", { name: "Clear all filters" })).toBeDisabled()
+
+    // A column filter alongside the search re-enables it, on its own signal.
+    await user.click(within(panel()).getByRole("button", { name: /^Name/ }))
+    fireEvent.change(screen.getByLabelText("Name: Value"), { target: { value: "temir" } })
+    fireEvent.blur(screen.getByLabelText("Name: Value"))
+
+    expect(within(panel()).queryByText("No filters applied")).toBeNull()
+    expect(within(panel()).getByRole("button", { name: "Clear all filters" })).toBeEnabled()
+  })
+
   it("resets the column arrangement without touching the filters", async () => {
     render(<Table />)
     const user = await openFilters()
@@ -203,6 +225,30 @@ describe("the side panel's tabs", () => {
     // §8.3's `focusColumnId` route, wired end to end: the menu closes, the
     // panel opens on the Filters tab, and that column's editor is expanded and
     // holds the focus.
+    expect(screen.queryByRole("menu")).toBeNull()
+    expect(screen.getByRole("tab", { name: "Filters" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+  })
+
+  it("follows a second focusColumnId request while the Filters tab stays mounted", async () => {
+    const user = userEvent.setup()
+    render(<Table />)
+    await openFilters()
+
+    /*
+     * Keyboard activation only, and no `user.click` anywhere in this case: a
+     * real Tab-then-Enter path fires no `pointerdown`, so nothing closes and
+     * remounts the panel before `onOpenFilterInPanel` runs — the menu route
+     * has to reach a FiltersTab that is already mounted on this tab.
+     */
+    screen.getByRole("button", { name: "Amount: Column actions" }).focus()
+    await user.keyboard("{Enter}")
+    await user.tab()
+    expect(screen.getByRole("menuitem", { name: "Filter in panel…" })).toBe(document.activeElement)
+    await user.keyboard("{Enter}")
+
+    // The menu closes and the request still reaches the mounted tab: the
+    // Amount editor opens, focused, exactly as the first request would have.
     expect(screen.queryByRole("menu")).toBeNull()
     expect(screen.getByRole("tab", { name: "Filters" })).toHaveAttribute("aria-selected", "true")
     expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)

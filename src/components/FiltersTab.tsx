@@ -1,5 +1,5 @@
 import type { RowData } from "@tanstack/react-table"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { columnLabel } from "../core/columnLabel"
 import { describeCondition } from "../core/filterDraft"
 import type { DataTableInstance } from "../useDataTable"
@@ -36,6 +36,19 @@ export function FiltersTab<TData extends RowData>({
 }: FiltersTabProps<TData>) {
   const { table, filtering } = instance
   const [openId, setOpenId] = useState<string | null>(focusColumnId ?? null)
+  /*
+   * The seed above only runs on mount, and a shell that leaves this tab
+   * mounted can send a new `focusColumnId` while it stays on the Filters tab:
+   * keyboard activation of a header menu's "Filter in panel…" item fires no
+   * `pointerdown`, so nothing closes and remounts the panel first. Track the
+   * last request this tab actually honoured, and open the next one the
+   * moment it differs — the way React documents state derived from props.
+   */
+  const honouredRef = useRef(focusColumnId)
+  if (focusColumnId !== undefined && focusColumnId !== honouredRef.current) {
+    honouredRef.current = focusColumnId
+    setOpenId(focusColumnId)
+  }
 
   /*
    * Hidden columns included. TanStack goes on applying a hidden column's
@@ -50,10 +63,15 @@ export function FiltersTab<TData extends RowData>({
     ...columns.filter((column) => active.has(column.id)),
     ...columns.filter((column) => !active.has(column.id)),
   ]
+  // This tab shows column filters only, so its own note and its own "Clear
+  // all filters" answer for `conditions`, not for `filtering.isFiltered` —
+  // that flag also turns true from the quick search, which this tab neither
+  // shows nor should silently clear.
+  const hasFilters = filtering.conditions.length > 0
 
   return (
     <>
-      {filtering.isFiltered ? null : <p className="dt-filter-note">{labels.noFilters}</p>}
+      {hasFilters ? null : <p className="dt-filter-note">{labels.noFilters}</p>}
 
       <ul className="dt-panel-list">
         {ordered.map((column) => {
@@ -95,7 +113,7 @@ export function FiltersTab<TData extends RowData>({
         <button
           type="button"
           className="dt-link"
-          disabled={!filtering.isFiltered}
+          disabled={!hasFilters}
           onClick={filtering.clearAll}
         >
           {labels.clearAllFilters}

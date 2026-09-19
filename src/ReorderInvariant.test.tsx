@@ -256,7 +256,7 @@ const openPanel = () => fireEvent.click(screen.getByRole("button", { name: "Colu
  * itself the signal that nothing did.
  */
 function resetToBaseline() {
-  const reset = within(screen.getByRole("dialog")).queryByRole("button", { name: "Reset" })
+  const reset = within(document.querySelector<HTMLElement>(".dt-panel")!).queryByRole("button", { name: "Reset" })
   if (reset) fireEvent.click(reset)
 }
 

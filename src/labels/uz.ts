@@ -25,6 +25,7 @@ import type { DataTableLabels } from "../types"
 export const uzLabels: DataTableLabels = {
   columnsButton: "Ustunlar",
   columnsTitle: "Ustunlar",
+  sideBar: "Jadvalning yon paneli",
   showAll: "Hammasini koʻrsatish",
   reset: "Tiklash",
   pinStart: "Chapga mahkamlash",

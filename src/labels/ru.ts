@@ -41,6 +41,7 @@ function plural(count: number, one: string, few: string, many: string): string {
 export const ruLabels: DataTableLabels = {
   columnsButton: "Столбцы",
   columnsTitle: "Столбцы",
+  sideBar: "Боковая панель таблицы",
   showAll: "Показать все",
   reset: "Сбросить",
   pinStart: "Закрепить слева",

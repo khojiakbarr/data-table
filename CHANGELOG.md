@@ -3,6 +3,56 @@
 Notable changes to `@khojiakbarr/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## Unreleased
+
+### Changed
+
+- **The built-in shell docks the Columns and Filters panels in a side bar** on
+  the table's inline-end edge, instead of floating them over it. A rail of
+  vertical tabs is now always visible; opening a panel takes width from the
+  table rather than covering it, which is what this table needed, since it
+  scrolls horizontally and a floating panel hides columns the user cannot then
+  scroll out from under it. The behaviour that goes with docking:
+  - the active rail tab closes the panel, another switches to it;
+  - `Escape` closes it **only while focus is inside it**, and hands focus back
+    to the rail tab;
+  - **an outside click no longer closes it.** A bar docked beside the table is
+    furniture, and using the table is not a request to dismiss it.
+  Below 640px the rail is withdrawn, the toolbar's Columns button stays the way
+  in, and the panel overlays the card at full width as it did before.
+- `DataTable` renders its toolbar, status, viewport and footer inside a new
+  `.dt-main` element, the flex sibling of `.dt-sidebar`. A host that styled
+  `.dt-root > .dt-toolbar`, `.dt-root > .dt-error` or any other direct-child
+  selector has to drop one level; the class names themselves are unchanged.
+- The `.dt-root:has(> .dt-panel)` z-index lift is now
+  `.dt-root:has(> .dt-panel-floating)`. It exists for a panel that can be
+  painted over by a later sibling table, which a docked panel — in flow, inside
+  the card — cannot be.
+- The toolbar's Columns button no longer claims `aria-haspopup="dialog"`: what
+  it opens is the side bar's tab panel, in flow beside the table.
+
+### Added
+
+- **`TableSideBar`**, the rail and the docked panel, exported for a shell of
+  its own.
+- **`TablePanel` takes a `presentation` prop** — `"floating"` (the default,
+  unchanged: a popover with its own tab strip, dismissed by an outside press
+  and by `Escape` from anywhere) or `"docked"` (in flow, no tab strip of its
+  own, the dismissal rules above). It is a declared prop and never inferred
+  from where the panel is mounted, so the same markup in two places cannot
+  behave two ways.
+- `DataTableLabels.sideBar`, the rail's accessible name. Hosts using the
+  documented `{ ...defaultLabels, ...mine }` recipe are unaffected.
+
+### Unchanged
+
+- **`ColumnPanel` behaves exactly as it always did.** It is still exported,
+  still takes the same four props, still floats, still closes on an outside
+  press and on `Escape`, and still opens on its Columns tab — it now passes
+  `presentation="floating"` explicitly rather than relying on the default. The
+  shell moved to a docked bar; this component did not change, so a host
+  rendering it needs to do nothing.
+
 ## 0.5.0
 
 ### Breaking

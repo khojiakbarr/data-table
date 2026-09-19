@@ -57,7 +57,8 @@ describe("loading states", () => {
     const { container } = render(<Table data={rows} error={new Error("Boom")} onRetry={onRetry} />)
     expect(screen.getByRole("alert")).toHaveTextContent("Boom")
     expect(screen.getByText("Alpha")).toBeInTheDocument()
-    expect(container.querySelector(".dt-root > .dt-error")).not.toBeNull()
+    // `.dt-main` is the table's own column inside the root, beside the side bar.
+    expect(container.querySelector(".dt-main > .dt-error")).not.toBeNull()
     expect(container.querySelector(".dt-viewport .dt-error")).toBeNull()
     await user.click(screen.getByRole("button", { name: /retry/i }))
     expect(onRetry).toHaveBeenCalledTimes(1)

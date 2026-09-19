@@ -88,6 +88,14 @@ export interface DataTableFeatureFlags {
 export interface DataTableLabels {
   columnsButton: string
   columnsTitle: string
+  /**
+   * The docked side bar's rail, named for a screen reader.
+   *
+   * It is the `tablist`'s accessible name, not anything drawn on screen: the
+   * rail's own tabs carry their visible labels, and the group they form needs
+   * one of its own so "Columns, tab, 1 of 2" is announced against something.
+   */
+  sideBar: string
   showAll: string
   reset: string
   pinStart: string

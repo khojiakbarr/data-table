@@ -816,13 +816,32 @@ the footer it takes the full `DataTableLabels` rather than a `Partial`. It write
 straight to `instance.filtering.setSearch`, so the debounce, the result-count
 announcement and the page reset come with it.
 
+`<TableSideBar instance={instance} labels={…} tabs={["columns", "filters"]} open={open} tab={tab} onToggle={…} onTabChange={…} onClose={…} onReorder={…} />` —
+the docked side bar the built-in shell renders: a rail of vertical tabs pinned
+to the table's inline-end edge, visible whether or not a panel is open, and the
+panel one of them opens *beside* the table rather than over it. Opening it takes
+width from the table, which is the point — this table scrolls horizontally, and
+a floating panel covers columns the user cannot then scroll out from under it.
+Below 640px the rail is withdrawn, the toolbar's Columns button is the only way
+in, and the panel overlays the card at full width.
+
 `<TablePanel instance={instance} labels={…} tab={tab} onTabChange={setTab} onReorder={…} onClose={…} />` —
 the side panel with both tabs, for a shell that wants to choose which one opens;
-`<ColumnsTab>` and `<FiltersTab>` are its halves, and `<ColumnPanel>` is still
-exported and still takes exactly the four props it always did, opening on the
-Columns tab. The Filters tab lists every filterable column, **hidden ones
-included and marked** — a hidden column's filter goes on applying and its
-header is not there to say so.
+`<ColumnsTab>` and `<FiltersTab>` are its halves. The Filters tab lists every
+filterable column, **hidden ones included and marked** — a hidden column's
+filter goes on applying and its header is not there to say so.
+
+`presentation` decides how the panel behaves, and it is a prop rather than
+something inferred from where the panel is mounted:
+
+| `presentation` | Looks like | Dismisses on |
+| --- | --- | --- |
+| `"floating"` (default) | A popover over the table, with its own tab strip | An outside press, and `Escape` from anywhere |
+| `"docked"` | Furniture inside `<TableSideBar>`, in flow beside the table, no tab strip of its own — the rail is the `tablist` | The active rail tab, and `Escape` **only while focus is inside it**. Never an outside click. |
+
+`<ColumnPanel>` is still exported and still takes exactly the four props it
+always did, still floating, still opening on the Columns tab: the shell moved
+to a docked bar, the component did not change.
 
 ---
 
@@ -883,10 +902,18 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 
 - Headers carry `aria-sort`, and each sort control names its column, so a screen reader
   announces "Amount: sort ascending" rather than three identical buttons.
-- Sort controls, the resize handle, the per-column menu and the Columns panel are all
+- Sort controls, the resize handle, the per-column menu and the side bar are all
   reachable by keyboard with a visible focus ring. A focused resize handle resizes with
   ← / → (Shift for larger steps) and fits the column on Enter.
-- The Columns panel closes on `Escape` and on an outside click.
+- The side bar's rail is a vertical `tablist` with a name of its own, one roving tab stop,
+  and ↑ / ↓ / Home / End along it — which move between tabs without opening or closing the
+  panel. Each tab states `aria-selected` **and** `aria-expanded`, so pressing the tab that is
+  already showing is announced as collapsing it rather than as doing nothing. Its label is
+  turned by `writing-mode`, so it stays one run of real, selectable text.
+- The docked panel closes on `Escape` **only while focus is inside it**, and hands focus back
+  to its rail tab; it does not close on an outside click, because a bar docked beside the table
+  is furniture and using the table is not a request to dismiss it. A floating `<ColumnPanel>`
+  still closes on `Escape` and on an outside click.
 - The per-column menu opens from a button as well as from right-click, and is reachable
   by keyboard; it closes on `Escape`.
 - The quick-search box announces its result count politely and never takes focus.
@@ -898,7 +925,7 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 - A filtered column is marked in its header with a labelled icon. The side panel's Filters tab
   lists hidden columns too, marked as hidden — a hidden column's filter goes on applying and has no
   header to say so.
-- The panel's two tabs are a `tablist` with arrow-key movement and a single roving tab stop.
+- A floating panel's own two tabs are a `tablist` with arrow-key movement and a single roving tab stop, the same as the rail's.
 - An empty table says whether it has no rows or no *matching* rows, and the second offers a way out.
 - Row toggles report `aria-expanded` and name themselves.
 - Reordering has a keyboard path: each row of the **Columns** panel carries a drag handle that

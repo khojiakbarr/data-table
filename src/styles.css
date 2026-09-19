@@ -80,17 +80,22 @@
   --dt-font-size: 14px;
 
   /*
-   * The root does not scroll; `.dt-viewport` below does. Keeping the toolbar
-   * and the Columns panel out of the scrolling box is what stops the toolbar
-   * from covering the sticky header and the panel from scrolling out of view.
-   * The root does not clip either, so a panel taller than a short table can
-   * hang below it; the rounded corners are drawn by the toolbar and the
-   * viewport instead. `isolation` keeps a nested table's sticky header under
-   * this one's.
+   * A row of two: `.dt-main` — the table's own column, toolbar through footer
+   * — and `.dt-sidebar` beside it. Docking the side bar this way is what makes
+   * opening a panel TAKE width from the table instead of painting over it,
+   * which matters because this table scrolls horizontally: a floating panel
+   * covers columns the user cannot then scroll out from under it.
+   *
+   * The root does not scroll; `.dt-viewport` inside `.dt-main` does. Keeping
+   * the toolbar and the side bar out of the scrolling box is what stops the
+   * toolbar from covering the sticky header and the panel from scrolling out
+   * of view. The root does not clip either; the rounded corners are drawn by
+   * the toolbar, the viewport and the rail instead. `isolation` keeps a
+   * nested table's sticky header under this one's.
    */
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   isolation: isolate;
   border: 1px solid var(--dt-border);
   border-radius: var(--dt-radius);
@@ -101,16 +106,45 @@
 }
 
 /*
- * Lift the table above whatever follows it while its panel, its header menu or
- * a filter popover hangs open. All three render as a direct child of
- * `.dt-root` (see DataTable.tsx) and can extend past the table's own box — the
- * menu and the popover are `position: fixed` and clamped only to the viewport,
- * not to this table.
+ * Lift the table above whatever follows it while a FLOATING panel, its header
+ * menu or a filter popover hangs open. Each renders as a direct child of
+ * `.dt-root` and can extend past the table's own box — the menu and the
+ * popover are `position: fixed` and clamped only to the viewport, not to this
+ * table, and `.dt-panel-floating` is absolutely positioned with no clipping
+ * ancestor. Without the lift, a later sibling (a second table on the page)
+ * wins the tie by DOM order and paints over them.
+ *
+ * The DOCKED panel is deliberately not in this list. It is in flow inside
+ * `.dt-sidebar`, never leaves the card, and is a grandchild rather than a
+ * direct child — so it has nothing to be lifted out of the way of, and
+ * lifting the whole table for a piece of its own furniture would reorder this
+ * table against the page for as long as the bar stayed open.
  */
-.dt-root:has(> .dt-panel),
+.dt-root:has(> .dt-panel-floating),
 .dt-root:has(> .dt-menu),
 .dt-root:has(> .dt-filter-popover) {
   z-index: 1;
+}
+
+/*
+ * The table's own column. The side bar is its sibling, so this is the flex
+ * item that gives up the width a panel takes — which needs `min-width: 0`,
+ * because a flex item otherwise refuses to shrink below its content and the
+ * bar would push the table's last columns out of the card instead.
+ */
+.dt-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: inherit;
+}
+
+/* The rail owns the inline-end edge whenever there is a side bar, so this
+   column stops being rounded there and the two meet flush. */
+.dt-root:has(> .dt-sidebar) > .dt-main {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
 }
 
 .dt-viewport {
@@ -605,13 +639,14 @@
   background: var(--dt-row-hover);
 }
 
+/* ---------- the side panel, floating or docked ---------- *
+ * Everything both presentations share. Which one is in play is stated by the
+ * `presentation` prop (TablePanel.tsx) and spelled on the element as
+ * `.dt-panel-floating` / `.dt-panel-docked`, never inferred from where the
+ * panel happens to be mounted.
+ */
+
 .dt-panel {
-  position: absolute;
-  inset-inline-end: 8px;
-  top: 40px;
-  z-index: 10;
-  width: 260px;
-  max-height: 340px;
   /*
    * The tab strip must not scroll away from under the pointer, so the panel is
    * a column and only its body scrolls.
@@ -620,10 +655,183 @@
   flex-direction: column;
   overflow: hidden;
   padding: 6px;
+  background: var(--dt-bg);
+}
+
+/* A popover over the table: its own card, its own shadow, out of flow. */
+.dt-panel-floating {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 40px;
+  z-index: 10;
+  width: 260px;
+  max-height: 340px;
   border: 1px solid var(--dt-border);
   border-radius: var(--dt-radius);
-  background: var(--dt-bg);
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+}
+
+/*
+ * Docked: furniture inside the side bar, not a card. No border of its own but
+ * the seam against the rail, no shadow, no radius — it is part of the table's
+ * box. `max-height: 100%` bounds it against a root that was given a height,
+ * where `.dt-panel-body` then scrolls; a root with no height of its own grows
+ * to the list instead, the same way `.dt-viewport` does until its rescue
+ * bound catches it.
+ */
+.dt-panel-docked {
+  flex: none;
+  width: 260px;
+  max-width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  border-inline-end: 1px solid var(--dt-border);
+  /* Transform and opacity only: a width animation here would relayout every
+     column of the table on every frame. */
+  animation: dt-panel-in 200ms ease-out;
+}
+
+@keyframes dt-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+/* The movement goes, the result stays. */
+@media (prefers-reduced-motion: reduce) {
+  .dt-panel-docked {
+    animation: none;
+  }
+}
+
+/* ---------- the rail ---------- */
+
+.dt-sidebar {
+  flex: none;
+  /*
+   * DOM order is rail first, then panel; `row-reverse` draws the rail on the
+   * outer edge anyway. The rail is the `tablist` and the panel its
+   * `tabpanel`, so the tabs have to come FIRST in the Tab order — reversing
+   * here is what lets the markup be in the order a keyboard and a screen
+   * reader need while the rail sits where a pointer expects it.
+   * `row-reverse` follows the writing direction, so in RTL the rail lands on
+   * the left, which is still the inline-end edge.
+   */
+  display: flex;
+  flex-direction: row-reverse;
+  min-width: 0;
+  border-inline-start: 1px solid var(--dt-border);
+}
+
+.dt-sidebar-rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 44px;
+  padding: 6px 2px;
+  background: var(--dt-header-bg);
+  border-start-end-radius: var(--dt-radius);
+  border-end-end-radius: var(--dt-radius);
+}
+
+.dt-sidebar-tab {
+  /*
+   * Rotated AS TEXT. `writing-mode` turns the label without breaking it up,
+   * so it stays one selectable run that a screen reader reads as a word and
+   * the browser's own find-in-page can match — which drawing one letter per
+   * line would destroy. `vertical-rl` reads top-to-bottom, the direction a
+   * right-hand rail is read in.
+   */
+  writing-mode: vertical-rl;
+  /* 40px of width and at least 72px of height: a comfortable pointer target
+     even though the text inside it is 12px. */
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--dt-muted-fg);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  cursor: pointer;
+}
+
+.dt-sidebar-tab:hover {
+  background: var(--dt-row-hover);
+  color: var(--dt-fg);
+}
+
+.dt-sidebar-tab[aria-selected="true"] {
+  /* Accent-as-text on --dt-header-bg, the same pairing `.dt-link` uses. */
+  background: var(--dt-bg);
+  color: var(--dt-accent-text);
+  box-shadow: inset 2px 0 0 0 var(--dt-accent);
+}
+
+.dt-sidebar-tab:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+}
+
+/*
+ * Narrow widths. 640px is where a 44px rail plus a 260px panel leaves the
+ * table under 340px — less than two average columns, so the bar would be
+ * eating the thing it exists to configure. Below it the rail is withdrawn
+ * while closed, the toolbar's Columns button is the only way in, and the
+ * panel goes back to OVERLAYING the table at full width, the way it did
+ * before it was docked; the rail comes back horizontally across the top of
+ * that overlay so the active tab still closes it.
+ *
+ * A viewport media query and not a container query, deliberately:
+ * `container-type: inline-size` on `.dt-root` would make it a containing
+ * block for `position: fixed` descendants, and the header menu and the filter
+ * popover are fixed and clamped to the viewport on purpose.
+ */
+@media (max-width: 640px) {
+  .dt-sidebar {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    flex-direction: column;
+    border-inline-start: 0;
+    border-radius: inherit;
+    background: var(--dt-bg);
+  }
+
+  .dt-sidebar:not([data-dt-open]) {
+    display: none;
+  }
+
+  .dt-sidebar-rail {
+    flex-direction: row;
+    width: auto;
+    border-radius: 0;
+    border-bottom: 1px solid var(--dt-border);
+  }
+
+  .dt-sidebar-tab {
+    writing-mode: horizontal-tb;
+    width: auto;
+    min-height: 0;
+    padding: 8px 12px;
+  }
+
+  .dt-sidebar-tab[aria-selected="true"] {
+    box-shadow: inset 0 -2px 0 0 var(--dt-accent);
+  }
+
+  .dt-panel-docked {
+    flex: 1 1 auto;
+    width: auto;
+    max-height: none;
+    border-inline-end: 0;
+  }
 }
 
 .dt-panel-head {

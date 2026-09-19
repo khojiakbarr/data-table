@@ -10,7 +10,8 @@ import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
-import { TablePanel, type PanelTab } from "./TablePanel"
+import type { PanelTab } from "./TablePanel"
+import { TableSideBar } from "./TableSideBar"
 import { QuickSearch } from "./QuickSearch"
 import { canFilterColumn } from "./FilterEditor"
 import { FilterPopover } from "./FilterPopover"
@@ -23,6 +24,7 @@ import { SkeletonRows, TableStatus } from "./TableStatus"
 export const defaultLabels: DataTableLabels = {
   columnsButton: "Columns",
   columnsTitle: "Columns",
+  sideBar: "Table side bar",
   showAll: "Show all",
   reset: "Reset",
   pinStart: "Pin to start",
@@ -408,41 +410,267 @@ export function DataTable<TData extends RowData>({
     "--dt-row-height": `${instance.rowHeight}px`,
   } as CSSProperties
 
+  /*
+   * Which tabs the rail offers, in rail order. Columns is the tab the panel
+   * has always had, behind the same `hiding || pinning` gate the toolbar
+   * button uses; Filters joins it only when filtering is on. An empty list
+   * means this table has no side bar at all, and no rail is drawn.
+   */
+  const sideBarTabs: PanelTab[] = []
+  if (flags.hiding || flags.pinning) sideBarTabs.push("columns")
+  if (sideBarTabs.length > 0 && instance.filtering.enabled) sideBarTabs.push("filters")
+
+  /**
+   * Activating a rail tab: the tab already showing closes the panel, any other
+   * switches to it. The toolbar button is the same toggle for the current tab.
+   *
+   * @param tab - The tab that was activated.
+   */
+  const toggleSideBarTab = (tab: PanelTab): void => {
+    setPanelOpen((state) => ({ open: !(state.open && state.tab === tab), tab }))
+  }
+
+  /**
+   * Close the side bar's panel, keeping the tab it was on so the rail reopens
+   * where the user left it.
+   */
+  const closePanel = useCallback(() => {
+    setPanelOpen((state) => ({ open: false, tab: state.tab }))
+  }, [])
+
   return (
     <div
       className={classNames("dt-root", className, isResizing && "dt-is-resizing")}
       style={rootStyle}
       data-dt-theme={theme}
     >
-      {toolbar ? (
-        <div className="dt-toolbar">
-          {toolbarContent}
-          {instance.filtering.enabled ? (
-            <QuickSearch instance={instance} labels={labels} loading={loading} inputRef={searchInputRef} />
-          ) : null}
-          <span className="dt-spacer" />
-          {flags.hiding || flags.pinning ? (
-            <button
-              type="button"
-              className="dt-menu-button"
-              aria-expanded={panelOpen.open}
-              aria-haspopup="dialog"
-              onClick={() => setPanelOpen((state) => ({ open: !state.open, tab: state.tab }))}
-            >
-              {labels.columnsButton}
-            </button>
+      {/*
+        The table's own column — toolbar, status, viewport, footer. It is one
+        flex child of the root and the side bar is the other, so opening a
+        panel takes width from here instead of painting over it. `min-width:
+        0` in the stylesheet is what lets this column actually give that
+        width up; without it a flex item refuses to shrink under its content
+        and the side bar would push the table's right-hand columns out of
+        the card.
+      */}
+      <div className="dt-main">
+        {toolbar ? (
+          <div className="dt-toolbar">
+            {toolbarContent}
+            {instance.filtering.enabled ? (
+              <QuickSearch instance={instance} labels={labels} loading={loading} inputRef={searchInputRef} />
+            ) : null}
+            <span className="dt-spacer" />
+            {sideBarTabs.length > 0 ? (
+              /*
+               * Still the way in, and below the narrow-width breakpoint the
+               * only one — the rail is hidden there and the panel overlays
+               * instead. No `aria-haspopup`: what it opens is the side bar's
+               * tab panel, in flow beside the table, not a popup.
+               */
+              <button
+                type="button"
+                className="dt-menu-button"
+                aria-expanded={panelOpen.open}
+                {...(panelOpen.open
+                  ? { "aria-controls": `${instance.id}-panel-${panelOpen.tab}` }
+                  : {})}
+                onClick={() => toggleSideBarTab(panelOpen.tab)}
+              >
+                {labels.columnsButton}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <TableStatus loading={showProgress} error={error} onRetry={onRetry} labels={labels} />
+
+        <div
+          className={classNames("dt-viewport", showProgress && "dt-loading")}
+          data-dt-unbounded={unbounded ? "" : undefined}
+          ref={viewportRef}
+          /*
+           * Not part of the Tab order — `-1` keeps it out of a sighted
+           * keyboard user's normal path across the table — but a legal target
+           * for the programmatic focus the "Clear filters" button below sends
+           * here when there is no search box of ours to take it instead.
+           */
+          tabIndex={-1}
+        >
+          <table
+            ref={tableRef}
+            className={classNames("dt-table", striped && "dt-striped")}
+            style={{ width: "100%", minWidth: table.getTotalSize() }}
+            /*
+             * Only a window of rows is in the DOM — from virtualisation, and
+             * from pagination once it is on, where `rows` is one page — so the
+             * count a screen reader would infer from the DOM is wrong either
+             * way. `aria-rowcount` states the real total across every page —
+             * `totalRowCount`, header rows included, since `aria-rowindex`
+             * counts them — or ARIA's own -1 ("unknown") outright while that
+             * total has not arrived yet.
+             */
+            aria-rowcount={totalRowCount === undefined ? -1 : totalRowCount + headerRowCount}
+          >
+            {/*
+              Under `table-layout: fixed` the browser takes column widths from the
+              first row only — which, with grouped headers, is a row of spanning
+              cells. A colgroup states the widths directly, so nested headers and
+              resizing stop fighting each other. The filler has no width: it takes
+              whatever the columns leave over, which is nothing once they overflow.
+            */}
+            <colgroup>
+              {insertAt(
+                leafColumns.map((column) => (
+                  <col
+                    key={column.id}
+                    data-column-id={column.id}
+                    style={{ width: column.getSize() }}
+                  />
+                )),
+                fillerAt,
+                <col key="filler" className="dt-col-filler" />,
+              )}
+            </colgroup>
+
+            <thead ref={headRef}>
+              {Array.from({ length: headerRowCount }, (_, depth) => {
+                const [start, center, end] = headerSections.map((section) =>
+                  (section[depth]?.headers ?? [])
+                    /*
+                     * TanStack marks a header that a taller cell above already
+                     * covers with rowSpan 0. Rendering those would repeat every
+                     * label once per header row.
+                     */
+                    .filter((header) => header.rowSpan > 0)
+                    .map((header) => (
+                      <HeaderCell
+                        key={header.id}
+                        header={header}
+                        flags={flags}
+                        labels={labels}
+                        sticky={stickyHeader}
+                        onReorder={handleReorder}
+                        onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
+                        onAutosize={autosize}
+                        drop={drop}
+                      />
+                    )),
+                )
+                // The filler's header spans every header row and sits between
+                // the scrolling and the end-pinned headers, like the column.
+                const filler =
+                  depth === 0 ? (
+                    <th
+                      key="filler"
+                      className="dt-th dt-th-filler"
+                      role="presentation"
+                      rowSpan={headerRowCount > 1 ? headerRowCount : undefined}
+                      style={stickyHeader ? { top: 0 } : undefined}
+                    />
+                  ) : null
+                return (
+                  <tr key={depth} aria-rowindex={depth + 1}>
+                    {start}
+                    {center}
+                    {filler}
+                    {end}
+                  </tr>
+                )
+              })}
+            </thead>
+
+            {showSkeleton ? (
+              <SkeletonRows
+                widths={insertAt(
+                  leafColumns.map((column) => column.getSize()),
+                  fillerAt,
+                  0,
+                )}
+                count={Math.min(instance.pagination.pageSize, 8)}
+              />
+            ) : (
+              <TableBody
+                instance={instance}
+                rows={rows}
+                viewportRef={viewportRef}
+                headRef={headRef}
+                fillerAt={fillerAt}
+                columnCount={leafColumns.length + 1}
+                headerRowCount={headerRowCount}
+                rowIndexOffset={rowIndexOffset}
+                labels={labels}
+                virtualize={virtualize}
+                renderDetail={renderDetail}
+                onRowClick={onRowClick}
+              />
+            )}
+          </table>
+
+          {showEmpty ? (
+            <div className="dt-empty">
+              {/*
+                An empty state with no exit is the classic filter dead end: "No
+                rows" is true of a table with no data and of a table filtered to
+                nothing, and only one of them is something the user can undo.
+                A host's own `emptyState` still wins over both.
+              */}
+              {emptyState ??
+                (instance.filtering.isFiltered ? (
+                  <>
+                    <p className="dt-empty-text">{labels.noMatches}</p>
+                    <button
+                      type="button"
+                      className="dt-menu-button"
+                      onClick={() => {
+                        instance.filtering.clearAll()
+                        /*
+                         * This button disappears the instant the rows come
+                         * back (`showEmpty` goes false), and React does not
+                         * relocate focus for an element that unmounts under
+                         * it — the same defect `QuickSearch`'s own clear
+                         * button exists to avoid (WCAG 2.4.3; see its
+                         * comment). The toolbar's search box is the natural
+                         * landing spot when there is one; with `toolbar={false}`
+                         * there is nothing of ours left on screen to hold
+                         * focus, so it falls back to the viewport, which
+                         * `tabIndex={-1}` makes a legal target without adding
+                         * it to the Tab order.
+                         */
+                        const focusTarget = searchInputRef.current ?? viewportRef.current
+                        focusTarget?.focus()
+                      }}
+                    >
+                      {labels.clearFilters}
+                    </button>
+                  </>
+                ) : (
+                  labels.empty
+                ))}
+            </div>
           ) : null}
         </div>
-      ) : null}
 
-      {panelOpen.open ? (
-        <TablePanel
+        {footer ? <TablePagination instance={instance} labels={labels} /> : null}
+      </div>
+
+      {sideBarTabs.length > 0 ? (
+        <TableSideBar
           instance={instance}
           labels={labels}
           onReorder={handleReorder}
-          onClose={() => setPanelOpen((state) => ({ open: false, tab: state.tab }))}
+          tabs={sideBarTabs}
+          open={panelOpen.open}
           tab={panelOpen.tab}
-          onTabChange={(tab) => setPanelOpen({ open: true, tab })}
+          onToggle={toggleSideBarTab}
+          /*
+           * Switching tabs drops any pending `focusColumnId`: it belongs to
+           * the request that opened the Filters tab, and carrying it across a
+           * round trip to Columns and back would re-expand an editor the user
+           * had collapsed.
+           */
+          onTabChange={(tab) => setPanelOpen((state) => ({ open: state.open, tab }))}
+          onClose={closePanel}
           focusColumnId={panelOpen.focusColumnId}
           focusNonce={panelOpen.focusNonce}
         />
@@ -485,176 +713,6 @@ export function DataTable<TData extends RowData>({
           onClose={closeFilter}
         />
       ) : null}
-
-      <TableStatus loading={showProgress} error={error} onRetry={onRetry} labels={labels} />
-
-      <div
-        className={classNames("dt-viewport", showProgress && "dt-loading")}
-        data-dt-unbounded={unbounded ? "" : undefined}
-        ref={viewportRef}
-        /*
-         * Not part of the Tab order — `-1` keeps it out of a sighted
-         * keyboard user's normal path across the table — but a legal target
-         * for the programmatic focus the "Clear filters" button below sends
-         * here when there is no search box of ours to take it instead.
-         */
-        tabIndex={-1}
-      >
-        <table
-          ref={tableRef}
-          className={classNames("dt-table", striped && "dt-striped")}
-          style={{ width: "100%", minWidth: table.getTotalSize() }}
-          /*
-           * Only a window of rows is in the DOM — from virtualisation, and
-           * from pagination once it is on, where `rows` is one page — so the
-           * count a screen reader would infer from the DOM is wrong either
-           * way. `aria-rowcount` states the real total across every page —
-           * `totalRowCount`, header rows included, since `aria-rowindex`
-           * counts them — or ARIA's own -1 ("unknown") outright while that
-           * total has not arrived yet.
-           */
-          aria-rowcount={totalRowCount === undefined ? -1 : totalRowCount + headerRowCount}
-        >
-          {/*
-            Under `table-layout: fixed` the browser takes column widths from the
-            first row only — which, with grouped headers, is a row of spanning
-            cells. A colgroup states the widths directly, so nested headers and
-            resizing stop fighting each other. The filler has no width: it takes
-            whatever the columns leave over, which is nothing once they overflow.
-          */}
-          <colgroup>
-            {insertAt(
-              leafColumns.map((column) => (
-                <col
-                  key={column.id}
-                  data-column-id={column.id}
-                  style={{ width: column.getSize() }}
-                />
-              )),
-              fillerAt,
-              <col key="filler" className="dt-col-filler" />,
-            )}
-          </colgroup>
-
-          <thead ref={headRef}>
-            {Array.from({ length: headerRowCount }, (_, depth) => {
-              const [start, center, end] = headerSections.map((section) =>
-                (section[depth]?.headers ?? [])
-                  /*
-                   * TanStack marks a header that a taller cell above already
-                   * covers with rowSpan 0. Rendering those would repeat every
-                   * label once per header row.
-                   */
-                  .filter((header) => header.rowSpan > 0)
-                  .map((header) => (
-                    <HeaderCell
-                      key={header.id}
-                      header={header}
-                      flags={flags}
-                      labels={labels}
-                      sticky={stickyHeader}
-                      onReorder={handleReorder}
-                      onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
-                      onAutosize={autosize}
-                      drop={drop}
-                    />
-                  )),
-              )
-              // The filler's header spans every header row and sits between
-              // the scrolling and the end-pinned headers, like the column.
-              const filler =
-                depth === 0 ? (
-                  <th
-                    key="filler"
-                    className="dt-th dt-th-filler"
-                    role="presentation"
-                    rowSpan={headerRowCount > 1 ? headerRowCount : undefined}
-                    style={stickyHeader ? { top: 0 } : undefined}
-                  />
-                ) : null
-              return (
-                <tr key={depth} aria-rowindex={depth + 1}>
-                  {start}
-                  {center}
-                  {filler}
-                  {end}
-                </tr>
-              )
-            })}
-          </thead>
-
-          {showSkeleton ? (
-            <SkeletonRows
-              widths={insertAt(
-                leafColumns.map((column) => column.getSize()),
-                fillerAt,
-                0,
-              )}
-              count={Math.min(instance.pagination.pageSize, 8)}
-            />
-          ) : (
-            <TableBody
-              instance={instance}
-              rows={rows}
-              viewportRef={viewportRef}
-              headRef={headRef}
-              fillerAt={fillerAt}
-              columnCount={leafColumns.length + 1}
-              headerRowCount={headerRowCount}
-              rowIndexOffset={rowIndexOffset}
-              labels={labels}
-              virtualize={virtualize}
-              renderDetail={renderDetail}
-              onRowClick={onRowClick}
-            />
-          )}
-        </table>
-
-        {showEmpty ? (
-          <div className="dt-empty">
-            {/*
-              An empty state with no exit is the classic filter dead end: "No
-              rows" is true of a table with no data and of a table filtered to
-              nothing, and only one of them is something the user can undo.
-              A host's own `emptyState` still wins over both.
-            */}
-            {emptyState ??
-              (instance.filtering.isFiltered ? (
-                <>
-                  <p className="dt-empty-text">{labels.noMatches}</p>
-                  <button
-                    type="button"
-                    className="dt-menu-button"
-                    onClick={() => {
-                      instance.filtering.clearAll()
-                      /*
-                       * This button disappears the instant the rows come
-                       * back (`showEmpty` goes false), and React does not
-                       * relocate focus for an element that unmounts under
-                       * it — the same defect `QuickSearch`'s own clear
-                       * button exists to avoid (WCAG 2.4.3; see its
-                       * comment). The toolbar's search box is the natural
-                       * landing spot when there is one; with `toolbar={false}`
-                       * there is nothing of ours left on screen to hold
-                       * focus, so it falls back to the viewport, which
-                       * `tabIndex={-1}` makes a legal target without adding
-                       * it to the Tab order.
-                       */
-                      const focusTarget = searchInputRef.current ?? viewportRef.current
-                      focusTarget?.focus()
-                    }}
-                  >
-                    {labels.clearFilters}
-                  </button>
-                </>
-              ) : (
-                labels.empty
-              ))}
-          </div>
-        ) : null}
-      </div>
-
-      {footer ? <TablePagination instance={instance} labels={labels} /> : null}
     </div>
   )
 }

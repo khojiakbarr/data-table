@@ -609,6 +609,7 @@ export function DataTable<TData extends RowData>({
                         labels={labels}
                         sticky={stickyHeader}
                         grouped={instance.grouping.has(header.column.id)}
+                        groupColumnId={instance.grouping.columnId}
                         onReorder={handleReorder}
                         onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
                         onAutosize={autosize}

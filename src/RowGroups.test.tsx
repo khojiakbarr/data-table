@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DataTable } from "./components/DataTable"
 import type { TableQuery } from "./core/query"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
+import type { TableLayout } from "./types"
 
 /**
  * The Row Groups zone: dropping a column in it groups by that column.
@@ -35,9 +36,11 @@ const rows: Row[] = [{ id: "r0", name: "Row 0", status: "open", partner: "Acme" 
 interface HarnessProps {
   mode?: "client" | "server"
   onQueryChange?: (query: TableQuery) => void
+  /** A layout to start from, for the cases about where a column sits. */
+  initialLayout?: Partial<TableLayout>
 }
 
-function Harness({ mode = "server", onQueryChange }: HarnessProps) {
+function Harness({ mode = "server", onQueryChange, initialLayout }: HarnessProps) {
   const instance = useDataTable<Row>({
     id: "zone",
     columns,
@@ -46,6 +49,7 @@ function Harness({ mode = "server", onQueryChange }: HarnessProps) {
     rowCount: 1,
     getRowId: (row) => row.id,
     ...(onQueryChange === undefined ? {} : { onQueryChange }),
+    ...(initialLayout === undefined ? {} : { initialLayout }),
   })
   return <DataTable instance={instance} virtualize={false} />
 }
@@ -264,11 +268,14 @@ describe("the chips", () => {
     render(<Harness />)
     openPanel()
     const before = headerIds()
+    expect(before).toEqual(["name", "status", "partner"])
 
     dragColumnIntoZone("status")
     dragColumnIntoZone("partner")
-    // A grouped column that is not the group slot leaves the body.
-    expect(headerIds()).not.toContain("partner")
+    // A grouped column that is not the group slot leaves the body, and the
+    // one that holds the values has moved to the front — so this is a real
+    // restoration and not a table that never moved.
+    expect(headerIds()).toEqual(["status", "name"])
 
     fireEvent.click(removeChip("Status"))
     fireEvent.click(removeChip("Partner"))
@@ -428,5 +435,94 @@ describe("the group column's width", () => {
     const width = Number.parseFloat((col as HTMLElement).style.width)
     // The user's own width stands: the floor applies only where nothing was said.
     expect(width).toBeLessThan(200)
+  })
+})
+
+describe("where the group column sits", () => {
+  it("leads the table, so the tree reads from the left edge", () => {
+    render(<Harness />)
+    openPanel()
+    expect(headerIds()).toEqual(["name", "status", "partner"])
+
+    dragColumnIntoZone("status")
+
+    // Status is declared third. Grouped, it is first: the chevron, the value
+    // and the count are at the left edge rather than floating in the middle
+    // with two empty columns to their left.
+    expect(headerIds()).toEqual(["status", "name", "partner"])
+    expect(headerIds()[0]).toBe("status")
+  })
+
+  it("keeps leading when a second level is nested inside the first", () => {
+    render(<Harness />)
+    openPanel()
+
+    dragColumnIntoZone("status")
+    dragColumnIntoZone("partner")
+
+    // The outermost level still holds the values, still first; the inner
+    // level's column has left the body, as it does at any position.
+    expect(headerIds()).toEqual(["status", "name"])
+  })
+
+  it("still sorts its own level from the header it kept", () => {
+    render(<Harness />)
+    openPanel()
+    dragColumnIntoZone("status")
+
+    // The point of moving the grouped column rather than replacing it with a
+    // column of the table's own: the header travels with it.
+    const header = screen.getByRole("columnheader", { name: /Status/ })
+    expect(within(header).getByRole("img", { name: "Grouped" })).toBeInTheDocument()
+    expect(within(header).getByRole("button", { name: /Sort ascending/ })).toBeInTheDocument()
+  })
+
+  it("leads the scrolling columns, not the pinned ones", () => {
+    render(<Harness initialLayout={{ columnPinning: { start: ["name"], end: [] } }} />)
+    openPanel()
+    expect(headerIds()).toEqual(["name", "status", "partner"])
+
+    dragColumnIntoZone("status")
+
+    // A pinned column is frozen at the edge because the user asked for it to
+    // be. The group column leads the section it is in, which is the scrolling
+    // one — it does not pin itself on the way past.
+    expect(headerIds()).toEqual(["name", "status", "partner"])
+    expect(chipIds()).toEqual(["status"])
+  })
+
+  it("leads its own pinned section when the grouped column was pinned", () => {
+    render(
+      <Harness
+        initialLayout={{
+          columnPinning: { start: ["name", "partner"], end: [] },
+          grouping: ["partner"],
+        }}
+      />,
+    )
+    // Partner is pinned second. Grouped, it leads the frozen block — and so
+    // leads the table — without being unpinned.
+    expect(headerIds()).toEqual(["partner", "name", "status"])
+  })
+
+  it("is not the user's to move or to hide while it is the group column", () => {
+    render(<Harness />)
+    openPanel()
+    dragColumnIntoZone("status")
+
+    // No handle: its position is derived from the grouping, so a drag could
+    // only promise a move the next render would undo. The way to move it is
+    // to take it out of the Row Groups zone.
+    expect(
+      document.querySelector('ul.dt-panel-list li[data-column-id="status"] .dt-drag-handle'),
+    ).toBeNull()
+    expect(document.querySelector('th[data-column-id="status"]')).not.toHaveAttribute(
+      "draggable",
+      "true",
+    )
+    // And the tick is offered but fixed: the group values need a slot.
+    const checkbox = document.querySelector<HTMLInputElement>('#zone-col-status')
+    expect(checkbox?.checked).toBe(true)
+    expect(checkbox?.disabled).toBe(true)
   })
 })

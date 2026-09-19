@@ -70,6 +70,14 @@ interface Fixture {
   name: string
   grouped: boolean
   pinning: { start: string[]; end: string[] }
+  /**
+   * Columns the ROWS are grouped by — which is a different thing from
+   * `grouped`, the column-header kind. A row grouping derives a column order
+   * on top of the user's: the column holding the group values is lifted to the
+   * front of its section, and is the one column with no place of its own to
+   * drag. Server mode, because that is the only mode that groups.
+   */
+  rowGrouping?: string[]
   /** Asserted once per fixture, so a fixture that quietly changes shape is caught. */
   baseline: string[]
 }
@@ -101,7 +109,46 @@ const FIXTURES: Fixture[] = [
     pinning: { start: [], end: [] },
     baseline: ["a", "b", "c", "d", "e", "f"],
   },
+  {
+    // The derived order the row grouping puts on top of the user's, which is
+    // exactly the kind of thing this property exists to catch: D is declared
+    // fourth and renders first.
+    name: "a table grouped by its fourth column",
+    grouped: false,
+    pinning: { start: [], end: [] },
+    rowGrouping: ["d"],
+    baseline: ["d", "a", "b", "c", "e", "f"],
+  },
+  {
+    // Two derivations at once: the group column leads the SCROLLING columns,
+    // and the pinned pair still owns the left edge.
+    name: "a grouped table with two columns pinned to the start",
+    grouped: false,
+    pinning: { start: ["e", "f"], end: [] },
+    rowGrouping: ["d"],
+    baseline: ["e", "f", "d", "a", "b", "c"],
+  },
+  {
+    // The group column is hoisted OUT of the Right group to lead the table, so
+    // the runs a drop may move within are not the ones the definitions declare.
+    name: "two column groups, grouped by one of the right-hand columns",
+    grouped: true,
+    pinning: { start: [], end: [] },
+    rowGrouping: ["e"],
+    baseline: ["e", "a", "b", "c", "d", "f"],
+  },
 ]
+
+/**
+ * The columns a fixture lets a user pick up.
+ *
+ * Every column but the one holding the group values: its place is derived from
+ * the grouping, so it has no drag handle at all and a `grip()` on it would
+ * throw rather than fail. It stays in the TARGET loops, where the promise is
+ * that no slot appears on it and nothing moves.
+ */
+const draggableIn = (fixture: Fixture): readonly string[] =>
+  LEAF_IDS.filter((id) => id !== fixture.rowGrouping?.[0])
 
 const SIDES = ["start", "end"] as const
 type Side = (typeof SIDES)[number]
@@ -111,7 +158,15 @@ function Table({ fixture, storage }: { fixture: Fixture; storage?: LayoutStorage
     id: "reorder-invariant",
     data: rows,
     columns: fixture.grouped ? groupedColumns : flatColumns,
-    initialLayout: { columnPinning: fixture.pinning },
+    initialLayout: {
+      columnPinning: fixture.pinning,
+      ...(fixture.rowGrouping ? { grouping: [...fixture.rowGrouping] } : {}),
+    },
+    // Grouping is server-side: a client table refuses one, and the fixture
+    // would then be an ordinary table wearing a grouped name.
+    ...(fixture.rowGrouping
+      ? { mode: "server" as const, rowCount: rows.length, getRowId: (row: Row) => row.a }
+      : {}),
     ...(storage ? { storage } : {}),
   })
   return <DataTable instance={instance} />
@@ -161,7 +216,11 @@ const headerCell = (columnId: string): HTMLElement => {
 }
 
 const panelRow = (columnId: string): HTMLElement => {
-  const row = document.querySelector<HTMLElement>(`li[data-column-id="${columnId}"]`)
+  // Scoped to the column list: the Row Groups zone below it keys its chips by
+  // the same attribute, and a grouped fixture has both on screen at once.
+  const row = document.querySelector<HTMLElement>(
+    `ul.dt-panel-list li[data-column-id="${columnId}"]`,
+  )
   if (!row) throw new Error(`no panel row for ${columnId}`)
   return row
 }
@@ -276,12 +335,25 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     // The panel lists what the table renders; every case below reads the two
     // interchangeably, and a disagreement here would make all of them lie.
     expect(panelOrder()).toEqual(fixture.baseline)
+    // And the group column, where there is one, offers nothing to pick up —
+    // which is why the loops below leave it out of the dragged set.
+    for (const id of LEAF_IDS) {
+      const handle = panelRow(id).querySelector(".dt-drag-handle")
+      expect(handle === null).toBe(id === fixture.rowGrouping?.[0])
+    }
   })
 
   it.each(SURFACES)("dragging on $name", (surface) => {
     const violations: string[] = []
+    /*
+     * How many of these cases actually moved something. Asserted at the end
+     * because every check below is conditional on a slot appearing, so a
+     * surface that stopped offering slots at all would pass in silence — and
+     * that is exactly the shape a regression in the derived order would take.
+     */
+    let moves = 0
 
-    for (const draggedId of LEAF_IDS) {
+    for (const draggedId of draggableIn(fixture)) {
       for (const targetId of LEAF_IDS) {
         for (const side of SIDES) {
           const before = renderedOrder()
@@ -296,6 +368,7 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
 
           const after = renderedOrder()
           const where = caseName(draggedId, targetId, side)
+          if (after.join(" ") !== before.join(" ")) moves += 1
 
           if (slot === null) {
             if (after.join(" ") !== before.join(" ")) {
@@ -324,13 +397,14 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     }
 
     expect(violations).toEqual([])
+    expect(moves).toBeGreaterThan(0)
   })
 
   it("lands where it announced on the keyboard path", () => {
     const violations: string[] = []
     const total = LEAF_IDS.length
 
-    for (const draggedId of LEAF_IDS) {
+    for (const draggedId of draggableIn(fixture)) {
       for (let index = 0; index < total; index += 1) {
         const before = renderedOrder()
         const from = before.indexOf(draggedId)

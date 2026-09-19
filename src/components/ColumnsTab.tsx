@@ -73,6 +73,12 @@ export function ColumnsTab<TData extends RowData>({
    */
   const columns = orderedLeafColumns(table)
   const tree = buildColumnTree(columns)
+  /*
+   * The column holding the group values, which the grouping has lifted to the
+   * front of its section. Its place is derived, so it is the one row in this
+   * list with no drag handle and no reachable position — see `dropRegionOf`.
+   */
+  const groupColumnId = instance.grouping.columnId
   const drop = useDropSlot(columns.map((column) => column.id))
   const [announcement, setAnnouncement] = useState("")
   /**
@@ -114,7 +120,9 @@ export function ColumnsTab<TData extends RowData>({
     const dragged = columns.find((column) => column.id === drop.draggedId)
     const target = columns.find((column) => column.id === targetId)
     return (
-      dragged !== undefined && target !== undefined && dropRegionOf(dragged) === dropRegionOf(target)
+      dragged !== undefined &&
+      target !== undefined &&
+      dropRegionOf(dragged, groupColumnId) === dropRegionOf(target, groupColumnId)
     )
   }
 
@@ -214,7 +222,10 @@ export function ColumnsTab<TData extends RowData>({
     const step = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0
     if (step === 0) return
     event.preventDefault()
-    const { first, last } = reachableRange(columns.map(dropRegionOf), index)
+    const { first, last } = reachableRange(
+      columns.map((column) => dropRegionOf(column, groupColumnId)),
+      index,
+    )
     const next = Math.min(Math.max(drop.slotIndex + step, first), last)
     if (next === drop.slotIndex) return
     drop.moveTo(next)
@@ -288,7 +299,7 @@ export function ColumnsTab<TData extends RowData>({
         onDragLeave={(event) => handleDragLeave(event, column.id)}
         onDrop={(event) => handleDrop(event, column.id)}
       >
-        {flags.reordering ? (
+        {flags.reordering && column.id !== groupColumnId ? (
           <span
             className="dt-drag-handle"
             draggable

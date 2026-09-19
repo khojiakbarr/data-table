@@ -47,6 +47,15 @@ interface HeaderCellProps<TData extends RowData> {
    * should be able to see which column they went to without opening a panel.
    */
   grouped?: boolean
+  /**
+   * Which column holds the group values, when the table is grouped.
+   *
+   * Needed for the drag, not for the paint: the group column leads its section
+   * because the grouping put it there, so it is the one column a drag must
+   * neither pick up nor drop onto. `dropRegionOf` is where that is decided,
+   * once, for both surfaces.
+   */
+  groupColumnId?: string | undefined
   /** Open the per-column action menu at a viewport position. */
   onOpenMenu: (at: { x: number; y: number }) => void
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
@@ -68,6 +77,7 @@ export function HeaderCell<TData extends RowData>({
   labels,
   sticky,
   grouped = false,
+  groupColumnId,
   onReorder,
   onOpenMenu,
   onAutosize,
@@ -94,7 +104,7 @@ export function HeaderCell<TData extends RowData>({
   const pinned = pinning.side
   const canSort = flags.sorting && !isGroup && column.getCanSort()
   const canResize = flags.resizing && column.getCanResize()
-  const canDrag = flags.reordering && !isGroup && !pinned
+  const canDrag = flags.reordering && !isGroup && !pinned && column.id !== groupColumnId
   const isResizing = column.getIsResizing()
   const sorted = column.getIsSorted()
 
@@ -129,7 +139,10 @@ export function HeaderCell<TData extends RowData>({
   const canDropHere = (): boolean => {
     if (!canDrag || drop.draggedId === null) return false
     const dragged = column.table.getColumn(drop.draggedId)
-    return dragged !== undefined && dropRegionOf(dragged) === dropRegionOf(column)
+    return (
+      dragged !== undefined &&
+      dropRegionOf(dragged, groupColumnId) === dropRegionOf(column, groupColumnId)
+    )
   }
 
   const handleDragOver = (event: DragEvent<HTMLTableCellElement>) => {

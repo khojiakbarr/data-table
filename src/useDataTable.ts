@@ -52,9 +52,8 @@ import {
   type GroupRow,
 } from "./core/grouping"
 import { noLayoutStorage } from "./core/persistence"
-import { orderedLeafColumns } from "./core/pinning"
 import type { TableQuery, TableSearch } from "./core/query"
-import { moveColumn, type DropSide } from "./core/reorder"
+import { leadColumn, moveColumn, pinnedFirstOrder, type DropSide } from "./core/reorder"
 import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { clampTableHeight, minTableHeight, tableHeightStep } from "./core/tableHeight"
@@ -732,6 +731,78 @@ export function useDataTable<TData extends RowData>({
   }, [grouping, groupColumnId, layout.columnVisibility])
 
   /*
+   * The definitions the table is built from: the host's own, with the group
+   * column hoisted out of its column group while there is one. See
+   * {@link hoistGroupColumn} — a derived order can move a leaf but cannot
+   * change whose header stands above it, and a leaf that leads the table from
+   * inside a group splits that group's header in two.
+   */
+  const tableColumns = useMemo(
+    () => (groupColumnId === undefined ? columns : hoistGroupColumn(columns, groupColumnId)),
+    [columns, groupColumnId],
+  )
+
+  /*
+   * Order as the table renders it: the user's own, with the group column
+   * lifted to the front of its section.
+   *
+   * This is the whole of "the group column leads the table". The grouped
+   * column is not replaced by a synthetic one — it IS the group column, moved
+   * — which is what keeps its header, and therefore keeps the sort control
+   * that reorders that level's group rows.
+   *
+   * Derived rather than written into the layout, for the reason
+   * `columnVisibility` above is: taking the last chip out has to put every
+   * column back exactly where it was, and the only way that is true by
+   * construction is if nothing was moved to begin with. `onColumnOrderChange`
+   * and `reorderColumn` both write to the LAYOUT slice, never to this.
+   *
+   * The front of this flat array is the front of the SCROLLING columns, which
+   * is where the group column belongs: the pinned sections are rendered from
+   * `columnPinning` instead, and a column the user froze at an edge stays
+   * frozen there. A group column the user had pinned leads its own pinned
+   * array instead, just below.
+   */
+  const columnOrder = useMemo(() => {
+    if (groupColumnId === undefined) return layout.columnOrder
+    /*
+     * An empty slice means "natural order" to TanStack, and there is nothing
+     * to lift a column within, so the natural order is spelled out first — the
+     * same spelling `reorderColumn` falls back to, so a drag while grouped
+     * starts from the order the user has rather than from the derived one.
+     */
+    const base = layout.columnOrder.length
+      ? layout.columnOrder
+      : pinnedFirstOrder(columnIds, layout.columnPinning)
+    return leadColumn(base, groupColumnId)
+  }, [groupColumnId, layout.columnOrder, layout.columnPinning, columnIds])
+
+  /*
+   * Pinning as the table renders it: the user's own, with the group column
+   * leading the section it is pinned to.
+   *
+   * A pinned section renders from these arrays and not from `columnOrder`, so
+   * a grouped column the user pinned needs the same lift applied here or it
+   * would keep its old place in the frozen block. The user's pinning is never
+   * changed — a column is not pinned or unpinned by grouping it, because the
+   * pinned section is a choice the user made and the grouping has no business
+   * overriding it. That is also the answer to "does the group column lead the
+   * whole table": it leads the table when nothing is pinned before it, and
+   * otherwise it leads the section it is in.
+   */
+  const columnPinning = useMemo(() => {
+    if (groupColumnId === undefined) return layout.columnPinning
+    const { start, end } = layout.columnPinning
+    if (start.includes(groupColumnId)) {
+      return { ...layout.columnPinning, start: leadColumn(start, groupColumnId) }
+    }
+    if (end.includes(groupColumnId)) {
+      return { ...layout.columnPinning, end: leadColumn(end, groupColumnId) }
+    }
+    return layout.columnPinning
+  }, [groupColumnId, layout.columnPinning])
+
+  /*
    * Widths as the table renders them: the user's own, with a floor under the
    * group column.
    *
@@ -1103,11 +1174,11 @@ export function useDataTable<TData extends RowData>({
      * for a row rendered as a record.
      */
     data: data as TData[],
-    columns,
+    columns: tableColumns,
     state: {
-      columnOrder: layout.columnOrder,
+      columnOrder,
       columnVisibility,
-      columnPinning: layout.columnPinning,
+      columnPinning,
       columnSizing,
       sorting: layout.sorting,
       columnFilters,
@@ -1308,7 +1379,7 @@ export function useDataTable<TData extends RowData>({
       const dragged = table.getColumn(draggedId)
       const target = table.getColumn(targetId)
       if (!dragged || !target) return
-      if (dropRegionOf(dragged) !== dropRegionOf(target)) return
+      if (dropRegionOf(dragged, groupColumnId) !== dropRegionOf(target, groupColumnId)) return
 
       /*
        * Same region, so the target is pinned exactly as the dragged column is
@@ -1321,16 +1392,20 @@ export function useDataTable<TData extends RowData>({
           /*
            * When nothing has been reordered yet the order is empty, meaning
            * "natural". The fallback must be the order the columns are RENDERED
-           * in — `getAllLeafColumns()` groups pinned columns first, so using it
-           * here scrambles every column on the very first drag.
+           * in — pinned sections first and last, which declaration order alone
+           * does not say — so it scrambles nothing on the very first drag.
+           *
+           * Read off the ids and the pinning slice rather than off the table,
+           * which would answer with the order the GROUPING derived: lifting
+           * the group column to the front is a view, and baking it into the
+           * user's own slice is how "take the last chip out and every column
+           * is back where it was" would quietly stop being true.
            *
            * Hidden columns included: TanStack appends whatever an order does
            * not name, so a fallback built from the visible columns alone would
            * send every hidden one to the end of the table on the first drag.
            */
-          const order = current.length
-            ? current
-            : orderedLeafColumns(table).map((column) => column.id)
+          const order = current.length ? current : pinnedFirstOrder(columnIds, layout.columnPinning)
           return moveColumn(order, draggedId, targetId, side)
         }),
         /*
@@ -1350,7 +1425,7 @@ export function useDataTable<TData extends RowData>({
             ]),
       ])
     },
-    [table, updateSlices],
+    [table, updateSlices, groupColumnId, columnIds, layout.columnPinning],
   )
 
   /*
@@ -1741,4 +1816,109 @@ function collectLeafIds(columns: readonly ColumnDefShape[]): string[] {
     if (column.columns?.length) return collectLeafIds(column.columns)
     return [deriveColumnId(column, index)]
   })
+}
+
+/** The column-definition element the public `columns` option carries. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TableColumnDef<TData extends RowData> = ColumnDef<DataTableFeatures, TData, any>
+
+/**
+ * A group definition's children, or undefined for a leaf.
+ *
+ * `ColumnDef` is a union and only its group member declares `columns`, so the
+ * property cannot be read off the union directly; `in` is the narrowing the
+ * union supports.
+ *
+ * @param def - Any column definition.
+ * @returns Its children, or undefined when it has none.
+ */
+function childDefs<TData extends RowData>(
+  def: TableColumnDef<TData>,
+): readonly TableColumnDef<TData>[] | undefined {
+  return "columns" in def ? def.columns : undefined
+}
+
+/**
+ * The definitions a grouped table is built from: the group column pulled out
+ * of its column group and put first.
+ *
+ * The other half of "the group column leads the table", and the half that
+ * cannot be done with state. A column's place in the header tree is
+ * structural, so a derived `columnOrder` alone would move the leaf and leave
+ * its group header behind — TanStack draws one header per RUN of adjacent
+ * leaves sharing a parent, so a `Payment` group would be drawn twice: once
+ * over the group column at the left edge and once over what it left behind.
+ * One name, two headers, and no way for a user to tell which is which.
+ *
+ * And while a table is grouped the column genuinely is not a member of that
+ * group any more: it is holding a tree of values from every level, not the
+ * payment half of a receipt. Hoisting it says so — it gets a full-height
+ * header of its own, the way a column declared outside every group does, and
+ * the group it left shrinks to what is still in it.
+ *
+ * The definition itself is otherwise untouched, which is what keeps the
+ * header, the sort control, the filter and the declared width it already had.
+ * An explicit `id` is written onto the copy so the hoist cannot change what
+ * the column is called: an id TanStack derives from a definition's position
+ * would move with it.
+ *
+ * A group left with no children is dropped, since a header spanning nothing
+ * has nothing to span.
+ *
+ * @param columns - The host's definitions, untouched.
+ * @param columnId - The leaf to hoist.
+ * @returns A new top-level array — a copy of `columns` when the leaf is
+ *   already at the top level and there is nothing structural to do.
+ */
+function hoistGroupColumn<TData extends RowData>(
+  columns: readonly TableColumnDef<TData>[],
+  columnId: string,
+): TableColumnDef<TData>[] {
+  const taken = takeLeafDef(columns, columnId)
+  if (taken === null) return [...columns]
+  return [{ ...taken.def, id: columnId }, ...taken.rest]
+}
+
+/** What {@link takeLeafDef} found: the leaf, and everything else. */
+interface TakenLeaf<TData extends RowData> {
+  def: TableColumnDef<TData>
+  rest: TableColumnDef<TData>[]
+}
+
+/**
+ * Remove one leaf from a definition tree, keeping a copy of it.
+ *
+ * @param columns - Definitions to search, possibly nested.
+ * @param columnId - The leaf to take.
+ * @param parentId - The group this level sits under; omitted at the top.
+ * @returns The leaf and the tree without it, or null when the leaf is not
+ *   nested inside a group — at the top level there is nothing to hoist it out
+ *   of, and its position is the derived order's business alone.
+ */
+function takeLeafDef<TData extends RowData>(
+  columns: readonly TableColumnDef<TData>[],
+  columnId: string,
+  parentId?: string,
+): TakenLeaf<TData> | null {
+  for (const [index, def] of columns.entries()) {
+    const children = childDefs(def)
+    const id = deriveColumnId(def, index)
+
+    if (children?.length) {
+      const taken = takeLeafDef(children, columnId, id)
+      if (taken === null) continue
+      const rest = [...columns]
+      // A group emptied by the hoist goes with it; otherwise it keeps its own
+      // definition and loses one child.
+      const remaining: TableColumnDef<TData>[] = taken.rest
+      rest.splice(index, 1, ...(remaining.length ? [{ ...def, columns: remaining }] : []))
+      return { def: taken.def, rest }
+    }
+
+    if (id !== columnId) continue
+    // A top-level leaf is in no group, so there is nothing structural to undo.
+    if (parentId === undefined) return null
+    return { def, rest: columns.filter((_, at) => at !== index) }
+  }
+  return null
 }

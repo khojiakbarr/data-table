@@ -36,7 +36,7 @@ function Receipts({ data, columns }) {
 | **Nested column groups** | Group headers to any depth. A column that sits above the deepest level spans down to meet the rows. |
 | **Pin columns** | To the start edge, the end edge, or both. Pinned columns stay put while the rest scrolls, with a shadow marking the seam. |
 | **Resize columns** | Drag the right edge of a header; double-click it to fit the column to its content. A group header's edge resizes every column under it. Columns are never stretched to fill the container. |
-| **Reorder columns** | Drag a header onto another; a caret shows which side it will land on. |
+| **Reorder columns** | Drag a header onto another; the column it will land on is outlined. Also from the keyboard, in the **Columns** panel. |
 | **Sort** | Click a header: ascending, descending, off. Multi-sort shows its position. |
 | **Quick search** | One box over every searchable column. Every token must appear somewhere on the row; different tokens may match different columns. |
 | **Filter columns** | Text, number, date, boolean and values-list filters, from the header menu or the side panel's Filters tab. Each one is published as an explicit operator a backend can translate. |
@@ -901,8 +901,12 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 - The panel's two tabs are a `tablist` with arrow-key movement and a single roving tab stop.
 - An empty table says whether it has no rows or no *matching* rows, and the second offers a way out.
 - Row toggles report `aria-expanded` and name themselves.
-- Reordering is drag-only today. If you need a keyboard path, the Columns panel is the
-  place to add it — see [#1](https://github.com/khojiakbarr/data-table/issues).
+- Reordering has a keyboard path: each row of the **Columns** panel carries a drag handle that
+  is in the `Tab` order. `Space` picks the column up, the arrow keys move the drop slot,
+  `Space` puts it down and `Escape` gives it back. The handle reports `aria-pressed`, and every
+  position — including the one a cancel returns to — is announced politely. The slot stops at a
+  group or pinning boundary, because a move across one is refused. The two strings it speaks are
+  the `reorderHint` and `reorderPosition` labels.
 - `prefers-reduced-motion` disables transitions.
 
 ---

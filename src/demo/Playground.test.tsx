@@ -31,6 +31,19 @@ function themeRule(): string {
   return document.querySelector(".pg-main style")?.textContent ?? ""
 }
 
+/**
+ * The Pagination checkbox, found through the hint printed under its label.
+ *
+ * `getByLabelText` cannot be used: the hint lives inside the `<label>`, so it
+ * is part of the control's accessible name and no exact label string matches.
+ */
+function paginationToggle(): HTMLInputElement {
+  const label = screen.getByText(CHROME.en.features.hints.pagination).closest("label")
+  const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]')
+  if (!input) throw new Error("no Pagination checkbox beside the hint")
+  return input
+}
+
 beforeEach(() => {
   // The page persists its layout under the id "playground"; a sorting or page
   // size left behind by one test would silently change the next one's query.
@@ -192,6 +205,26 @@ describe("playground", () => {
       expect(toggle?.textContent).toContain(chrome.features.labels.pagination)
       expect(toggle?.querySelector('input[type="checkbox"]')).not.toBeNull()
     }
+  })
+
+  it("takes the pager away when Pagination is unticked, and brings it back", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // The state the hint above warns about, asserted rather than described:
+    // with `pagination` off the footer stops rendering altogether, so one page
+    // of 50 out of 100 000 is all there is and nothing leads to the rest.
+    // Without this the toggle could stop at its own checkbox — the option
+    // would fall back to its default and the warning would be about nothing.
+    const nextPage = { name: defaultLabels.nextPage }
+    expect(screen.getByRole("button", nextPage)).toBeInTheDocument()
+
+    await user.click(paginationToggle())
+    await waitFor(() => expect(screen.queryByRole("button", nextPage)).toBeNull())
+
+    await user.click(paginationToggle())
+    await waitFor(() => expect(screen.getByRole("button", nextPage)).toBeInTheDocument())
   })
 
   it("switches the table labels and the page chrome together", async () => {

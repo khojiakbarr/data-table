@@ -1,6 +1,7 @@
 import type { RowData } from "@tanstack/react-table"
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { classNames, insertAt } from "../core/classNames"
+import { dropRegionOf } from "../core/dropRegion"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import { moveColumn, type DropSide } from "../core/reorder"
 import { useDropSlot } from "../core/useDropSlot"
@@ -260,14 +261,16 @@ export function DataTable<TData extends RowData>({
   const handleReorder = useCallback(
     (draggedId: string, targetId: string, side: DropSide) => {
       /*
-       * A leaf column cannot leave its group: the order is a flat list, so
-       * moving one across a group boundary would either be ignored or tear the
-       * group's header apart. Refusing the drop is the honest outcome.
+       * The order is a flat list, so a move across a group or a pinning
+       * boundary would either be ignored or tear a group's header apart.
+       * Refusing it is the honest outcome — and both drag surfaces ask
+       * `dropRegionOf` the same question before they draw a slot, so nothing
+       * that reaches here should ever be refused.
        */
       const dragged = table.getColumn(draggedId)
       const target = table.getColumn(targetId)
       if (!dragged || !target) return
-      if (dragged.parent?.id !== target.parent?.id) return
+      if (dropRegionOf(dragged) !== dropRegionOf(target)) return
 
       table.setColumnOrder((current) => {
         /*

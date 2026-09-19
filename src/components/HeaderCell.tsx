@@ -11,6 +11,7 @@ import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 import { classNames } from "../core/classNames"
 import { columnLabel } from "../core/columnLabel"
+import { dropRegionOf } from "../core/dropRegion"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
 import { dropSideAt, type DropSide } from "../core/reorder"
 import type { DropSlot } from "../core/useDropSlot"
@@ -106,15 +107,30 @@ export function HeaderCell<TData extends RowData>({
     drop.start(column.id)
   }
 
+  /**
+   * Whether a drop on this cell would really be carried out.
+   *
+   * A group header, a pinned column and the filler are not drop targets at
+   * all — that is `canDrag`. But a leaf that IS one can still be out of the
+   * dragged column's reach: the shell refuses a move across a group or a
+   * pinning boundary, so the two have to be in the same region as well. Both
+   * questions belong here, because a cell that refuses draws no slot, and a
+   * slot on a cell the drop would ignore promises a move that never happens.
+   */
+  const canDropHere = (): boolean => {
+    if (!canDrag || drop.draggedId === null) return false
+    const dragged = column.table.getColumn(drop.draggedId)
+    return dragged !== undefined && dropRegionOf(dragged) === dropRegionOf(column)
+  }
+
   const handleDragOver = (event: DragEvent<HTMLTableCellElement>) => {
     /*
-     * A pinned column, a group header and the filler are not drop targets, and
-     * refusing here is what keeps the slot honest: with no `preventDefault`
+     * Refusing here is what keeps the slot honest: with no `preventDefault`
      * the browser will not drop, and with no `over` the slot does not appear
      * somewhere the drop would ignore. The cell just left has already cleared
      * it, so the slot simply goes away over these.
      */
-    if (!canDrag) return
+    if (!canDropHere()) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
     // State here drives the slot only; the drop reads the event again.

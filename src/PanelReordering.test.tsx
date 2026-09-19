@@ -212,16 +212,30 @@ describe("reordering from the keyboard in the Columns tab", () => {
   it("keeps focus on the handle that was just used", async () => {
     render(<Table />)
     await openPanel()
-    const handle = handleFor("A")
-    handle.focus()
+    handleFor("A").focus()
 
-    fireEvent.keyDown(handle, { key: " " })
-    fireEvent.keyDown(handle, { key: "ArrowDown" })
-    fireEvent.keyDown(handle, { key: " " })
+    fireEvent.keyDown(handleFor("A"), { key: " " })
+    fireEvent.keyDown(handleFor("A"), { key: "ArrowDown" })
 
-    // React re-inserts the row at its new place, which blurs it; landing on
-    // <body> would dump a keyboard user at the top of the document.
-    expect(document.activeElement).toBe(handle)
+    /*
+     * The blur stands in for the browser's: committing re-inserts the `<li>`
+     * at its new place, and moving a focused node drops the focus onto
+     * <body>. jsdom does not model that, so without blurring by hand the
+     * handle stays focused whether or not anything put it back — and the
+     * layout effect this test exists for could be deleted with the suite
+     * green, shipping a WCAG 2.4.3 failure. Only the restoration can undo
+     * this.
+     */
+    ;(document.activeElement as HTMLElement).blur()
+    expect(document.activeElement).toBe(document.body)
+
+    fireEvent.keyDown(handleFor("A"), { key: " " })
+    expect(panelOrder()).toEqual(["B", "A", "C", "D"])
+
+    // Looked up again rather than captured: what is asserted is where focus
+    // sits in the list as it now stands, which is also what catches a
+    // restoration that puts it on the displaced column's handle instead.
+    expect(document.activeElement).toBe(handleFor("A"))
   })
 
   it("moves the slot all the way to the end and no further", async () => {

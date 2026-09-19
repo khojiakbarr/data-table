@@ -1,6 +1,7 @@
 import type { Column, RowData } from "@tanstack/react-table"
 import { useRef, useState, type DragEvent, type KeyboardEvent } from "react"
 import { columnLabel } from "../core/columnLabel"
+import { dropRegionOf } from "../core/dropRegion"
 import { renderedLeafColumns } from "../core/pinning"
 import { reachableRange, type DropSide } from "../core/reorder"
 import { useDropSlot } from "../core/useDropSlot"
@@ -22,20 +23,6 @@ export interface ColumnsTabProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   labels: DataTableLabels
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
-}
-
-/**
- * Which run of the list a column may move within.
- *
- * A leaf cannot leave its group — the shell's reorder handler refuses that —
- * and a pinned column keeps its section however the stored order changes. A
- * slot outside the column's own run would promise a move that never happens,
- * so both the pointer and the keyboard stop at the run's edge.
- */
-function regionOf<TData extends RowData>(
-  column: Column<DataTableFeatures, TData, unknown>,
-): string {
-  return `${column.parent?.id ?? ""}|${column.getIsPinned() || "center"}`
 }
 
 /**
@@ -89,7 +76,9 @@ export function ColumnsTab<TData extends RowData>({
   const canDropOn = (targetId: string): boolean => {
     const dragged = columns.find((column) => column.id === drop.draggedId)
     const target = columns.find((column) => column.id === targetId)
-    return dragged !== undefined && target !== undefined && regionOf(dragged) === regionOf(target)
+    return (
+      dragged !== undefined && target !== undefined && dropRegionOf(dragged) === dropRegionOf(target)
+    )
   }
 
   /** Which edge of a list row the pointer is nearest. A list runs vertically. */
@@ -188,7 +177,7 @@ export function ColumnsTab<TData extends RowData>({
     const step = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0
     if (step === 0) return
     event.preventDefault()
-    const { first, last } = reachableRange(columns.map(regionOf), index)
+    const { first, last } = reachableRange(columns.map(dropRegionOf), index)
     const next = Math.min(Math.max(drop.slotIndex + step, first), last)
     if (next === drop.slotIndex) return
     drop.moveTo(next)

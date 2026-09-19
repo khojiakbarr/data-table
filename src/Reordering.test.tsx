@@ -8,8 +8,9 @@ import { useDataTable, type DataTableFeatures } from "./useDataTable"
  * Drag-and-drop reordering, driven through the DOM.
  *
  * The arithmetic is covered in `core/reorder.test.ts`; these tests cover the
- * wiring around it — which edge the caret was on, what the order falls back to
- * before anything has been reordered, and whether a leaf can escape its group.
+ * wiring around it — which edge of the target the pointer was on, what the
+ * order falls back to before anything has been reordered, and whether a leaf
+ * can escape its group.
  */
 
 interface Row {
@@ -213,8 +214,15 @@ describe("column reordering", () => {
     render(<Table grouped />)
     const a = screen.getByRole("columnheader", { name: /^A/ })
     const c = screen.getByRole("columnheader", { name: /^C/ })
-    dragHeader(a, c, "end")
 
+    const transfer = startDrag(a)
+    pointAt("dragOver", c, "end", transfer)
+    // The refusal has to be visible BEFORE the drop. Without this the slot is
+    // free to promise a move the shell then declines, and the assertion on the
+    // order below still passes.
+    expect(slotLabel()).toBeNull()
+
+    pointAt("drop", c, "end", transfer)
     expect(headerOrder()).toEqual(["A", "B", "C", "D"])
   })
 
@@ -303,6 +311,25 @@ describe("the drop slot", () => {
     dragLeave(b)
     pointAt("dragOver", pinned, "start", transfer)
     // A pinned column refuses the drop, so promising one there would be a lie.
+    expect(slotLabel()).toBeNull()
+  })
+
+  it("keeps the slot inside the dragged column's own group", () => {
+    render(<Table grouped />)
+    const a = screen.getByRole("columnheader", { name: /^A/ })
+    const b = screen.getByRole("columnheader", { name: /^B/ })
+    const c = screen.getByRole("columnheader", { name: /^C/ })
+
+    const transfer = startDrag(a)
+    pointAt("dragOver", b, "end", transfer)
+    expect(slotLabel()).toBe("B")
+
+    dragLeave(b)
+    pointAt("dragOver", c, "start", transfer)
+    // C is under the other group, and the shell refuses that move — so the
+    // slot goes away rather than moving somewhere the drop would ignore. Both
+    // halves matter: a gate that simply refused every grouped table would
+    // pass the second assertion and fail the first.
     expect(slotLabel()).toBeNull()
   })
 

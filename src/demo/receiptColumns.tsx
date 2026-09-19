@@ -24,6 +24,16 @@ const FLAG_LABELS: Record<Language, [yes: string, no: string]> = {
   uz: ["Ha", "Yo'q"],
 }
 
+/**
+ * What a blank cell shows.
+ *
+ * An em dash rather than an empty cell, so a blank column is visibly blank
+ * rather than indistinguishable from a rendering bug — and rather than
+ * `Intl.NumberFormat.format(null)`, which silently prints `0` and would make
+ * the rows a `blank` filter selects look like rows worth nothing.
+ */
+const BLANK_CELL = "—"
+
 const columnHelper = createColumnHelper<DataTableFeatures, ServerReceipt>()
 
 /**
@@ -54,11 +64,24 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
 
   return [
     columnHelper.accessor("code", { header: headers.code, size: 130 }),
-    columnHelper.accessor("partner", { header: headers.partner, size: 260 }),
+    columnHelper.accessor("partner", {
+      header: headers.partner,
+      size: 260,
+      // Both blank shapes render as nothing on their own — React skips `null`
+      // and `""` alike — so the rows a `blank` filter selects would look like
+      // a broken cell rather than an empty column.
+      cell: (info) => {
+        const partner: string | null = info.getValue()
+        return partner === null || partner === "" ? BLANK_CELL : partner
+      },
+    }),
     columnHelper.accessor("amount", {
       header: headers.amount,
       size: 150,
-      cell: (info) => <span className="num">{numberFormat.format(info.getValue())}</span>,
+      cell: (info) => {
+        const amount: number | null = info.getValue()
+        return <span className="num">{amount === null ? BLANK_CELL : numberFormat.format(amount)}</span>
+      },
     }),
     // In server mode there is nothing to facet from — one page is all the
     // client holds — so the values list comes from `loadValues` (fakeServer's
@@ -84,10 +107,17 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
   ]
 }
 
-const DETAIL_COPY: Record<Language, (row: ServerReceipt) => string> = {
-  en: (row) => `Receipt ${row.code} from ${row.partner}, recorded ${row.date}.`,
-  ru: (row) => `Квитанция ${row.code} от контрагента «${row.partner}», дата ${row.date}.`,
-  uz: (row) => `${row.partner} kontragentidan ${row.code} kvitansiyasi, sanasi ${row.date}.`,
+/** The partner's name, or a stand-in for the rows whose column is blank. */
+const UNKNOWN_PARTNER: Record<Language, string> = {
+  en: "an unnamed partner",
+  ru: "неизвестного контрагента",
+  uz: "nomaʼlum kontragent",
+}
+
+const DETAIL_COPY: Record<Language, (row: ServerReceipt, partner: string) => string> = {
+  en: (row, partner) => `Receipt ${row.code} from ${partner}, recorded ${row.date}.`,
+  ru: (row, partner) => `Квитанция ${row.code} от ${partner}, дата ${row.date}.`,
+  uz: (row, partner) => `${partner}dan ${row.code} kvitansiyasi, sanasi ${row.date}.`,
 }
 
 /**
@@ -101,5 +131,6 @@ const DETAIL_COPY: Record<Language, (row: ServerReceipt) => string> = {
  * <DataTable instance={table} renderDetail={(row) => <ReceiptDetail row={row} language={language} />} />
  */
 export function ReceiptDetail({ row, language }: { row: ServerReceipt; language: Language }) {
-  return <p className="pg-detail">{DETAIL_COPY[language](row)}</p>
+  const partner = row.partner === null || row.partner === "" ? UNKNOWN_PARTNER[language] : row.partner
+  return <p className="pg-detail">{DETAIL_COPY[language](row, partner)}</p>
 }

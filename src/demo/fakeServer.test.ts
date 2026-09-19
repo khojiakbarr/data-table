@@ -1,26 +1,55 @@
+import type { Row } from "@tanstack/react-table"
 import { describe, expect, it } from "vitest"
-import type { FilterCondition } from "../core/filters"
+import { filterFn_dt } from "../core/filterFn"
+import { rebuildCondition, type FilterCondition } from "../core/filters"
 import type { TableQuery } from "../core/query"
-import { fetchReceipts, fetchValues } from "./fakeServer"
+import type { DataTableFeatures } from "../useDataTable"
+import { fetchReceipts, fetchValues, matchesFilter, type ServerReceipt } from "./fakeServer"
 
 /**
- * Drives the fake server directly, one case per operator, against the same
- * semantics `filterFn_dt`'s own tests assert: all six text operators
- * case-insensitive, `between`/date ranges inclusive-low/exclusive-high with
- * `null` unbounded, and negated operators never matching a blank value. If
- * this file and `filterFn.test.ts` ever disagree, the contract is wrong
- * somewhere — see `fakeServer.ts`'s docblock.
+ * Drives the fake server directly, one case per operator — and then checks its
+ * answers against `filterFn_dt`'s on the same conditions.
  *
- * Every test below scopes to an exact list of ten codes first — rows 0–9, a
- * deterministic, hand-computed slice of the 100 000 generated rows — so each
- * operator's result set is exact and small, without asserting on the
- * dataset's internal generation formula anywhere else. Naming them by an
- * exact `in` list rather than a `code` prefix: `"KR-1000"` is also a prefix
- * of six-digit codes like `KR-100026` (index 90 026), so a `startsWith` scope
- * silently pulls in far more than rows 0–9.
+ * The agreement suite is the point of this file. The demo's own correctness is
+ * worth little; what is worth knowing is whether the published query contract
+ * can be implemented twice — once in the client and once in a backend that
+ * shares none of its code — and still select the same rows. Where the two
+ * disagree, one of them is wrong about the contract, and the contract is what
+ * every host will build against.
+ *
+ * Every test scopes to an exact list of ten codes first — rows 0–9, a
+ * deterministic slice of the 100 000 generated rows — so each operator's
+ * result set is exact and small. Naming them by an exact `in` list rather than
+ * a `code` prefix: `"KR-1000"` is also a prefix of six-digit codes like
+ * `KR-100026` (index 90 026), so a `startsWith` scope silently pulls in far
+ * more than rows 0–9.
+ *
+ * Those ten rows contain blanks on purpose — `partner` is null in one and `""`
+ * in the next, `amount` is null in a third — so every operator's expected set
+ * below also states the blank rule, rather than passing vacuously against a
+ * table where no column is ever null:
+ *
+ * | code     | partner                    | amount  | status     | date       | flagged |
+ * |----------|----------------------------|---------|------------|------------|---------|
+ * | KR-10000 | Oʻzbekiston Temir Yoʻllari |  310000 | open       | 2026-01-01 | true    |
+ * | KR-10001 | Gʻallaorol Agro MChJ       | 1228233 | in_process | 2026-02-02 | false   |
+ * | KR-10002 | ООО «Северный Путь»        | 2146466 | received   | 2026-03-03 | false   |
+ * | KR-10003 | Toshkent Kimyo Zavodi      | 3064699 | closed     | 2026-04-04 | false   |
+ * | KR-10004 | Oʻzbekiston Temir Yoʻllari | 3982932 | open       | 2026-05-05 | false   |
+ * | KR-10005 | null                       | 4901165 | in_process | 2026-06-06 | false   |
+ * | KR-10006 | ""                         | 5819398 | received   | 2026-07-07 | false   |
+ * | KR-10007 | Toshkent Kimyo Zavodi      | 6737631 | closed     | 2026-08-08 | true    |
+ * | KR-10008 | Oʻzbekiston Temir Yoʻllari | null    | open       | 2026-09-09 | false   |
+ * | KR-10009 | Gʻallaorol Agro MChJ       | 8574097 | in_process | 2026-10-10 | false   |
  */
 const SCOPE_CODES = Array.from({ length: 10 }, (_, index) => `KR-${10_000 + index}`)
 const SCOPE: FilterCondition = { kind: "list", field: "code", op: "in", values: SCOPE_CODES }
+
+/** The two rows whose `partner` is blank, and the one whose `amount` is. */
+const BLANK_PARTNER = ["KR-10005", "KR-10006"]
+const BLANK_AMOUNT = ["KR-10008"]
+const NON_BLANK_PARTNER = SCOPE_CODES.filter((code) => !BLANK_PARTNER.includes(code))
+const NON_BLANK_AMOUNT = SCOPE_CODES.filter((code) => !BLANK_AMOUNT.includes(code))
 
 function query(filters: FilterCondition[], overrides: Partial<TableQuery> = {}): TableQuery {
   return {
@@ -46,11 +75,15 @@ describe("fetchReceipts — text operators (case-insensitive)", () => {
     ])
   })
 
-  it("notContains", async () => {
-    const codes = await codesFor({ kind: "text", field: "partner", op: "notContains", value: "kimyo" })
-    expect(codes).toHaveLength(8)
-    expect(codes).not.toContain("KR-10003")
-    expect(codes).not.toContain("KR-10007")
+  it("notContains keeps every non-blank non-match, and no blank", async () => {
+    expect(await codesFor({ kind: "text", field: "partner", op: "notContains", value: "kimyo" })).toEqual([
+      "KR-10000",
+      "KR-10001",
+      "KR-10002",
+      "KR-10004",
+      "KR-10008",
+      "KR-10009",
+    ])
   })
 
   it("equals", async () => {
@@ -59,9 +92,10 @@ describe("fetchReceipts — text operators (case-insensitive)", () => {
     ).toEqual(["KR-10003", "KR-10007"])
   })
 
-  it("notEquals", async () => {
-    const codes = await codesFor({ kind: "text", field: "partner", op: "notEquals", value: "toshkent kimyo zavodi" })
-    expect(codes).toHaveLength(8)
+  it("notEquals keeps every non-blank non-match, and no blank", async () => {
+    expect(
+      await codesFor({ kind: "text", field: "partner", op: "notEquals", value: "toshkent kimyo zavodi" }),
+    ).toEqual(["KR-10000", "KR-10001", "KR-10002", "KR-10004", "KR-10008", "KR-10009"])
   })
 
   it("startsWith", async () => {
@@ -84,10 +118,17 @@ describe("fetchReceipts — number operators", () => {
     expect(await codesFor({ kind: "number", field: "amount", op: "eq", value: 310_000 })).toEqual(["KR-10000"])
   })
 
-  it("ne", async () => {
-    const codes = await codesFor({ kind: "number", field: "amount", op: "ne", value: 310_000 })
-    expect(codes).toHaveLength(9)
-    expect(codes).not.toContain("KR-10000")
+  it("ne keeps every non-blank non-match, and no blank", async () => {
+    expect(await codesFor({ kind: "number", field: "amount", op: "ne", value: 310_000 })).toEqual([
+      "KR-10001",
+      "KR-10002",
+      "KR-10003",
+      "KR-10004",
+      "KR-10005",
+      "KR-10006",
+      "KR-10007",
+      "KR-10009",
+    ])
   })
 
   it("lt", async () => {
@@ -109,9 +150,9 @@ describe("fetchReceipts — number operators", () => {
     expect(await codesFor({ kind: "number", field: "amount", op: "gt", value: 8_000_000 })).toEqual(["KR-10009"])
   })
 
-  it("gte is inclusive at the boundary", async () => {
-    expect(await codesFor({ kind: "number", field: "amount", op: "gte", value: 7_655_864 })).toEqual([
-      "KR-10008",
+  it("gte is inclusive at the boundary, and still drops the blank amount", async () => {
+    expect(await codesFor({ kind: "number", field: "amount", op: "gte", value: 6_737_631 })).toEqual([
+      "KR-10007",
       "KR-10009",
     ])
   })
@@ -122,10 +163,14 @@ describe("fetchReceipts — number operators", () => {
     ).toEqual(["KR-10001", "KR-10002", "KR-10003"])
   })
 
-  it("between treats a null bound as unbounded", async () => {
+  it("between treats a null bound as unbounded without letting a blank through", async () => {
     expect(await codesFor({ kind: "number", field: "amount", op: "between", from: null, to: 1_228_233 })).toEqual([
       "KR-10000",
       "KR-10001",
+    ])
+    expect(await codesFor({ kind: "number", field: "amount", op: "between", from: 6_000_000, to: null })).toEqual([
+      "KR-10007",
+      "KR-10009",
     ])
   })
 })
@@ -153,25 +198,40 @@ describe("fetchReceipts — boolean and list operators", () => {
   })
 
   it("list in", async () => {
-    expect(
-      await codesFor({ kind: "list", field: "status", op: "in", values: ["open", "closed"] }),
-    ).toEqual(["KR-10000", "KR-10003", "KR-10004", "KR-10007", "KR-10008"])
+    expect(await codesFor({ kind: "list", field: "status", op: "in", values: ["open", "closed"] })).toEqual([
+      "KR-10000",
+      "KR-10003",
+      "KR-10004",
+      "KR-10007",
+      "KR-10008",
+    ])
   })
 
   it("list notIn", async () => {
-    expect(
-      await codesFor({ kind: "list", field: "status", op: "notIn", values: ["open", "closed"] }),
-    ).toEqual(["KR-10001", "KR-10002", "KR-10005", "KR-10006", "KR-10009"])
+    expect(await codesFor({ kind: "list", field: "status", op: "notIn", values: ["open", "closed"] })).toEqual([
+      "KR-10001",
+      "KR-10002",
+      "KR-10005",
+      "KR-10006",
+      "KR-10009",
+    ])
   })
 })
 
-describe("fetchReceipts — blank / notBlank", () => {
-  it("blank matches nothing when every row in scope has a value", async () => {
-    expect(await codesFor({ kind: "text", field: "code", op: "blank" })).toEqual([])
+describe("fetchReceipts — blank / notBlank partition every column", () => {
+  it("finds both shapes of a blank text column, null and the empty string", async () => {
+    expect(await codesFor({ kind: "text", field: "partner", op: "blank" })).toEqual(BLANK_PARTNER)
+    expect(await codesFor({ kind: "text", field: "partner", op: "notBlank" })).toEqual(NON_BLANK_PARTNER)
   })
 
-  it("notBlank matches every row in scope", async () => {
-    expect(await codesFor({ kind: "number", field: "amount", op: "notBlank" })).toHaveLength(10)
+  it("finds a blank number column", async () => {
+    expect(await codesFor({ kind: "number", field: "amount", op: "blank" })).toEqual(BLANK_AMOUNT)
+    expect(await codesFor({ kind: "number", field: "amount", op: "notBlank" })).toEqual(NON_BLANK_AMOUNT)
+  })
+
+  it("matches nothing on a column that is never blank", async () => {
+    expect(await codesFor({ kind: "date", field: "date", op: "blank" })).toEqual([])
+    expect(await codesFor({ kind: "boolean", field: "flagged", op: "notBlank" })).toEqual(SCOPE_CODES)
   })
 })
 
@@ -183,12 +243,42 @@ describe("fetchReceipts — quick search: AND over tokens, OR over fields", () =
     )
     expect(page.rows.map((row) => row.code)).toEqual(["KR-10007"])
   })
+
+  it("matches nothing when one token matches no field at all", async () => {
+    const page = await fetchReceipts(
+      query([SCOPE], { search: { text: "kimyo zzzz", fields: ["partner", "code"] } }),
+      { delayMs: 0 },
+    )
+    expect(page.rows).toEqual([])
+  })
+
+  it("never matches a blank column, and never excludes on one either", async () => {
+    const page = await fetchReceipts(
+      query([SCOPE], { search: { text: "10006", fields: ["partner", "code"] } }),
+      { delayMs: 0 },
+    )
+    // The row's own `partner` is `""`; the token is found in `code` instead.
+    expect(page.rows.map((row) => row.code)).toEqual(["KR-10006"])
+  })
 })
 
 describe("fetchReceipts — sorting and pagination", () => {
   it("sorts by the requested column and direction", async () => {
-    const page = await fetchReceipts(query([SCOPE], { sorting: [{ id: "amount", desc: true }] }), { delayMs: 0 })
-    expect(page.rows[0]?.code).toBe("KR-10009")
+    const page = await fetchReceipts(query([SCOPE], { sorting: [{ id: "amount", desc: false }] }), { delayMs: 0 })
+    expect(page.rows[0]?.code).toBe("KR-10000")
+  })
+
+  it("orders blanks above every value, so they land last ascending and first descending", async () => {
+    const ascending = await fetchReceipts(query([SCOPE], { sorting: [{ id: "amount", desc: false }] }), {
+      delayMs: 0,
+    })
+    const descending = await fetchReceipts(query([SCOPE], { sorting: [{ id: "amount", desc: true }] }), {
+      delayMs: 0,
+    })
+    // Postgres' documented default: NULLs sort as greater than every value.
+    expect(ascending.rows.at(-1)?.code).toBe("KR-10008")
+    expect(descending.rows[0]?.code).toBe("KR-10008")
+    expect(descending.rows[1]?.code).toBe("KR-10009")
   })
 
   it("slices by pageIndex/pageSize and reports the total that matched", async () => {
@@ -223,10 +313,199 @@ describe("fetchValues", () => {
     expect(values.map((option) => option.value)).toEqual(["closed"])
   })
 
-  it("rejects when the caller aborts", async () => {
+  it("offers no blank option, because a selection containing one would match nothing", async () => {
+    const controller = new AbortController()
+    const values = await fetchValues("partner", { search: "", signal: controller.signal })
+    expect(values.map((option) => option.value)).not.toContain("")
+    // Each of the four partners loses exactly one row per twenty to a blank.
+    expect(values).toHaveLength(4)
+    expect(values.every((option) => option.count === 20_000)).toBe(true)
+  })
+
+  it("keeps a value's own primitive type, so the condition it builds still matches", async () => {
+    const controller = new AbortController()
+    const values = await fetchValues("flagged", { search: "", signal: controller.signal })
+    // `"true"` would look identical in the list and then select nothing: the
+    // comparison at the far end is `===` against a real boolean.
+    expect(values.every((option) => typeof option.value === "boolean")).toBe(true)
+    expect(new Map(values.map((option) => [option.value, option.count])).get(true)).toBe(14_286)
+  })
+
+  it("rejects when the caller aborts an in-flight request", async () => {
     const controller = new AbortController()
     const pending = fetchValues("status", { search: "", signal: controller.signal })
     controller.abort()
     await expect(pending).rejects.toThrow("Aborted")
+  })
+
+  it("rejects a signal that was already aborted before the call", async () => {
+    const controller = new AbortController()
+    controller.abort()
+    // An already-aborted signal fires no `abort` event: a request superseded
+    // before it started would otherwise never settle, and the editor's
+    // spinner would never clear.
+    await expect(fetchValues("status", { search: "", signal: controller.signal })).rejects.toThrow("Aborted")
+  })
+})
+
+/**
+ * The library's filter function, called the way its own docblock prescribes
+ * for a direct call: it reads the value off a row, and `getValue` is the only
+ * member it or the TanStack built-ins it delegates to ever touch.
+ */
+interface TestRow {
+  v: unknown
+}
+const rowWith = (value: unknown): Row<DataTableFeatures, TestRow> =>
+  ({ getValue: () => value }) as unknown as Row<DataTableFeatures, TestRow>
+
+function libraryMatches(condition: FilterCondition, value: unknown): boolean {
+  return filterFn_dt(rowWith(value), "v", filterFn_dt.resolveFilterValue?.(condition) ?? condition)
+}
+
+/** Every operator of one kind, against values that column could really hold. */
+interface AgreementCase {
+  kind: string
+  conditions: FilterCondition[]
+  values: unknown[]
+}
+
+const BLANKS: unknown[] = [null, undefined, ""]
+
+/**
+ * `field` is `"v"` throughout, because {@link libraryMatches} reads the value
+ * off a single-column stub row — the field name is what selects a column, and
+ * both sides are already being handed the same value.
+ */
+const AGREEMENT: AgreementCase[] = [
+  {
+    kind: "text",
+    conditions: (["contains", "notContains", "equals", "notEquals", "startsWith", "endsWith"] as const).map(
+      (op) => ({ kind: "text", field: "v", op, value: "Kimyo" }),
+    ),
+    values: ["Toshkent Kimyo Zavodi", "toshkent kimyo zavodi", "Kimyo", "kimyo tail", "head Kimyo", "x", ...BLANKS],
+  },
+  {
+    kind: "number",
+    conditions: [
+      ...(["eq", "ne", "lt", "lte", "gt", "gte"] as const).map(
+        (op): FilterCondition => ({ kind: "number", field: "v", op, value: 2_146_466 }),
+      ),
+      { kind: "number", field: "v", op: "between", from: 1_228_233, to: 3_064_699 },
+      { kind: "number", field: "v", op: "between", from: null, to: 3_064_699 },
+      { kind: "number", field: "v", op: "between", from: 1_228_233, to: null },
+    ],
+    // `0` is not blank, and a `between` implemented over TanStack's own
+    // `inNumberRange` with `-Infinity`/`+Infinity` ends is exactly where a
+    // coerced blank would sneak back in as a zero.
+    values: [0, -5, 310_000, 1_228_233, 2_146_466, 3_064_699, 8_574_097, ...BLANKS],
+  },
+  {
+    kind: "date",
+    conditions: [
+      { kind: "date", field: "v", op: "range", from: "2026-03-03", before: "2026-06-06" },
+      { kind: "date", field: "v", op: "range", from: null, before: "2026-06-06" },
+      { kind: "date", field: "v", op: "range", from: "2026-03-03", before: null },
+    ],
+    // Day strings only. The library also accepts a `Date` and a timestamp for
+    // a date column; this endpoint stores `YYYY-MM-DD` and says so, and a
+    // shape it never serves is not a disagreement about the contract.
+    values: ["2026-01-01", "2026-03-03", "2026-06-05", "2026-06-06", "2026-12-31", ...BLANKS],
+  },
+  {
+    kind: "boolean",
+    conditions: [
+      { kind: "boolean", field: "v", op: "is", value: true },
+      { kind: "boolean", field: "v", op: "is", value: false },
+    ],
+    values: [true, false, ...BLANKS],
+  },
+  {
+    kind: "list",
+    conditions: [
+      { kind: "list", field: "v", op: "in", values: ["open", "closed"] },
+      { kind: "list", field: "v", op: "notIn", values: ["open", "closed"] },
+    ],
+    values: ["open", "closed", "in_process", "OPEN", ...BLANKS],
+  },
+]
+
+/**
+ * A condition as it would actually arrive at a backend.
+ *
+ * Only canonical conditions reach the wire — `buildQuery` publishes what the
+ * constructors returned, which orders reversed bounds and sorts a list's
+ * `values`. Running each case through the same door is what lets
+ * `matchesFilter` skip re-validating its input and still be comparable with
+ * the client, and it fails loudly on a case that constrains nothing rather
+ * than quietly comparing two "match everything" answers.
+ *
+ * @param condition - A condition written by hand in this file.
+ * @returns Its canonical form.
+ */
+function canonical(condition: FilterCondition): FilterCondition {
+  const rebuilt = rebuildCondition(condition)
+  if (rebuilt === null) throw new Error(`not a publishable condition: ${JSON.stringify(condition)}`)
+  return rebuilt
+}
+
+/** `blank` and `notBlank` are the same two operators on every kind. */
+const BLANKNESS_OPS = ["blank", "notBlank"] as const
+
+describe("the fake server and filterFn_dt agree on every operator", () => {
+  for (const group of AGREEMENT) {
+    it(`agrees on ${group.kind}`, () => {
+      const disagreements: string[] = []
+      for (const condition of group.conditions.map(canonical)) {
+        for (const value of group.values) {
+          const server = matchesFilter(value, condition)
+          const client = libraryMatches(condition, value)
+          if (server !== client) {
+            disagreements.push(
+              `${JSON.stringify(condition)} vs ${JSON.stringify(value) ?? "undefined"}: server ${server}, client ${client}`,
+            )
+          }
+        }
+      }
+      expect(disagreements).toEqual([])
+    })
+  }
+
+  it("agrees on blank and notBlank across every kind", () => {
+    const disagreements: string[] = []
+    for (const group of AGREEMENT) {
+      for (const op of BLANKNESS_OPS) {
+        const condition = canonical({ kind: group.kind, field: "v", op } as FilterCondition)
+        for (const value of [...group.values, ...BLANKS]) {
+          const server = matchesFilter(value, condition)
+          const client = libraryMatches(condition, value)
+          if (server !== client) {
+            disagreements.push(`${group.kind}/${op} vs ${JSON.stringify(value) ?? "undefined"}`)
+          }
+        }
+      }
+    }
+    expect(disagreements).toEqual([])
+  })
+
+  it("selects the same rows end to end as the client would from the same query", async () => {
+    const conditions: FilterCondition[] = [
+      { kind: "text", field: "partner", op: "notContains", value: "kimyo" },
+      { kind: "text", field: "partner", op: "blank" },
+      { kind: "number", field: "amount", op: "gte", value: 6_737_631 },
+      { kind: "number", field: "amount", op: "between", from: null, to: 3_064_699 },
+      { kind: "date", field: "date", op: "range", from: "2026-03-03", before: "2026-06-06" },
+      { kind: "boolean", field: "flagged", op: "is", value: true },
+      { kind: "list", field: "status", op: "notIn", values: ["open", "closed"] },
+    ]
+    const all = await fetchReceipts(query([SCOPE]), { delayMs: 0 })
+    for (const condition of conditions.map(canonical)) {
+      const server = await codesFor(condition)
+      const client = all.rows
+        .filter((row) => libraryMatches(condition, row[condition.field as keyof ServerReceipt]))
+        .map((row) => row.code)
+        .sort()
+      expect({ condition, codes: server }).toEqual({ condition, codes: client })
+    }
   })
 })

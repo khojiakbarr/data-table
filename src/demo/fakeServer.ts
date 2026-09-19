@@ -1,12 +1,20 @@
-import type { FilterCondition, FilterValueOption } from "../core/filters"
+import type { FilterCondition, FilterValue, FilterValueOption } from "../core/filters"
 import type { TableQuery, TableSearch } from "../core/query"
 
-/** One row as the fake backend would return it. */
+/**
+ * One row as the fake backend would return it.
+ *
+ * `partner` and `amount` are nullable on purpose. A schema where every column
+ * is NOT NULL can never exercise the rule the whole filter contract turns on —
+ * that a blank value matches no operator except `blank`, negated operators
+ * included — so the playground would demonstrate a filter model strictly
+ * easier than the one a real host has.
+ */
 export interface ServerReceipt {
   id: string
   code: string
-  partner: string
-  amount: number
+  partner: string | null
+  amount: number | null
   status: string
   date: string
   /** Demonstrates the boolean filter kind end to end. */
@@ -25,16 +33,37 @@ const STATUSES = ["open", "in_process", "received", "closed"]
  */
 const ROW_COUNT = 100_000
 
+/**
+ * The two shapes of blankness, spread on a period of ten.
+ *
+ * Both forms the contract counts as blank appear — SQL `NULL` and the empty
+ * string — because a host that only ever sees one of them will write a check
+ * that misses the other. A period of ten means any contiguous run of ten rows
+ * contains exactly the same blanks, so a test can scope to the first ten and
+ * still be reasoning about the whole table's proportions.
+ */
+const NULL_PARTNER_IN_TEN = 5
+const EMPTY_PARTNER_IN_TEN = 6
+const NULL_AMOUNT_IN_TEN = 8
+
 /** Generated once at module scope, never inside a component. */
-const ALL: ServerReceipt[] = Array.from({ length: ROW_COUNT }, (_, index) => ({
-  id: `rc-${index}`,
-  code: `KR-${10_000 + index}`,
-  partner: PARTNERS[index % PARTNERS.length] as string,
-  amount: ((index * 918_233) % 210_000_000) + 310_000,
-  status: STATUSES[index % STATUSES.length] as string,
-  date: `2026-${String((index % 12) + 1).padStart(2, "0")}-${String((index % 28) + 1).padStart(2, "0")}`,
-  flagged: index % 7 === 0,
-}))
+const ALL: ServerReceipt[] = Array.from({ length: ROW_COUNT }, (_, index) => {
+  const inTen = index % 10
+  return {
+    id: `rc-${index}`,
+    code: `KR-${10_000 + index}`,
+    partner:
+      inTen === NULL_PARTNER_IN_TEN
+        ? null
+        : inTen === EMPTY_PARTNER_IN_TEN
+          ? ""
+          : (PARTNERS[index % PARTNERS.length] as string),
+    amount: inTen === NULL_AMOUNT_IN_TEN ? null : ((index * 918_233) % 210_000_000) + 310_000,
+    status: STATUSES[index % STATUSES.length] as string,
+    date: `2026-${String((index % 12) + 1).padStart(2, "0")}-${String((index % 28) + 1).padStart(2, "0")}`,
+    flagged: index % 7 === 0,
+  }
+})
 
 /** One page of results, as `fetchReceipts` resolves it. */
 export interface ServerPage {
@@ -63,8 +92,29 @@ function isBlank(value: unknown): boolean {
   return value === null || value === undefined || value === ""
 }
 
+/** The two operators every kind shares, as their own type. */
+type BlanknessCondition = Extract<FilterCondition, { op: "blank" | "notBlank" }>
+
 /**
- * One condition, translated the way a backend would.
+ * Whether a condition is one of the two blankness tests.
+ *
+ * A type predicate rather than an inline `condition.op === "blank"`, because
+ * that check narrows nothing: each kind declares `op` as a *union* of literals,
+ * and TypeScript can only eliminate a union member whose discriminant is a
+ * single literal. Without this, every branch below would need its own
+ * `"value" in condition` guard to see the value it has already established is
+ * there — the same trap `textCondition` in `core/filters.ts` records.
+ *
+ * @param condition - Any condition.
+ * @returns Whether it is `blank` or `notBlank`, narrowing the negative case to
+ *   the operators that carry a value.
+ */
+function isBlanknessTest(condition: FilterCondition): condition is BlanknessCondition {
+  return condition.op === "blank" || condition.op === "notBlank"
+}
+
+/**
+ * One condition against one value, translated the way a backend would.
  *
  * Every rule here belongs to the contract rather than to this file: all six
  * text operators are case-insensitive, a blank value fails every comparison
@@ -72,18 +122,26 @@ function isBlank(value: unknown): boolean {
  * range is `[from, before)` — inclusive below, **exclusive** above, which is
  * what stops the last day of a range going missing.
  *
- * @param row - The row being tested.
- * @param condition - One condition off the wire.
- * @returns Whether the row satisfies it.
+ * Written **independently of `filterFn_dt`** — no shared helper, no shared
+ * resolver, not even a shared blankness predicate. That independence is the
+ * whole value of `fakeServer.test.ts`'s agreement matrix: two implementations
+ * that share their operator code cannot disagree, and so prove nothing about
+ * whether the published contract is implementable twice.
+ *
+ * It does assume its input is **canonical** — what `buildQuery` publishes, and
+ * what `rebuildCondition` would return unchanged. A real endpoint validates
+ * first; this one takes the wire at its word, so a hand-written condition with
+ * reversed bounds or a malformed day is outside what it promises to answer.
+ *
+ * @param value - The row's value for the condition's column.
+ * @param condition - One canonical condition off the wire.
+ * @returns Whether the value satisfies it.
+ *
+ * @example
+ * matchesFilter("Toshkent Kimyo Zavodi", { kind: "text", field: "partner", op: "contains", value: "kimyo" })
  */
-function matchesCondition(row: ServerReceipt, condition: FilterCondition): boolean {
-  const read = FIELD_READERS[condition.field]
-  // A condition for a column this endpoint does not serve constrains nothing.
-  if (read === undefined) return true
-  const value = read(row)
-
-  if (condition.op === "blank") return isBlank(value)
-  if (condition.op === "notBlank") return !isBlank(value)
+export function matchesFilter(value: unknown, condition: FilterCondition): boolean {
+  if (isBlanknessTest(condition)) return isBlank(value) === (condition.op === "blank")
   /*
    * Blankness is the only operator that reaches a blank row. In SQL a
    * comparison against NULL is NULL rather than true, so every operator below
@@ -94,7 +152,6 @@ function matchesCondition(row: ServerReceipt, condition: FilterCondition): boole
 
   switch (condition.kind) {
     case "text": {
-      if (!("value" in condition)) return true
       const text = String(value).toLowerCase()
       const needle = condition.value.toLowerCase()
       const { op } = condition
@@ -106,42 +163,56 @@ function matchesCondition(row: ServerReceipt, condition: FilterCondition): boole
       return text.endsWith(needle)
     }
     case "number": {
-      const amount = Number(value)
-      if ("from" in condition) {
+      // Not `Number(value)`: a numeric column holds numbers, and coercing
+      // whatever else arrived would make `amount BETWEEN 0 AND 100` match the
+      // string "50" here while the library — and Postgres — reject it.
+      if (typeof value !== "number" || Number.isNaN(value)) return false
+      if (condition.op === "between") {
         return (
-          (condition.from === null || amount >= condition.from) &&
-          (condition.to === null || amount <= condition.to)
+          (condition.from === null || value >= condition.from) &&
+          (condition.to === null || value <= condition.to)
         )
       }
-      if (!("value" in condition)) return true
       const bound = condition.value
       const { op } = condition
-      if (op === "eq") return amount === bound
-      if (op === "ne") return amount !== bound
-      if (op === "lt") return amount < bound
-      if (op === "lte") return amount <= bound
-      if (op === "gt") return amount > bound
-      return amount >= bound
+      if (op === "eq") return value === bound
+      if (op === "ne") return value !== bound
+      if (op === "lt") return value < bound
+      if (op === "lte") return value <= bound
+      if (op === "gt") return value > bound
+      return value >= bound
     }
     case "date": {
-      if (!("from" in condition)) return true
       // These rows store `YYYY-MM-DD`, which compares chronologically as a
       // string. A real `date` or `timestamptz` column compares as itself, with
       // the same two clauses.
-      const day = String(value)
+      if (typeof value !== "string") return false
       return (
-        (condition.from === null || day >= condition.from) &&
-        (condition.before === null || day < condition.before)
+        (condition.from === null || value >= condition.from) &&
+        (condition.before === null || value < condition.before)
       )
     }
     case "boolean":
-      return !("value" in condition) || value === condition.value
+      return value === condition.value
     case "list":
-      if (!("values" in condition)) return true
       return condition.op === "in"
         ? condition.values.some((member) => member === value)
         : !condition.values.some((member) => member === value)
   }
+}
+
+/**
+ * One condition against one row: find the column, then apply the operator.
+ *
+ * @param row - The row being tested.
+ * @param condition - One canonical condition off the wire.
+ * @returns Whether the row satisfies it.
+ */
+function matchesCondition(row: ServerReceipt, condition: FilterCondition): boolean {
+  const read = FIELD_READERS[condition.field]
+  // A condition for a column this endpoint does not serve constrains nothing.
+  if (read === undefined) return true
+  return matchesFilter(read(row), condition)
 }
 
 /**
@@ -163,9 +234,27 @@ function matchesSearch(row: ServerReceipt, search: TableSearch | null): boolean 
     search.fields.some((field) => {
       const read = FIELD_READERS[field]
       if (read === undefined) return false
+      // A blank column contributes nothing to any token, exactly as a NULL
+      // does to an OR'd `ILIKE` — it never matches, and never excludes either.
       return String(read(row) ?? "").toLowerCase().includes(token.toLowerCase())
     }),
   )
+}
+
+/**
+ * Order two values the way Postgres orders a sorted column.
+ *
+ * Blanks rank **above** every real value, which is what makes them last under
+ * `ASC` and first under `DESC` — Postgres' documented default, and not what
+ * `a < b` gives, since `null < 5` is true and would scatter them to the top of
+ * an ascending page instead.
+ */
+function compareValues(a: unknown, b: unknown): number {
+  const aBlank = isBlank(a)
+  const bBlank = isBlank(b)
+  if (aBlank || bBlank) return aBlank && bBlank ? 0 : aBlank ? 1 : -1
+  if (typeof a === "number" && typeof b === "number") return a - b
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0
 }
 
 /**
@@ -198,8 +287,10 @@ export function fetchReceipts(
       const sorted = [...matched]
       const [sort] = query.sorting
       if (sort) {
-        const key = sort.id as keyof ServerReceipt
-        sorted.sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0) * (sort.desc ? -1 : 1))
+        const read = FIELD_READERS[sort.id]
+        if (read !== undefined) {
+          sorted.sort((a, b) => compareValues(read(a), read(b)) * (sort.desc ? -1 : 1))
+        }
       }
       const { pageIndex, pageSize } = query.pagination
       // The total is what matched, not what exists: it is what the footer
@@ -209,6 +300,9 @@ export function fetchReceipts(
   })
 }
 
+/** How long a facet request takes, separately from a page request. */
+const VALUES_DELAY_MS = 250
+
 /**
  * Distinct values for one column, for a values filter in server mode.
  *
@@ -216,9 +310,22 @@ export function fetchReceipts(
  * own cache key. `signal` aborts a superseded one, which is what keeps a slow
  * first answer from landing on top of a faster second.
  *
+ * Blank rows are counted by neither: `listCondition` drops `null` from a
+ * selection because `NULL = ANY(...)` is never true, so blankness reaches the
+ * wire as its own operator and the editor offers it as its own "(Blanks)" row.
+ * Offering a blank option here would produce a selection that matches nothing.
+ *
+ * Values keep their own primitive type — a boolean column answers `true`, not
+ * `"true"`. `FilterValue` is what goes back out in the `in`/`notIn` condition
+ * the editor builds, and the comparison at the far end is `===`, so a
+ * stringified boolean or number would select rows and then match none of them.
+ *
  * @param columnId - The column whose values are wanted.
  * @param options - The editor's search box, and an abort signal.
  * @returns Every distinct value that matches, with its count.
+ *
+ * @example
+ * const options = await fetchValues("status", { search: "", signal: controller.signal })
  */
 export function fetchValues(
   columnId: string,
@@ -226,24 +333,37 @@ export function fetchValues(
 ): Promise<FilterValueOption[]> {
   const read = FIELD_READERS[columnId]
   return new Promise((resolve, reject) => {
+    const abortError = (): DOMException => new DOMException("Aborted", "AbortError")
+    // A signal that is already aborted fires no `abort` event, so a request
+    // superseded before it even started would hang here forever rather than
+    // settle — and the editor, which clears its in-flight state on settle,
+    // would keep showing a spinner that never resolves.
+    if (options.signal.aborted) {
+      reject(abortError())
+      return
+    }
+    const onAbort = (): void => {
+      clearTimeout(timer)
+      reject(abortError())
+    }
     const timer = setTimeout(() => {
+      options.signal.removeEventListener("abort", onAbort)
       if (read === undefined) {
         resolve([])
         return
       }
       const needle = options.search.toLowerCase()
-      const counts = new Map<string, number>()
+      const counts = new Map<FilterValue, number>()
       for (const row of ALL) {
-        const value = String(read(row) ?? "")
-        if (value === "") continue
-        if (needle !== "" && !value.toLowerCase().includes(needle)) continue
+        const value = read(row)
+        if (isBlank(value) || (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean")) {
+          continue
+        }
+        if (needle !== "" && !String(value).toLowerCase().includes(needle)) continue
         counts.set(value, (counts.get(value) ?? 0) + 1)
       }
       resolve([...counts].map(([value, count]) => ({ value, count })))
-    }, 250)
-    options.signal.addEventListener("abort", () => {
-      clearTimeout(timer)
-      reject(new DOMException("Aborted", "AbortError"))
-    })
+    }, VALUES_DELAY_MS)
+    options.signal.addEventListener("abort", onAbort, { once: true })
   })
 }

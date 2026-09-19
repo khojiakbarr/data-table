@@ -348,7 +348,10 @@ describe("shadcn presets — host override specificity", () => {
 describe("pin badge contrast", () => {
   it("uses a token for its foreground colour, not a hardcoded white", () => {
     const styles = read("../styles.css")
-    const badge = styles.match(/\.dt-pin-badge\s*\{([^}]*)\}/)?.[1] ?? ""
+    // `[^{]*` and not `\s*`: the Filters tab's `.dt-filter-badge` shares this
+    // rule rather than declaring a second look of its own, so the selector is
+    // a group and an anchored `\s*\{` would match nothing and pass vacuously.
+    const badge = styles.match(/\.dt-pin-badge[^{]*\{([^}]*)\}/)?.[1] ?? ""
     expect(badge).toContain("color: var(--dt-accent-fg)")
     expect(badge).not.toMatch(/color:\s*#fff/)
   })
@@ -424,10 +427,10 @@ describe("base palette", () => {
   })
 
   it("prints the column-panel drag handle at the WCAG 1.4.11 non-text minimum in both themes", () => {
-    // .dt-drag-handle is the sole visual affordance for column reordering
-    // (pointer drag-and-drop only, no keyboard equivalent), so its 3:1 floor
-    // is load-bearing. Full --dt-muted-fg on --dt-bg replaced an opacity
-    // fraction that fell under 3:1 in both themes.
+    // .dt-drag-handle is the sole visual affordance for column reordering,
+    // and now the only control that carries it for the keyboard too, so its
+    // 3:1 floor is load-bearing. Full --dt-muted-fg on --dt-bg replaced an
+    // opacity fraction that fell under 3:1 in both themes.
     expect(contrastRatio(baseTokenValue("--dt-muted-fg"), baseTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
     expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
   })

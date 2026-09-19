@@ -1,4 +1,6 @@
 import {
+  columnFacetingFeature,
+  columnFilteringFeature,
   columnOrderingFeature,
   createExpandedRowModel,
   rowExpandingFeature,
@@ -7,14 +9,20 @@ import {
   columnSizingFeature,
   columnVisibilityFeature,
   createCoreRowModel,
+  createFacetedRowModel,
+  createFacetedUniqueValues,
+  createFilteredRowModel,
   createPaginatedRowModel,
   createSortedRowModel,
+  globalFilteringFeature,
   rowPaginationFeature,
   rowSortingFeature,
   sortFns,
   tableFeatures,
   useTable,
   type ColumnDef,
+  type ColumnFiltersState,
+  type ColumnMeta,
   type ColumnSizingState,
   type PaginationState,
   type Row,
@@ -22,15 +30,35 @@ import {
   type Updater,
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
+import { deriveColumnId } from "./core/columnIds"
+import { dropRegionOf } from "./core/dropRegion"
+import { filterFn_dt } from "./core/filterFn"
+import { collectFilterKinds } from "./core/filterKinds"
+import {
+  pruneFilters,
+  type FilterCondition,
+  type FilterKind,
+  type FilterModel,
+  type FilterValueOption,
+} from "./core/filters"
 import { noLayoutStorage } from "./core/persistence"
-import type { TableQuery } from "./core/query"
+import { renderedLeafColumns } from "./core/pinning"
+import type { TableQuery, TableSearch } from "./core/query"
+import { moveColumn, type DropSide } from "./core/reorder"
+import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
-import { apply, useArrangement } from "./core/useArrangement"
+import { apply, layoutSliceEqual, sliceChange, useArrangement } from "./core/useArrangement"
+import { useDebouncedValue } from "./core/useDebouncedValue"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
 import { usePagination, type PaginationApi } from "./core/usePagination"
 import { useTableQuery } from "./core/useTableQuery"
 import { warnOnce } from "./core/warnOnce"
-import type { DataTableFeatureFlags, LayoutStorage, TableLayout } from "./types"
+import type {
+  DataTableColumnMeta,
+  DataTableFeatureFlags,
+  LayoutStorage,
+  TableLayout,
+} from "./types"
 
 /**
  * The feature set this library composes.
@@ -50,10 +78,45 @@ const FEATURES = tableFeatures({
   columnVisibilityFeature,
   rowSortingFeature,
   rowPaginationFeature,
+  /*
+   * `globalFilteringFeature` REQUIRES `columnFilteringFeature` — the compiler
+   * says so through `FeatureSlotPrereqs` — so quick search cannot ship alone.
+   * The faceting slots are composed here too, though nothing reads them until
+   * the values editors land: the feature set is composed once, so
+   * `DataTableFeatures` widens once rather than twice.
+   */
+  columnFilteringFeature,
+  globalFilteringFeature,
+  columnFacetingFeature,
   coreRowModel: createCoreRowModel(),
   sortedRowModel: createSortedRowModel(),
   paginatedRowModel: createPaginatedRowModel(),
+  filteredRowModel: createFilteredRowModel(),
+  facetedRowModel: createFacetedRowModel(),
+  facetedUniqueValues: createFacetedUniqueValues(),
   sortFns,
+  /*
+   * One registered function, not the deprecated bulk `filterFns` export, which
+   * puts every built-in in the bundle. Registering a name also narrows the
+   * legal `columnDef.filterFn` strings to the keys here, which is why
+   * `defaultColumn` below has to state `filterFn: "dt"`.
+   */
+  filterFns: { dt: filterFn_dt },
+  /*
+   * Claims TanStack's per-table `columnMeta` slot, which is what makes
+   * `meta: { filter: "number" }` type-checked with no generic reaching the
+   * host. The slot REPLACES the global `ColumnMeta` interface rather than
+   * extending it, so declaring `DataTableColumnMeta` alone would silently
+   * delete the fields of any host who declaration-merges `ColumnMeta` today —
+   * their own `meta` key would become an excess-property error. The
+   * intersection keeps that merge working.
+   *
+   * The `any` arguments are deliberate and unavoidable: the slot sits inside
+   * the call whose `typeof` *is* `DataTableFeatures`, so naming that type here
+   * would be circular.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  columnMeta: {} as DataTableColumnMeta & ColumnMeta<any, any, any>,
 })
 
 export type DataTableFeatures = typeof FEATURES
@@ -73,6 +136,38 @@ export interface PaginationOptions {
 
 /** Where rows are sorted and paged. */
 export type TableMode = "client" | "server"
+
+/** How rows are filtered; see {@link UseDataTableOptions.filtering}. */
+export interface FilteringOptions {
+  /** ms before quick search is published. Default 300. Column filters are never debounced. */
+  debounceMs?: number
+  /** Keep active filters in the saved layout. Default true. */
+  persist?: boolean
+  /**
+   * Columns quick search covers, by leaf column id. Default: every visible
+   * searchable column.
+   *
+   * Overrides inference and the hidden-column narrowing, but not what the
+   * client can actually match: an id naming no column, a display column, or a
+   * column with `enableGlobalFilter: false` is dropped — with a dev-mode
+   * warning naming it — so the wire never asks a backend to search a column
+   * this table searches none of. A nested `accessorKey` like `"partner.name"`
+   * has live id `"partner_name"`, which is the id to name here.
+   */
+  searchFields?: string[]
+  /**
+   * Server-mode source of a values filter's choices. Never called in client mode.
+   *
+   * Written `| undefined` like the hook's other forwarded callbacks, because
+   * `exactOptionalPropertyTypes` otherwise rejects passing one through.
+   */
+  loadValues?:
+    | ((columnId: string, options: { search: string; signal: AbortSignal }) => Promise<FilterValueOption[]>)
+    | undefined
+}
+
+/** How long quick search waits before it is published. */
+const DEFAULT_SEARCH_DEBOUNCE_MS = 300
 
 export interface UseDataTableOptions<TData extends RowData> {
   /**
@@ -155,6 +250,11 @@ export interface UseDataTableOptions<TData extends RowData> {
    * `true` for the defaults or an object to set the page size and choices.
    */
   pagination?: boolean | PaginationOptions
+  /**
+   * Filtering: quick search and per-column filters. On by default. Pass
+   * `false` to turn it off, or an object to configure it.
+   */
+  filtering?: boolean | FilteringOptions
   /**
    * Stable identity for a row.
    *
@@ -241,6 +341,7 @@ export function useDataTable<TData extends RowData>({
   mode = "client",
   rowCount,
   pagination,
+  filtering,
   getRowId,
   onQueryChange,
   rowHeight = 40,
@@ -280,16 +381,43 @@ export function useDataTable<TData extends RowData>({
         ? {}
         : pagination
 
+  const filteringOptions: FilteringOptions | null =
+    filtering === false ? null : filtering === true || filtering === undefined ? {} : filtering
+  // A boolean rather than the object above, which is a fresh `{}` on every
+  // render for the two shorthand forms and would break the memo below.
+  const filteringEnabled = filteringOptions !== null
+
+  /*
+   * Resolved from the column definitions and the data rather than from the
+   * table, which does not exist yet: a stored layout is pruned on the very
+   * first render, and pruning is where a condition whose kind no longer
+   * matches its column has to be dropped.
+   */
+  const filterKinds = useMemo<ReadonlyMap<string, FilterKind | false>>(
+    () => collectFilterKinds(columns, data),
+    [columns, data],
+  )
+
   const {
     layout,
     isCustomised,
     updateSlice,
+    updateSlices,
     resetLayout: resetArrangement,
   } = useArrangement({
     id,
     store,
     initialLayout,
     columnIds,
+    filterKinds,
+    /*
+     * Both, and not `persist` alone: `filteringOptions?.persist ?? true` reads
+     * `true` for `filtering: false` — `null?.persist` is `undefined` — so the
+     * two are combined where they are read, and `filtering: false` implies
+     * `persist: false` there rather than here.
+     */
+    filteringEnabled,
+    persistFilters: filteringOptions?.persist ?? true,
   })
 
   /*
@@ -349,6 +477,46 @@ export function useDataTable<TData extends RowData>({
   }, [resetArrangement, resetPage])
 
   /*
+   * Filters and search change the result set exactly as sorting does, so both
+   * go back to the first page. Every public mutator goes through one of these
+   * two, so there is no path that changes the result set without resetting the
+   * page — TanStack's own post-filter reset is unavailable here because
+   * `autoResetPageIndex: false` is set for good server-mode reasons, and on
+   * page 40 of 100 typing three characters would otherwise land the user on
+   * page 3 of 3 of the results.
+   *
+   * Being the one path every mutator takes also makes them the whole mutation
+   * boundary for `filtering: false`, and gating them is what makes that option
+   * mean "off" rather than "the surfaces are hidden but the state still
+   * ships": without it a table a host had disabled went on publishing whatever
+   * was already in `query.filters`, with nothing left on screen able to clear
+   * it. The load half — `initialLayout` and storage — is `useArrangement`'s.
+   */
+  const updateFilters = useCallback(
+    (updater: Updater<TableLayout["filters"]>) => {
+      if (!filteringEnabled) return
+      updateSlice("filters", updater)
+      resetPage()
+    },
+    [filteringEnabled, updateSlice, resetPage],
+  )
+  const updateSearch = useCallback(
+    (text: string) => {
+      if (!filteringEnabled) return
+      /*
+       * Coerced once here rather than at each caller: `setSearch` is this
+       * function verbatim and `setModel` takes the same untrusted input, while
+       * `filtering.isFiltered` calls `.trim()` on whatever lands in the slice —
+       * so a number from a JS host used to take the table down on every
+       * subsequent render.
+       */
+      updateSlice("search", typeof text === "string" ? text : "")
+      resetPage()
+    },
+    [filteringEnabled, updateSlice, resetPage],
+  )
+
+  /*
    * Which rows are open is deliberately NOT part of the layout: it is a
    * transient reading position, not an arrangement the user chose to keep, and
    * restoring it on the next visit would be surprising.
@@ -370,6 +538,266 @@ export function useDataTable<TData extends RowData>({
     totals: isServer,
   }
 
+  /*
+   * The one list quick search covers: `searchFields` if the host supplied it,
+   * otherwise every visible, searchable, accessor-backed column. It is used
+   * twice — as `getColumnCanGlobalFilter` below, and as `search.fields` on the
+   * wire — so the client and a backend search the same columns for the same
+   * text. `filteringOptions` itself is not a dependency: it is a fresh `{}` per
+   * render for the two shorthand forms, and only this member is read.
+   */
+  const resolvedSearchFieldsRef = useRef<string[]>([])
+  /*
+   * A column resolves at most once per table. `collectSearchFields` folds an
+   * unresolved column into inclusion so a server-mode mount is not
+   * unsearchable before the first page arrives (see the Task 7 review
+   * correction below) — but that same fold, redone every render, opens a
+   * feedback loop: `search` depends on `data`, `data` is the host's response
+   * to `search`, and a nullable column whose *current* page happens to sample
+   * all-null goes back to `unresolved` even after an earlier page proved it
+   * unsearchable (a Date or boolean column, say). Re-including it then
+   * reopens the request that excluded it, which can narrow the next page back
+   * to all-null, forever.
+   *
+   * This map is the fix: the first time `collectSearchFields` resolves an
+   * *inferred* id definitely — in `fields` or in `excluded`, never
+   * `unresolved` — that verdict is recorded here and every later render
+   * consults it first, instead of re-folding a since-unresolved id back into
+   * the default. A table's search-field set can still change once real data
+   * replaces the pre-mount default, but never oscillates once a definite
+   * answer exists.
+   *
+   * A *declared* id — `meta.searchable`, or `enableGlobalFilter: false` on the
+   * column definition — never enters this cache at all: `collectSearchFields`
+   * reports those separately, in `declared`, and this render's fresh
+   * `fields`/`excluded` membership decides them outright every time. A
+   * declaration is not an inference from sampled `data`, so there is no
+   * feedback loop here for the cache to guard against, and a host that
+   * changes the declaration after mount — an async permission check, a
+   * "search this column" toggle — has to see the new value take effect on the
+   * very next render, narrowing or widening.
+   */
+  const searchVerdictsRef = useRef<Map<string, boolean>>(new Map())
+  const resolvedSearchFields = useMemo(() => {
+    const next = (() => {
+      if (!filteringEnabled) return []
+      const declaredOverride = filteringOptions?.searchFields
+      if (declaredOverride) {
+        /*
+         * Named explicitly, but still held to what the client can actually
+         * match: `pruneSearchFields` drops an id that names no column, names a
+         * display column, or names one that opted out with
+         * `enableGlobalFilter: false`, because TanStack's own
+         * `column_getCanGlobalFilter` refuses all three underneath
+         * `getColumnCanGlobalFilter` below and the wire would otherwise ask a
+         * backend to search columns this table searches none of. Visibility is
+         * not part of that gate: overriding the hidden-column narrowing is
+         * what `searchFields` is for.
+         */
+        const { fields, dropped } = pruneSearchFields(columns, data, declaredOverride)
+        if (process.env.NODE_ENV !== "production" && dropped.length > 0) {
+          warnOnce(
+            `useDataTable("${id}"): filtering.searchFields dropped ${dropped.map((field) => `"${field}"`).join(", ")}. ` +
+              `Quick search only covers a column that exists, has an accessor, and does not set enableGlobalFilter: false. ` +
+              `A nested accessorKey's live column id replaces each "." with "_".`,
+          )
+        }
+        return fields
+      }
+      const { fields, unresolved, excluded, declared } = collectSearchFields(columns, data, layout.columnVisibility)
+      const verdicts = searchVerdictsRef.current
+      const declaredIds = new Set(declared)
+      const fieldsSet = new Set(fields)
+      // Record every *inferred* id this render resolved for real, the first
+      // time it is resolved — see the JSDoc above. A verdict already cached
+      // (from an earlier render) is left as-is even if this render's evidence
+      // disagrees: it is the *first* resolution that is authoritative. A
+      // declared id is skipped here on purpose; it is decided below instead.
+      for (const id of fields) if (!declaredIds.has(id) && !verdicts.has(id)) verdicts.set(id, true)
+      for (const id of excluded) if (!declaredIds.has(id) && !verdicts.has(id)) verdicts.set(id, false)
+      return [...fields, ...excluded, ...unresolved]
+        .filter((id) =>
+          declaredIds.has(id)
+            ? // A declaration reads this render's membership outright, bypassing
+              // the cache entirely — see the JSDoc above.
+              fieldsSet.has(id)
+            : // A column with nothing declared and no sampled value yet — ever,
+              // for this id — stays included rather than dropped, so a
+              // server-mode table's first render is still searchable before
+              // `data` has arrived. See the Task 7 review correction next to
+              // `collectSearchFields`'s own definition for why folding
+              // `unresolved` into exclusion is wrong, and the JSDoc above for
+              // why a *cached* verdict, not this render's raw `unresolved`, is
+              // what decides an inferred id that has resolved before.
+              (verdicts.get(id) ?? true),
+        )
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+    })()
+    /*
+     * `filteringOptions?.searchFields` is a fresh array for the natural inline
+     * call form `filtering: { searchFields: [...] }` — the options object is
+     * an object literal, so this memo's own dependency changes identity every
+     * render even when the resolved list is byte-identical. That churn would
+     * otherwise reach `columnFilters` below (whose second dependency this is)
+     * and, through it, `createFilteredRowModel`'s reference-equality memo
+     * deps: every unrelated host re-render would re-filter, re-sort and
+     * re-paginate, and feed a fresh `rows` array into `useRowVirtualizer`,
+     * forcing a re-measure of every virtual item. Held in a ref and compared
+     * structurally — the same ref-plus-structural-compare idiom
+     * `useArrangement` uses for `persistedRef` — so the identity this hook
+     * hands out changes only when the resolved fields actually do.
+     */
+    if (layoutSliceEqual(resolvedSearchFieldsRef.current, next)) {
+      return resolvedSearchFieldsRef.current
+    }
+    resolvedSearchFieldsRef.current = next
+    return next
+  }, [filteringEnabled, filteringOptions?.searchFields, columns, data, layout.columnVisibility])
+
+  /*
+   * Bumped by the programmatic writers — `clearAll` and `setModel` — and by
+   * nothing else. Both write `layout.filters` synchronously and `layout.search`
+   * through the debounce, so without this the filters landed at once and the
+   * search 300 ms later: a host wired to `onQueryChange` fired one wasted
+   * round-trip and showed a two-step settle on every "Clear all" click and
+   * every URL restore. A keystroke leaves the token alone and goes on waiting
+   * out `debounceMs`, which is the whole point of the debounce.
+   */
+  const [publishToken, setPublishToken] = useState(0)
+  const publishNow = useCallback(() => setPublishToken((token) => token + 1), [])
+
+  /*
+   * `layout.search` holds the raw text and is written on every keystroke, which
+   * keeps the input a normal controlled field. What is debounced is everything
+   * downstream: `state.globalFilter`, and `search` on the wire. Ten keystrokes
+   * then produce ten renders that change nothing the row model memoises on, and
+   * one query.
+   *
+   * Both sides get `text.trim()`: `createFilteredRowModel` treats `" "` as a
+   * live global filter and would search for a space, while a wire carrying
+   * `null` would have the server return everything.
+   */
+  const searchText = useDebouncedValue(
+    layout.search.trim(),
+    filteringOptions?.debounceMs ?? DEFAULT_SEARCH_DEBOUNCE_MS,
+    publishToken,
+  )
+  // An empty field list means search is off: the client has nothing to match
+  // against, so the wire carries `null` rather than a term no backend could honour.
+  const search = useMemo<TableSearch | null>(
+    () =>
+      searchText === "" || resolvedSearchFields.length === 0
+        ? null
+        : { text: searchText, fields: resolvedSearchFields },
+    [searchText, resolvedSearchFields],
+  )
+
+  /*
+   * `filters` is the first layout slice whose shape is not already TanStack's,
+   * so it is the first that cannot be passed straight through.
+   *
+   * Memoised because `createFilteredRowModel` compares its memo deps by
+   * reference and a controlled state slice is read back verbatim: a fresh array
+   * per render would re-filter every row on every unrelated host re-render. It
+   * runs in server mode too — the filtered row model is inert there, but
+   * `column.getIsFiltered()` still reads the slice, and that is what marks a
+   * filtered header. `condition.field` is authoritative: this is the only
+   * writer of `ColumnFilter.id`, so the two can never disagree.
+   *
+   * `resolvedSearchFields` is the second dependency, and it is not decoration.
+   * `createFilteredRowModel` memoises on exactly three things — the core row
+   * model, `columnFilters` and `globalFilter` — while `getColumnCanGlobalFilter`
+   * below is a function of the resolved field list. Hiding a column while a
+   * search is active changes which columns are searched and changes none of
+   * those three, so without this the filtered row model would not recompute:
+   * the client would go on matching a hidden column that `search.fields` on the
+   * wire had already dropped, which is the exact divergence §3.3 states the
+   * predicate to prevent. The list is itself memoised, so an unrelated
+   * re-render still gets the same array back and the identity holds.
+   */
+  const columnFilters = useMemo<ColumnFiltersState>(
+    () => layout.filters.map((condition) => ({ id: condition.field, value: condition })),
+    [layout.filters, resolvedSearchFields],
+  )
+
+  /*
+   * `column.setFilterValue(condition)` keeps working for a host driving the
+   * table through TanStack's own API: the value *is* the condition, so the
+   * touched entry maps straight back to a condition — through `pruneFilters`,
+   * the same gate `setModel` and `setCondition` run, since this input is no
+   * more trusted. Without it, this path is how a condition no editor could
+   * reach gets onto `state.columnFilters` and `query.filters` and stays
+   * there: an unknown column id (`table.setColumnFilters([{ id: "ghost", … }])`),
+   * a condition whose kind no longer matches the column's resolved kind
+   * (including a column declared `meta: { filter: false }`, for which
+   * `resolveFilterKind` returns `false`), or two entries for the same field —
+   * exactly the stranded-filter case `pruneFilters` exists to prevent,
+   * reachable here too because TanStack's own `setColumnFilters` passes an
+   * unknown id straight through. Left unwired entirely, the default updater
+   * would write to an atom that the controlled `state.columnFilters`
+   * overrides, and `setFilterValue` would silently do nothing.
+   *
+   * Only the entry (or entries) TanStack actually changed are re-validated —
+   * the rest are folded back in as the already-canonical condition, exactly
+   * like `setCondition` does for the rest of the list. `filterKinds` is
+   * re-derived from `data` (see the memo above) and can drift between
+   * renders: a column with no declared `meta.filter` infers its kind from
+   * sampled data, so it can read as unresolved on an empty first render and
+   * resolve once data arrives. Running every entry, touched or not, back
+   * through `pruneFilters` on every write means a condition set while a
+   * column's kind was still unresolved gets silently re-judged — and
+   * possibly dropped — the next time an unrelated column's filter changes,
+   * with no error and a trigger ("which page happened to load first") the
+   * user has no way to correlate with the action. `setCondition` already
+   * gives untouched conditions this guarantee; an entry counts as untouched
+   * here when TanStack hands back the very same `value` reference it was
+   * given, which is what `column_setFilterValue` does for every column but
+   * the one it is changing.
+   */
+  const updateFiltersFromTanStack = useCallback(
+    (updater: Updater<ColumnFiltersState>) => {
+      updateFilters((current) => {
+        const beforeById = new Map(current.map((condition) => [condition.field, condition]))
+        const before: ColumnFiltersState = current.map((condition) => ({
+          id: condition.field,
+          value: condition,
+        }))
+
+        const order: string[] = []
+        const seenIds = new Set<string>()
+        const touchedFields = new Set<string>()
+        const touchedCandidates: FilterCondition[] = []
+        for (const entry of apply(updater, before)) {
+          if (seenIds.has(entry.id)) continue
+          seenIds.add(entry.id)
+          order.push(entry.id)
+          const priorCondition = beforeById.get(entry.id)
+          if (priorCondition !== undefined && entry.value === priorCondition) continue
+          touchedFields.add(entry.id)
+          const value = entry.value as FilterCondition
+          if (typeof value === "object" && value !== null) {
+            touchedCandidates.push({ ...value, field: entry.id })
+          }
+        }
+
+        const prunedTouched = new Map(
+          pruneFilters(touchedCandidates, columnIds, filterKinds).map((condition) => [
+            condition.field,
+            condition,
+          ]),
+        )
+        // A touched field that `pruneFilters` drops is gone — never fall
+        // back to its prior condition, or an invalidated write would restore
+        // the stale value it was meant to replace.
+        return order.flatMap((id) => {
+          const kept = touchedFields.has(id) ? prunedTouched.get(id) : beforeById.get(id)
+          return kept === undefined ? [] : [kept]
+        })
+      })
+    },
+    [updateFilters, columnIds, filterKinds],
+  )
+
   const table = useTable<DataTableFeatures, TData>({
     features: FEATURES,
     data,
@@ -380,6 +808,8 @@ export function useDataTable<TData extends RowData>({
       columnPinning: layout.columnPinning,
       columnSizing: layout.columnSizing,
       sorting: layout.sorting,
+      columnFilters,
+      globalFilter: searchText,
       pagination: { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize },
       expanded,
     },
@@ -401,6 +831,40 @@ export function useDataTable<TData extends RowData>({
      */
     autoResetExpanded: false,
     manualSorting: isServer,
+    /*
+     * Written unconditionally on every render, as a plain boolean, so the
+     * option merge can never carry a stale value — it needs no `mergeOptions`
+     * branch, which exists only for the four options this hook *omits*.
+     *
+     * It turns off the filtered row model, not the filter state:
+     * `column.getIsFiltered()` reads `state.columnFilters` directly and keeps
+     * working, which is what drives the header marker in server mode.
+     */
+    manualFiltering: isServer,
+    /*
+     * Defaults to false, which for tree data hides a matching child whenever
+     * its parent fails the filter — a filtered tree would show nothing for a
+     * term only leaves contain. Expansion survives a filter change with no
+     * work: it is keyed by row id and `autoResetExpanded: false` is already set.
+     */
+    filterFromLeafRows: getSubRows !== undefined,
+    /*
+     * Stated, because the default is `"auto"` — one whole-string substring test
+     * applied once per searchable column with that column's id, ORed with a
+     * break on the first true. That cannot express "tokens may match different
+     * columns": searching `KR-102 agro` would look for the literal string
+     * inside one column at a time. Ours is a row-level predicate that ignores
+     * the column id it is handed, so TanStack's own OR and break are harmless.
+     */
+    globalFilterFn: filterFn_dtSearch,
+    /*
+     * Stated too. TanStack's own default applies a value-type heuristic as a
+     * gate *underneath* the flags rather than as a default a host can override,
+     * and never consults visibility at all — so without this a hidden column
+     * would go on being searched client-side while `search.fields` omitted it,
+     * and the two modes would search different columns for the same text.
+     */
+    getColumnCanGlobalFilter: (column) => resolvedSearchFields.includes(column.id),
     manualPagination: isServer || paginationOptions === null,
     /*
      * Both totals are written on every server render rather than omitted when
@@ -469,6 +933,17 @@ export function useDataTable<TData extends RowData>({
       size: defaultColumnWidth,
       minSize: minColumnWidth,
       maxSize: maxColumnWidth,
+      /*
+       * `columnFilteringFeature` defaults every column to `filterFn: "auto"`,
+       * which resolves a built-in *name* through the very registry narrowed to
+       * `{ dt }` above. Every lookup would miss, `column_getFilterFn` would
+       * return undefined, and `createFilteredRowModel` would skip that filter
+       * entirely — every row passing, with one dev-console warning and nothing
+       * else. TanStack merges the feature default first, then this, then a
+       * host's own column def, so this sets the default without taking the
+       * escape hatch away.
+       */
+      filterFn: "dt",
     },
     enableSorting: flags.sorting,
     enableColumnResizing: flags.resizing,
@@ -482,7 +957,89 @@ export function useDataTable<TData extends RowData>({
     onColumnSizingChange: (updater) =>
       updateSlice("columnSizing", updater, (sizing) => normaliseSizing(sizing, table)),
     onSortingChange: updateSorting,
+    onColumnFiltersChange: updateFiltersFromTanStack,
+    /*
+     * `state.globalFilter` is controlled from `layout.search`, so TanStack's
+     * default updater would write to an atom the controlled value overrides,
+     * and `table.setGlobalFilter()` would silently do nothing — the same trap
+     * `onColumnFiltersChange` avoids for `column.setFilterValue()`.
+     */
+    onGlobalFilterChange: (updater: Updater<string>) => updateSearch(apply(updater, layout.search)),
   })
+
+  /**
+   * Move a column next to another one, the way both drag surfaces ask for.
+   *
+   * Lives here, with the layout, because a move is not always one slice. The
+   * rendered order is `columnPinning.start`, then `columnOrder` minus the
+   * pinned columns, then `columnPinning.end` — so moving a PINNED column has
+   * to rewrite the pinning array as well, or the order changes underneath a
+   * header that renders exactly as before. That was the bug: the panel drew
+   * the slot, the live region announced the new position, the screen did not
+   * move, and storage kept an order it did not show, waiting to spring on the
+   * next unpin.
+   *
+   * Both slices go in one {@link updateSlices} call. Two calls would each be
+   * honest on their own and leave a window — one render, one debounced save —
+   * in which the table has the new pinning and the old order, which is the
+   * self-contradicting layout this exists to prevent.
+   *
+   * @param draggedId - The column being moved.
+   * @param targetId - The column it was dropped on.
+   * @param side - Which edge of the target it was dropped on.
+   */
+  const reorderColumn = useCallback(
+    (draggedId: string, targetId: string, side: DropSide) => {
+      /*
+       * The order is a flat list, so a move across a group or a pinning
+       * boundary would either be ignored or tear a group's header apart.
+       * Refusing it is the honest outcome — and both drag surfaces ask
+       * `dropRegionOf` the same question before they draw a slot, so nothing
+       * that reaches here should ever be refused.
+       */
+      const dragged = table.getColumn(draggedId)
+      const target = table.getColumn(targetId)
+      if (!dragged || !target) return
+      if (dropRegionOf(dragged) !== dropRegionOf(target)) return
+
+      /*
+       * Same region, so the target is pinned exactly as the dragged column is
+       * — this is which array, if any, also has to move.
+       */
+      const pinnedSide = dragged.getIsPinned()
+
+      updateSlices([
+        sliceChange("columnOrder", (current) => {
+          /*
+           * When nothing has been reordered yet the order is empty, meaning
+           * "natural". The fallback must be the order the columns are RENDERED
+           * in — `getAllLeafColumns()` groups pinned columns first, so using it
+           * here scrambles every column on the very first drag.
+           */
+          const order = current.length
+            ? current
+            : renderedLeafColumns(table).map((column) => column.id)
+          return moveColumn(order, draggedId, targetId, side)
+        }),
+        /*
+         * Written even for a pinned move, where it changes nothing on screen:
+         * the pinned columns are not rendered from it. It is what the move
+         * means once the column is unpinned again, and leaving it behind is
+         * the same silent disagreement one slice over.
+         */
+        ...(pinnedSide === false
+          ? []
+          : [
+              sliceChange("columnPinning", (current) =>
+                pinnedSide === "start"
+                  ? { ...current, start: moveColumn(current.start, draggedId, targetId, side) }
+                  : { ...current, end: moveColumn(current.end, draggedId, targetId, side) },
+              ),
+            ]),
+      ])
+    },
+    [table, updateSlices],
+  )
 
   /*
    * In client mode the total is whatever survived filtering, which only the
@@ -529,10 +1086,113 @@ export function useDataTable<TData extends RowData>({
 
   const query = useTableQuery({
     sorting: layout.sorting,
+    filters: layout.filters,
+    search,
     pageIndex: pageState.pageIndex,
     pageSize: pageState.pageSize,
     onQueryChange,
   })
+
+  const setCondition = useCallback(
+    (condition: FilterCondition) => {
+      /*
+       * The same gate `setModel` and a stored layout go through, rather than
+       * the condition's own constructor alone: a column the table does not
+       * define, and a kind that no longer matches the column, are how a
+       * condition no editor could reach used to get onto `query.filters` and
+       * stay there — the stranded-filter case `pruneFilters` exists to
+       * prevent, arriving through the mutator instead of through storage. An
+       * editor that constrains nothing comes back empty too, and clears the
+       * column.
+       */
+      const [built] = pruneFilters([condition], columnIds, filterKinds)
+      // `pruneFilters` reads a malformed entry without dereferencing it, so
+      // the field being cleared is read just as carefully.
+      const field =
+        built?.field ??
+        (typeof condition === "object" && condition !== null ? condition.field : undefined)
+      if (field === undefined) return
+      updateFilters((current) => {
+        const rest = current.filter((existing) => existing.field !== field)
+        return built === undefined ? rest : [...rest, built]
+      })
+    },
+    [updateFilters, columnIds, filterKinds],
+  )
+  const clearColumn = useCallback(
+    (columnId: string) =>
+      updateFilters((current) => current.filter((existing) => existing.field !== columnId)),
+    [updateFilters],
+  )
+  const clearAll = useCallback(() => {
+    updateFilters([])
+    updateSearch("")
+    // Both halves of "clear" belong to one query: see `publishNow`.
+    publishNow()
+  }, [updateFilters, updateSearch, publishNow])
+  const setModel = useCallback(
+    (model: FilterModel) => {
+      /*
+       * Untrusted input — a URL, a host's own store, a hand-written literal —
+       * so it is held to the same rules as a stored layout, and every
+       * surviving condition is re-run through its constructor. Without the
+       * re-run a condition assembled in a different key order would stringify
+       * differently from an identical one the editors built, and the
+       * no-spurious-refetch story would have a hole in it reachable through
+       * the very API recommended for URL round-trips.
+       */
+      updateFilters(pruneFilters(model.filters ?? [], columnIds, filterKinds))
+      // `updateSearch` is where a non-string is coerced, for every caller at
+      // once; a second check here would be the same rule written twice.
+      updateSearch(model.search)
+      // A whole model is one request, not two: see `publishNow`. Announcing the
+      // filters without the search would be the spurious refetch the re-run
+      // above exists to prevent, arriving from the other side.
+      publishNow()
+    },
+    [updateFilters, updateSearch, publishNow, columnIds, filterKinds],
+  )
+
+  const filteringApi = useMemo(
+    () => ({
+      enabled: filteringEnabled,
+      /*
+       * Which editor each column gets. Published because every filter surface
+       * needs it and §7.4's resolution is data-dependent: a component that
+       * re-derived it would be free to disagree with the map `pruneFilters`
+       * used on load, and a column would then edit as one kind and prune as
+       * another.
+       */
+      kinds: filterKinds,
+      /*
+       * Forwarded so a values editor can reach it. Never called in client
+       * mode, where faceting computes the list for free and for nothing; in
+       * server mode it is the only source of choices a host can supply.
+       */
+      loadValues: filteringOptions?.loadValues,
+      conditions: layout.filters as readonly FilterCondition[],
+      search: layout.search,
+      isFiltered: layout.filters.length > 0 || layout.search.trim() !== "",
+      setCondition,
+      clearColumn,
+      clearAll,
+      setSearch: updateSearch,
+      getModel: (): FilterModel => ({ filters: [...layout.filters], search: layout.search }),
+      setModel,
+    }),
+    [
+      filteringEnabled,
+      filterKinds,
+      filteringOptions?.loadValues,
+      layout.filters,
+      layout.search,
+      setCondition,
+      clearColumn,
+      clearAll,
+      updateSearch,
+      setModel,
+    ],
+  )
 
   /*
    * `process.env.NODE_ENV` and not `import.meta.env.DEV`: this library is built
@@ -584,12 +1244,14 @@ export function useDataTable<TData extends RowData>({
     id,
     flags,
     bounds,
+    reorderColumn,
     resetLayout,
     isCustomised,
     expanded,
     mode,
     query,
     pagination: paginationApi,
+    filtering: filteringApi,
     rowHeight,
     getRowHeight,
     heightVersion,
@@ -635,6 +1297,7 @@ function normaliseSizing(
 interface ColumnDefShape {
   id?: string
   accessorKey?: unknown
+  header?: unknown
   columns?: readonly ColumnDefShape[]
 }
 
@@ -643,8 +1306,9 @@ interface ColumnDefShape {
  *
  * Only leaves carry order, visibility, width and pinning, so a group's own id
  * must not appear — mixing them in makes TanStack drop every id it cannot match
- * and reshuffle the rest. Mirrors TanStack's own id resolution so stored
- * layouts line up with live columns.
+ * and reshuffle the rest. Derives each id with {@link deriveColumnId}, the same
+ * way TanStack's own `constructColumn` does, so stored layouts line up with
+ * live columns.
  *
  * @param columns - Column definitions, possibly nested.
  * @returns Every leaf id, depth-first.
@@ -652,8 +1316,6 @@ interface ColumnDefShape {
 function collectLeafIds(columns: readonly ColumnDefShape[]): string[] {
   return columns.flatMap((column, index) => {
     if (column.columns?.length) return collectLeafIds(column.columns)
-    if (typeof column.id === "string") return [column.id]
-    if (typeof column.accessorKey === "string") return [column.accessorKey]
-    return [String(index)]
+    return [deriveColumnId(column, index)]
   })
 }

@@ -36,8 +36,10 @@ function Receipts({ data, columns }) {
 | **Nested column groups** | Group headers to any depth. A column that sits above the deepest level spans down to meet the rows. |
 | **Pin columns** | To the start edge, the end edge, or both. Pinned columns stay put while the rest scrolls, with a shadow marking the seam. |
 | **Resize columns** | Drag the right edge of a header; double-click it to fit the column to its content. A group header's edge resizes every column under it. Columns are never stretched to fill the container. |
-| **Reorder columns** | Drag a header onto another; a caret shows which side it will land on. |
+| **Reorder columns** | Drag a header onto another; the column it will land on is outlined. Also from the keyboard, in the **Columns** panel. |
 | **Sort** | Click a header: ascending, descending, off. Multi-sort shows its position. |
+| **Quick search** | One box over every searchable column. Every token must appear somewhere on the row; different tokens may match different columns. |
+| **Filter columns** | Text, number, date, boolean and values-list filters, from the header menu or the side panel's Filters tab. Each one is published as an explicit operator a backend can translate. |
 | **Hide columns** | From the **Columns** panel. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
 | **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. |
@@ -198,8 +200,8 @@ actually drives both the row and the token.
 
 Set `mode: "server"` and the table stops sorting and paging: `data` is one
 page, already sorted, and the table tells you what it wants through a
-`TableQuery` — sorting, pagination, and (reserved for later) filters and
-grouping. With TanStack Query:
+`TableQuery` — sorting, filters, quick search, pagination, and (reserved for
+row grouping) `grouping`. With TanStack Query:
 
 ```tsx
 const EMPTY: Receipt[] = [] // stable identity, so an empty page isn't a new `data` array every render
@@ -256,6 +258,210 @@ server mode needs it for the footer anyway — and `loading` while the request
 is out. A shell of your own has to draw the same line: no rows, no error,
 nothing loading and `rowCount === undefined` means the query has not been
 answered yet, not that the answer was empty.
+
+### Filters on the wire
+
+A filter is not a client-side trick that happens to work remotely: it is a value
+you hand to your backend and translate into SQL without interpreting anything.
+
+```json
+{
+  "sorting": [{ "id": "created", "desc": true }],
+  "filters": [
+    { "kind": "number", "field": "amount",  "op": "between",  "from": 1000000, "to": null },
+    { "kind": "date",   "field": "created", "op": "range",    "from": "2026-03-01", "before": "2026-04-01" },
+    { "kind": "text",   "field": "partner", "op": "contains", "value": "agro" },
+    { "kind": "list",   "field": "status",  "op": "in",       "values": ["in_process", "open"] }
+  ],
+  "search": { "text": "KR-102", "fields": ["code", "partner", "status"] },
+  "grouping": [],
+  "pagination": { "pageIndex": 0, "pageSize": 50 }
+}
+```
+
+`filters` is a flat array, implicitly ANDed, and **sorted by `field`** — which is
+why `amount` comes first here rather than the order the user set the filters in.
+Sorting it is what stops a column drag changing the query string and making you
+refetch an identical result set. When cross-column OR eventually ships it will
+arrive as a **new optional field**, never as a change to the element type, so a
+backend written against this shape keeps working.
+
+| Operator | On | Means |
+|---|---|---|
+| `contains` / `notContains` | text | Substring, **case-insensitive** |
+| `equals` / `notEquals` | text | Whole value, **case-insensitive** |
+| `startsWith` / `endsWith` | text | **Case-insensitive** |
+| `eq` `ne` `lt` `lte` `gt` `gte` | number | |
+| `between` | number | **Inclusive on both ends**; `null` is unbounded |
+| `range` | date | `from <= value < before`; either bound may be `null` |
+| `is` | boolean | |
+| `in` / `notIn` | list | |
+| `blank` / `notBlank` | every kind | Nullish or empty, and its complement |
+
+A published operator's meaning never changes; new behaviour gets a new name. Four
+rules are easy to get wrong, and the table itself follows all four.
+
+**All six text operators are case-insensitive**, `equals` included. A backend
+using a case-sensitive collation will return different row counts from client
+mode for the same filter, and your users will report that as a data bug.
+
+**`between` is inclusive on both ends.** AG Grid's number `inRange` is exclusive
+by default, so a backend ported from it will disagree.
+
+**Negated operators never match a blank value.** `notContains`, `notEquals` and
+`notIn` exclude a row whose value is `NULL` or `''`, because that is what
+`NOT (col ILIKE …)` does in SQL, where a comparison against NULL is NULL rather
+than true. The number comparators do the same: a nullish value satisfies none of
+them. `blank` is the operator for reaching those rows, and `blank` / `notBlank`
+partition every row between them:
+
+```sql
+-- blank
+(col IS NULL OR col::text = '')
+-- notBlank
+(col IS NOT NULL AND col::text <> '')
+```
+
+The `IS NOT NULL` guard is not optional — the naive `col <> ''` silently excludes
+every NULL through three-valued logic, and then the two operators no longer
+partition the table. For a non-text column the `''` half is always false and may
+be dropped.
+
+**A date range is half-open**, always: `from` is inclusive, `before` is exclusive.
+One clause covers every case, and it is correct whether the column is a `date` or
+a `timestamptz`:
+
+```sql
+(:from   IS NULL OR created >= :from)
+AND (:before IS NULL OR created <  :before)
+```
+
+The bug this prevents: an inclusive `<= '2026-03-31'` against a timestamp column
+silently drops every row recorded during that last day. The table never emits a
+time or a zone — a day is a day in the user's calendar. If you store instants,
+converting the day boundary into your own zone is your decision to make and to
+document.
+
+**Quick search is AND over tokens, OR over fields.** Split `text` on whitespace;
+every token must appear, case-insensitively, in at least one of `fields` on that
+row; different tokens may match different columns. The naive `contains: text`
+across the fields disagrees with client mode the moment a user types two words.
+
+```ts
+const { text, fields } = query.search!
+where: {
+  AND: [
+    { amount:  { gte: 1000000 } },
+    { created: { gte: new Date("2026-03-01"), lt: new Date("2026-04-01") } },
+    { partner: { contains: "agro", mode: "insensitive" } },
+    { status:  { in: ["in_process", "open"] } },
+    // Every token must hit some field; different tokens may hit different fields.
+    ...text.split(/\s+/).map((token) => ({
+      OR: fields.map((f) => ({ [f]: { contains: token, mode: "insensitive" } })),
+    })),
+  ],
+}
+```
+
+Every text operator carries `mode: "insensitive"`, `equals` included. The
+`new Date("…")` calls are the backend choosing to read a calendar day as UTC
+midnight, which is its prerogative and its decision to document.
+
+`fields` is a list of columns your backend should be prepared to search. Quick
+search over unindexed text columns is a good way to take down a database with
+three characters; mark sensitive or unindexed columns as unsearchable so they
+never reach `fields`.
+
+**The operator vocabulary is closed.** The operators in the table above are the
+whole list, and a condition carrying anything else is dropped rather than
+published — a backend cannot be expected to translate an operator it has never
+seen, and minting one locally would produce a filter that works in client mode
+and silently does nothing in server mode. A host that needs different *matching*
+keeps the vocabulary and changes the client half of it: `columnDef.filterFn`
+accepts a function as well as a name, such a function needs no registration, and
+it receives the column's own `FilterCondition` as its filter value — so it can
+change how `contains` matches without inventing a `matchesRegex`. A host that
+needs something the vocabulary cannot express at all turns the built-in filter
+off for that column with `meta: { filter: false }` and keeps its own control
+beside the table; what reaches `query.filters` is always one of the conditions
+documented here.
+
+**`meta.filter` picks the editor; it does not type the value.** A condition's
+value is not checked against the column's own `TValue`, because `columns` is
+`ColumnDef<…, any>[]` and there is no per-column value type left to check it
+against. `meta: { filter: "number" }` on a text column compiles, and the
+mismatch turns up at runtime as a filter that matches nothing. Declare the kind
+that matches the data; a column that declares nothing has its kind inferred from
+its first non-null value — string → text, number → number, boolean → boolean,
+anything else → text — which is a convenience and not a contract, and is why a
+stored condition is dropped on load when the kind it was built for is no longer
+the kind the column resolves to.
+
+**Build conditions with the exported constructors** — `textCondition`,
+`numberCondition`, `dateCondition`, `booleanCondition`, `listCondition` — and
+never by hand. They fix each condition's key order, sort a list's values and
+return `null` for a condition that constrains nothing, and `instance.query`'s
+identity depends on all three.
+
+**Which columns `fields` holds** is every visible, accessor-backed column whose
+`meta.searchable` resolves true, *plus* every visible, accessor-backed column
+that has neither a declared `meta.searchable` nor a sampled value yet — an
+unresolved column stays in `fields` rather than being dropped from it. The
+default for `meta.searchable`, once a sample exists, is "the column's first
+non-null value is a string or a number", so a numeric column is searched too —
+mark anything unindexed or sensitive `meta: { searchable: false }`.
+
+`columnDef.enableGlobalFilter: false` also takes a column out of `fields`,
+ahead of `meta.searchable` and inference alike: TanStack's own client-side
+global filter honours that flag regardless of what this library's gate says,
+so `fields` has to agree with it or a server honouring the wire's `fields`
+would return rows the same table, in client mode, would show none of.
+
+That unresolved rule has a consequence in server mode: a column with nothing
+declared is unresolved at mount, before the first page has arrived, so `fields`
+can change — narrower or wider — once real data lands and a sample is found.
+A column resolves at most once from inference, though: once a sampled value has
+settled it one way or the other, that verdict is cached for the life of the
+table, so a later page whose sample happens to be all-null cannot re-open the
+question. That cache only ever applies to inference — a column whose
+searchability is *declared* (`meta.searchable`, or `enableGlobalFilter: false`)
+is never cached and always reads the current declaration, so flipping it after
+mount (behind an async permission check, a "search this column" toggle) takes
+effect on the very next render, narrowing or widening. Set
+`filtering.searchFields` explicitly to skip inference altogether, including the
+one request its first resolution can cost.
+
+Hiding a column narrows the search, which is surprising either way and is why
+`filtering.searchFields` overrides the list outright. What it cannot override
+is what the client will actually match: an entry naming no column, naming a
+display column, or naming one with `enableGlobalFilter: false` is dropped, with
+a dev-mode warning naming it, because TanStack refuses those three underneath
+us and the wire would otherwise ask a backend to search columns this table
+searches none of. Name the *live* id — a nested `accessorKey` like
+`"partner.name"` has id `"partner_name"`. `search` is `null` when the box is
+empty, when it holds only whitespace, and when no column is searchable at all —
+including when every `searchFields` entry was dropped — the client has nothing
+to match against either, so both modes return everything.
+
+**The published value is debounced**, by `filtering.debounceMs` (default
+300 ms). The box itself stays responsive: the raw text is in state on the
+keystroke, and what waits is the query. Column filters are never debounced —
+they commit on Apply, Enter or blur. Nor is a programmatic write: `clearAll()`
+and `setModel()` publish their search with their filters, in one query, so
+clearing the toolbar or restoring a shared URL never announces an intermediate
+request a host would fetch.
+
+**A values filter's choices come from exactly one source**, in this order:
+`meta.values` on the column, wherever it is declared and in either mode, shown
+without counts; otherwise, in client mode, the data itself, with counts, and
+narrowed by whatever the *other* columns are filtered by; otherwise, in server
+mode, `filtering.loadValues(columnId, { search, signal })`. A server-mode list
+column with neither is disabled with a label rather than shown an empty list —
+an empty list reads as "there is no data". While a request is out the previous
+answer stays on screen, dimmed and `aria-busy`, and a rejected one keeps it and
+offers a retry; `signal` aborts a superseded request. Declaring `meta.values` on
+a client-mode column trades the free counts for fixed labels, which is a real
+trade.
 
 ---
 
@@ -356,6 +562,23 @@ never on mount, and never on every frame of a drag.
 mention it. Those references are dropped on load, and columns added since are appended, so
 an old layout never leaves a user with a phantom column or a missing one.
 
+**Filters persist too**, with the rest of the layout, and a stored condition is
+dropped on load when its column is gone, when its shape does not match its
+operator, or when the column's filter kind has changed since. Pass
+`filtering: { persist: false }` to keep filters and the search box out of
+storage entirely, for a table you would rather have every visit start clean:
+nothing is then written for a filter change at all — which matters most for a
+server-backed adapter, where a write is a network request — and anything an
+earlier visit had already stored is dropped on load rather than restored. A
+filter or a search never counts as *customising* the layout either way — the
+Columns tab's Reset link is about columns.
+
+**`filtering: false` turns the feature off, not just its surfaces.** No filter
+state enters the layout at all: nothing is restored from storage, nothing is
+taken from `initialLayout`, `query.filters` stays empty, and the mutators on
+`instance.filtering` do nothing. That is what stops a table you disabled from
+going on asking its backend for a filtered page nothing on screen can clear.
+
 ---
 
 ## Styling
@@ -404,7 +627,7 @@ darkened (light mode) or lightened (dark mode) variant of it instead of the same
 | `--dt-accent-text` | `--dt-accent`'s colour printed AS text on `--dt-bg` (`.dt-link`, and the current choice in a header menu — active sort direction and active pin; needs 4.5:1 there) — set alongside `--dt-accent`, see above |
 | `--dt-focus-ring` | Focus outline |
 | `--dt-resize-handle` `--dt-resize-handle-active` | Resize handle |
-| `--dt-drop-indicator` | Reorder caret |
+| `--dt-drop-indicator` | The drop slot a dragged column will land in |
 | `--dt-pin-shadow-start` `--dt-pin-shadow-end` | Pinned column seams |
 | `--dt-indent` `--dt-detail-bg` | Nested rows and detail panels |
 | `--dt-viewport-max-height` | Fallback height for a table nobody bounded; see [Large data](#large-data) |
@@ -556,12 +779,50 @@ it rather than rebuild the range math and page-size select. Its `labels` is the 
 underneath it to fall back on for a key you left out — so spread `defaultLabels`, exported
 alongside it, over your own overrides.
 
+Filtering adds a large batch of keys — operator names, editor labels, the
+search placeholder, the tab names, the clear actions and the no-matches copy.
+Spread `defaultLabels` and override what you need; building the object by hand
+means adding every new key on each minor release.
+
+`ruLabels` and `uzLabels` — Russian and Uzbek translations of the whole label
+set, shipped so those two hosts do not have to translate 100-odd keys by hand.
+Pass one straight through:
+
+```tsx
+import { DataTable, ruLabels, uzLabels } from "@khojiakbarr/data-table"
+
+<DataTable instance={instance} labels={ruLabels} />
+
+// Or keep the translation and change the wording that is yours:
+<DataTable instance={instance} labels={{ ...ruLabels, empty: "Накладных пока нет" }} />
+```
+
+Both are typed as the full `DataTableLabels` rather than a `Partial`, so a key
+added to the interface fails to compile in this package instead of silently
+staying English in yours — which also means spreading `defaultLabels` under
+them is unnecessary. `<DataTable labels>` itself still takes a `Partial`, so
+the spread form above needs no filler for the keys you are not changing.
+
 `<TableStatus loading={…} error={…} onRetry={…} labels={…} />` and `<SkeletonRows
 widths={…} count={…} />` — the loading, error and skeleton states `<DataTable>` renders
 above and in place of its rows (the **States** paragraph under [Server-side
 data](#server-side-data) describes the precedence between them). Exported for the same
 reason as the footer: a shell that reuses `TablePagination` usually wants these too, rather
 than rebuilding the same four-state contract against undocumented class names.
+
+`<QuickSearch instance={instance} labels={{ ...defaultLabels, ...myLabels }} />` — the
+toolbar's search box on its own, for a shell that renders `toolbar={false}`. Like
+the footer it takes the full `DataTableLabels` rather than a `Partial`. It writes
+straight to `instance.filtering.setSearch`, so the debounce, the result-count
+announcement and the page reset come with it.
+
+`<TablePanel instance={instance} labels={…} tab={tab} onTabChange={setTab} onReorder={…} onClose={…} />` —
+the side panel with both tabs, for a shell that wants to choose which one opens;
+`<ColumnsTab>` and `<FiltersTab>` are its halves, and `<ColumnPanel>` is still
+exported and still takes exactly the four props it always did, opening on the
+Columns tab. The Filters tab lists every filterable column, **hidden ones
+included and marked** — a hidden column's filter goes on applying and its
+header is not there to say so.
 
 ---
 
@@ -586,13 +847,14 @@ than rebuilding the same four-state contract against undocumented class names.
 | `mode` | `"client" \| "server"` | `"client"` | `"server"`: `data` is one page, already sorted; the table only describes what it wants. |
 | `rowCount` | `number` | — | Total rows across all pages. Server mode only; undefined until known. |
 | `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
+| `filtering` | `boolean \| FilteringOptions` | on | `{ debounceMs?, persist?, searchFields?, loadValues? }`. `false` turns filtering off. |
 | `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. |
 | `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
 | `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
 | `heightVersion` | `string \| number` | — | Changes when `getRowHeight` starts answering differently, for a change too narrow for the table to sample. See [Large data](#large-data). |
 
-Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, rowHeight, getRowHeight, heightVersion }`.
+Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, rowHeight, getRowHeight, heightVersion }`.
 
 ### `<DataTable />`
 
@@ -603,7 +865,7 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
-| `emptyState` | `ReactNode` | `labels.empty` | |
+| `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters button while `instance.filtering.isFiltered` | Supplying this replaces **both** defaults, including the filtered-empty exit — a host that wants its own art for "no data" but still wants a way out of a filtered-empty table should branch on `instance.filtering.isFiltered` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | |
 | `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |
@@ -627,9 +889,24 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 - The Columns panel closes on `Escape` and on an outside click.
 - The per-column menu opens from a button as well as from right-click, and is reachable
   by keyboard; it closes on `Escape`.
+- The quick-search box announces its result count politely and never takes focus.
+- The header menu's **Filter…** item opens a popover rather than putting form controls inside a
+  `role="menu"`, which would be invalid. The popover is a labelled `role="dialog"`, keeps `Tab`
+  inside itself, closes on `Escape` **discarding the draft**, and returns focus to the column's ⋮
+  button. **Filter in panel…** beside it opens the side panel's Filters tab instead, with that
+  column's editor expanded and focused.
+- A filtered column is marked in its header with a labelled icon. The side panel's Filters tab
+  lists hidden columns too, marked as hidden — a hidden column's filter goes on applying and has no
+  header to say so.
+- The panel's two tabs are a `tablist` with arrow-key movement and a single roving tab stop.
+- An empty table says whether it has no rows or no *matching* rows, and the second offers a way out.
 - Row toggles report `aria-expanded` and name themselves.
-- Reordering is drag-only today. If you need a keyboard path, the Columns panel is the
-  place to add it — see [#1](https://github.com/khojiakbarr/data-table/issues).
+- Reordering has a keyboard path: each row of the **Columns** panel carries a drag handle that
+  is in the `Tab` order. `Space` picks the column up, the arrow keys move the drop slot,
+  `Space` puts it down and `Escape` gives it back. The handle reports `aria-pressed`, and every
+  position — including the one a cancel returns to — is announced politely. The slot stops at a
+  group or pinning boundary, because a move across one is refused. The two strings it speaks are
+  the `reorderHint` and `reorderPosition` labels.
 - `prefers-reduced-motion` disables transitions.
 
 ---

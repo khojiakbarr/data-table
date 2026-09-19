@@ -71,6 +71,27 @@ describe("stacking context", () => {
     expect(getComputedStyle(root).zIndex).toBe("auto")
     root.remove()
   })
+
+  it("lifts .dt-root while a filter popover is open, and paints it above the progress bar", () => {
+    // FilterPopover.tsx renders `.dt-filter-popover` as a direct child of
+    // `.dt-root`, structurally parallel to the menu and the panel. The lift
+    // only orders this table against the page, so the popover also needs a
+    // z-index of its own inside the root's single stacking context — without
+    // one it paints under the sticky header (3), the pinned header cells (4),
+    // the drag indicator (5) and the progress bar (6) it is anchored above.
+    const root = renderRoot("dt-filter-popover")
+    expect(getComputedStyle(root).zIndex).toBe("1")
+
+    const popover = root.firstElementChild as HTMLElement
+    const progress = document.createElement("div")
+    progress.className = "dt-progress"
+    root.appendChild(progress)
+
+    expect(Number(getComputedStyle(popover).zIndex)).toBeGreaterThan(
+      Number(getComputedStyle(progress).zIndex),
+    )
+    root.remove()
+  })
 })
 
 describe("striping vs. row-state cascade", () => {
@@ -203,5 +224,59 @@ describe("README override recipes", () => {
       base.remove()
       override.remove()
     }
+  })
+})
+
+/**
+ * `.dt-menu` is `position: fixed` and placed with `left`/`top`
+ * (HeaderMenu.tsx, via `useClampedPlacement`). A `width: auto` box in that
+ * combination shrink-to-fits to `containingBlock - left` (CSS2.1 §10.3.7): a
+ * clamp that moves the box hands it exactly that much more room, growing it,
+ * which re-triggers `useClampedPlacement`'s ResizeObserver, which clamps
+ * again — a feedback loop, not a one-time reflow (review finding on
+ * useClampedPlacement.ts). jsdom does no layout, so this cannot be caught by
+ * measuring a real reflow; it can only be caught by asserting what the box
+ * declares.
+ *
+ * The invariant is that the declared width is *placement-independent*, which
+ * is narrower than "not the keyword `auto`": `width: fit-content` is
+ * `min(max-content, max(min-content, stretch-fit))` (CSS-SIZING-3), and for a
+ * `position: fixed` box with `left` set and `right: auto` the stretch-fit term
+ * is `ICB width - left` — the same dependency on `left`, under a different
+ * spelling. So each declaration is asserted by value rather than by what it is
+ * not, and `fit-content` is the specific spelling that must not come back.
+ */
+describe(".dt-menu sizing", () => {
+  let styleEl: HTMLStyleElement
+
+  beforeEach(() => {
+    styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+    document.head.appendChild(styleEl)
+  })
+
+  afterEach(() => styleEl.remove())
+
+  it("does not leave the menu's width dependent on its own `left`", () => {
+    const menu = document.createElement("div")
+    menu.className = "dt-menu"
+    document.body.appendChild(menu)
+
+    expect(getComputedStyle(menu).width).toBe("max-content")
+
+    menu.remove()
+  })
+
+  it("still bounds the menu to the viewport instead of letting it grow unboundedly", () => {
+    const menu = document.createElement("div")
+    menu.className = "dt-menu"
+    document.body.appendChild(menu)
+
+    // jsdom resolves the declared `calc(100vw - 16px)` against its own
+    // viewport, so the computed value comes back as a pixel length: the
+    // window less the 8px margin `useClampedPlacement` keeps on each side.
+    expect(getComputedStyle(menu).maxWidth).toBe(`${window.innerWidth - 16}px`)
+
+    menu.remove()
   })
 })

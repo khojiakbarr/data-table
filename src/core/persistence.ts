@@ -1,3 +1,4 @@
+import { pruneFilters, type FilterKind } from "./filters"
 import type { LayoutStorage, TableLayout } from "../types"
 
 /**
@@ -88,11 +89,17 @@ export function noLayoutStorage(): LayoutStorage {
  *
  * @param stored - Layout as it came out of storage.
  * @param knownColumnIds - Column IDs the table currently defines.
+ * @param filterKinds - Each column's resolved filter kind; `false` where
+ *   filtering is off for it. Optional because `pruneLayout` is a public export —
+ *   omitted, a stored condition is still checked for an unknown column, an
+ *   unknown kind and a shape its operator does not carry, but not against the
+ *   column's current kind. {@link useDataTable} always passes it.
  * @returns The layout with unknown column references removed.
  */
 export function pruneLayout(
   stored: Partial<TableLayout>,
   knownColumnIds: readonly string[],
+  filterKinds?: ReadonlyMap<string, FilterKind | false> | undefined,
 ): Partial<TableLayout> {
   const known = new Set(knownColumnIds)
   const keepKeys = <TValue,>(
@@ -104,7 +111,13 @@ export function pruneLayout(
 
   const pruned: Partial<TableLayout> = {}
 
-  if (stored.columnOrder) {
+  // `stored` is untrusted JSON — a hand-edited `localStorage` entry or a server
+  // response — so every array-shaped slice below is checked with `Array.isArray`
+  // before `.filter` runs on it; a non-array throws `TypeError: ... is not a
+  // function` (or "not iterable") from inside `useArrangement`'s `useState`
+  // initialiser, which is an unrecoverable render crash: the bad entry is never
+  // cleared, so it repeats on every subsequent mount.
+  if (Array.isArray(stored.columnOrder)) {
     // Keep the stored order, then append columns added since it was saved.
     const ordered = stored.columnOrder.filter((id) => known.has(id))
     const missing = knownColumnIds.filter((id) => !ordered.includes(id))
@@ -123,14 +136,36 @@ export function pruneLayout(
   }
 
   if (stored.columnPinning) {
+    // `start`/`end` are read defensively too: a malformed entry like
+    // `{ start: "oops" }` would otherwise reach `.filter` on a string.
+    const start = stored.columnPinning.start
+    const end = stored.columnPinning.end
     pruned.columnPinning = {
-      start: (stored.columnPinning.start ?? []).filter((id) => known.has(id)),
-      end: (stored.columnPinning.end ?? []).filter((id) => known.has(id)),
+      start: (Array.isArray(start) ? start : []).filter((id) => known.has(id)),
+      end: (Array.isArray(end) ? end : []).filter((id) => known.has(id)),
     }
   }
-  if (stored.sorting) {
-    pruned.sorting = stored.sorting.filter((entry) => known.has(entry.id))
+  if (Array.isArray(stored.sorting)) {
+    // An element can be malformed as well as the container, and `sorting` is
+    // the one slice whose elements are dereferenced (`entry.id`) rather than
+    // only handed to `Set.has` — which quietly rejects a string or a number
+    // but throws on null. `JSON.stringify([undefined])` is `"[null]"`, so
+    // `[null]` is what a storage adapter actually puts on the wire.
+    pruned.sorting = stored.sorting.filter(
+      (entry) => typeof entry === "object" && entry !== null && known.has(entry.id),
+    )
   }
+
+  // Without this a deleted column's filter stays active forever with no UI able
+  // to reach it: 40 rows out of 10 000 and no way to find out why.
+  // `pruneFilters` itself re-checks `Array.isArray` — `stored.filters` is
+  // untrusted JSON too — so the truthy check here is only an optimisation.
+  if (stored.filters) {
+    pruned.filters = pruneFilters(stored.filters, knownColumnIds, filterKinds)
+  }
+  // `pruneLayout` rebuilds from recognised keys, so a slice it does not copy is
+  // a slice that never comes back from storage.
+  if (typeof stored.search === "string") pruned.search = stored.search
 
   if (typeof stored.pageSize === "number" && Number.isFinite(stored.pageSize) && stored.pageSize > 0) {
     pruned.pageSize = stored.pageSize

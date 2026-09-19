@@ -1,6 +1,7 @@
 import type { SortingState } from "@tanstack/react-table"
 import { useEffect, useRef } from "react"
-import { buildQuery, queriesEqual, type TableQuery } from "./query"
+import type { FilterCondition } from "./filters"
+import { buildQuery, queriesEqual, type TableQuery, type TableSearch } from "./query"
 
 /** Inputs to {@link useTableQuery}. */
 export interface UseTableQueryOptions {
@@ -10,6 +11,13 @@ export interface UseTableQueryOptions {
    * on it refetches forever. `useArrangement` guarantees this.
    */
   sorting: SortingState
+  /**
+   * The active conditions, identity-stable for the same reason as `sorting`.
+   * `buildQuery` sorts them, so the order they arrive in does not matter.
+   */
+  filters: readonly FilterCondition[]
+  /** What quick search asks for, or null when it is off. */
+  search: TableSearch | null
   pageIndex: number
   pageSize: number
   /** Called with the initial query on mount and after every change to it. */
@@ -47,16 +55,18 @@ export interface UseTableQueryOptions {
  * @returns The current query, stable between renders that did not change it.
  *
  * @example
- * const query = useTableQuery({ sorting, pageIndex, pageSize, onQueryChange })
+ * const query = useTableQuery({ sorting, filters, search, pageIndex, pageSize, onQueryChange })
  * const { data } = useQuery({ queryKey: ["rows", query], queryFn: fetchRows })
  */
 export function useTableQuery({
   sorting,
+  filters,
+  search,
   pageIndex,
   pageSize,
   onQueryChange,
 }: UseTableQueryOptions): TableQuery {
-  const candidate = buildQuery({ sorting, pageIndex, pageSize })
+  const candidate = buildQuery({ sorting, filters, search, pageIndex, pageSize })
   const queryRef = useRef<TableQuery | undefined>(undefined)
   if (queryRef.current === undefined || !queriesEqual(queryRef.current, candidate)) {
     queryRef.current = candidate

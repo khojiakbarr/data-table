@@ -2,14 +2,18 @@ import type { RowData } from "@tanstack/react-table"
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { classNames, insertAt } from "../core/classNames"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
-import { moveColumn, type DropSide } from "../core/reorder"
+import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
+import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
-import { ColumnPanel } from "./ColumnPanel"
+import { TablePanel, type PanelTab } from "./TablePanel"
+import { QuickSearch } from "./QuickSearch"
+import { canFilterColumn } from "./FilterEditor"
+import { FilterPopover } from "./FilterPopover"
 import { HeaderCell } from "./HeaderCell"
 import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
@@ -30,6 +34,8 @@ export const defaultLabels: DataTableLabels = {
   clearSort: "Clear sort",
   empty: "No rows",
   dragHint: "Drag to reorder",
+  reorderHint: "Press Space to pick up, arrow keys to move, Space to drop, Escape to cancel",
+  reorderPosition: (column, position, total) => `${column}: position ${position} of ${total}`,
   resizeColumn: "resize column",
   expandRow: "Expand row",
   collapseRow: "Collapse row",
@@ -52,6 +58,73 @@ export const defaultLabels: DataTableLabels = {
   loading: "Loading",
   loadFailed: "Could not load rows",
   retry: "Retry",
+  search: "Search",
+  searchLabel: "Search rows",
+  clearSearch: "Clear search",
+  searchResults: (count) => (count === undefined ? "Searching" : `${count} matching rows`),
+  filter: "Filter…",
+  filterInPanel: "Filter in panel…",
+  filterTitle: (column) => `Filter ${column}`,
+  filteredBadge: "Filtered",
+  apply: "Apply",
+  clearFilter: "Clear filter",
+  operator: "Operator",
+  filterValue: "Value",
+  rangeFrom: "From",
+  rangeTo: "To",
+  opContains: "Contains",
+  opNotContains: "Does not contain",
+  opEquals: "Equals",
+  opNotEquals: "Does not equal",
+  opStartsWith: "Starts with",
+  opEndsWith: "Ends with",
+  opEq: "Equals",
+  opNe: "Does not equal",
+  opLt: "Less than",
+  opLte: "Less than or equal",
+  opGt: "Greater than",
+  opGte: "Greater than or equal",
+  opBetween: "Between",
+  opDateIs: "Is",
+  opDateBefore: "Before",
+  opDateAfter: "After",
+  opDateBetween: "Between",
+  opIsTrue: "True",
+  opIsFalse: "False",
+  opIn: "Is any of",
+  opNotIn: "Is none of",
+  opBlank: "Is blank",
+  opNotBlank: "Is not blank",
+  searchValues: "Search values",
+  selectAll: "Select all",
+  blanks: "(Blanks)",
+  noValues: "No values to choose from",
+  valuesFailed: "Could not load values",
+  filtersTab: "Filters",
+  hiddenColumn: "Hidden",
+  noFilters: "No filters applied",
+  clearAllFilters: "Clear all filters",
+  noMatches: "No rows match the current filters",
+  clearFilters: "Clear filters",
+}
+
+/**
+ * Whether the side panel is open, which tab it is on, and — for a shell that
+ * opens it on one column — whose filter to expand.
+ *
+ * `focusNonce` gives a focus request its own identity, separate from
+ * `focusColumnId`'s value: the header menu's "Filter in panel…" item can ask
+ * for the SAME column twice in a row (open Amount, collapse it, ask for
+ * Amount again), and a value-only comparison cannot tell that repeat apart
+ * from an unrelated re-render — `focusColumnId` would already equal the
+ * previous request. Bumping the nonce on every menu choice makes each
+ * request distinguishable even when the column does not change.
+ */
+interface PanelState {
+  open: boolean
+  tab: PanelTab
+  focusColumnId?: string | undefined
+  focusNonce?: number | undefined
 }
 
 export interface DataTableProps<TData extends RowData> {
@@ -167,45 +240,91 @@ export function DataTable<TData extends RowData>({
   onRetry,
 }: DataTableProps<TData>) {
   const { table, flags } = instance
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState<PanelState>({ open: false, tab: "columns" })
+  // A plain counter, bumped only from the menu's own click handler — never
+  // during render — so each "Filter in panel…" choice gets a fresh identity
+  // for `PanelState.focusNonce` to carry.
+  const focusNonceRef = useRef(0)
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
+  const [filterAt, setFilterAt] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const tableRef = useRef<HTMLTableElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const headRef = useRef<HTMLTableSectionElement>(null)
+  // Where the "Clear filters" button in the empty state sends focus once it
+  // clears itself out of existence — see the click handler below.
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const labels = { ...defaultLabels, ...labelOverrides }
   const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 
-  const handleReorder = useCallback(
-    (draggedId: string, targetId: string, side: DropSide) => {
-      /*
-       * A leaf column cannot leave its group: the order is a flat list, so
-       * moving one across a group boundary would either be ignored or tear the
-       * group's header apart. Refusing the drop is the honest outcome.
-       */
-      const dragged = table.getColumn(draggedId)
-      const target = table.getColumn(targetId)
-      if (!dragged || !target) return
-      if (dragged.parent?.id !== target.parent?.id) return
+  /*
+   * The move itself belongs to the hook, not to this shell: a move can touch
+   * two layout slices at once — `columnOrder` and, for a pinned column, the
+   * pinning array that decides the order of its section — and only the hook
+   * can land both in one state transition. See `reorderColumn`.
+   */
+  const handleReorder = instance.reorderColumn
 
-      table.setColumnOrder((current) => {
-        /*
-         * When nothing has been reordered yet the order is empty, meaning
-         * "natural". The fallback must be the order the columns are RENDERED
-         * in — `getAllLeafColumns()` groups pinned columns first, so using it
-         * here scrambles every column on the very first drag.
-         */
-        const order = current.length
-          ? current
-          : renderedLeafColumns(table).map((column) => column.id)
-        return moveColumn(order, draggedId, targetId, side)
-      })
-    },
-    [table],
-  )
+  /*
+   * §8.2 asks for focus to return to the menu item that opened the popover.
+   * That item is gone — the menu closes as the popover opens — so focus goes
+   * to the control that opened the menu instead: the column's ⋮ button, which
+   * is the element still on screen in the same place.
+   *
+   * Which column to focus is recorded here and acted on one commit later, by
+   * the layout effect below. Moving the focus from this callback would move it
+   * while the popover is still mounted, and leaving the editor's value field
+   * is exactly what commits a typed draft (FilterEditor.tsx) — so Escape would
+   * apply the draft it exists to discard.
+   */
+  const restoreFocusRef = useRef<string | null>(null)
+  const closeFilter = useCallback(() => {
+    restoreFocusRef.current = filterAt?.columnId ?? null
+    setFilterAt(null)
+  }, [filterAt])
+
+  useIsomorphicLayoutEffect(() => {
+    const columnId = restoreFocusRef.current
+    // Only once the popover is really gone, and only for a close this
+    // component asked for: a first render, or the popover opening, must not
+    // pull the focus anywhere.
+    if (filterAt !== null || columnId === null) return
+    restoreFocusRef.current = null
+    /*
+     * Matched by walking the headers rather than by a `[data-column-id="…"]`
+     * selector: a column id is whatever the host's accessor or header string
+     * produced, and quotes or brackets in one would make that selector throw.
+     */
+    for (const header of tableRef.current?.querySelectorAll("th[data-column-id]") ?? []) {
+      if (header.getAttribute("data-column-id") !== columnId) continue
+      header.querySelector<HTMLButtonElement>(".dt-kebab")?.focus()
+      return
+    }
+  }, [filterAt])
+
+  /**
+   * Whether a column has a filter editor to offer at all.
+   *
+   * One gate for both of the menu's filter items, so the popover and the panel
+   * route can never disagree about which columns are filterable. Task 17 uses
+   * it again for the second item.
+   */
+  const canFilter = (columnId: string): boolean => {
+    const column = table.getColumn(columnId)
+    return column !== undefined && canFilterColumn(instance, column)
+  }
 
   const rows = table.getRowModel().rows
   const leafColumns = renderedLeafColumns(table)
   const fillerAt = fillerIndex(table)
+  /*
+   * Resolved against the RENDERED order, which is what the user is looking at
+   * and what `handleReorder` falls back to on the first drag. The dragged and
+   * target columns are both unpinned — `HeaderCell` refuses a drag or a drop
+   * on anything else — so the slot always resolves inside the centre section,
+   * and the relative move it describes is the same one `moveColumn` performs
+   * on the stored column order.
+   */
+  const drop = useDropSlot(leafColumns.map((column) => column.id))
   /*
    * Header rows are assembled per pinning section rather than from the merged
    * `getHeaderGroups()`. The merged tree keeps a group in one piece even when
@@ -298,14 +417,17 @@ export function DataTable<TData extends RowData>({
       {toolbar ? (
         <div className="dt-toolbar">
           {toolbarContent}
+          {instance.filtering.enabled ? (
+            <QuickSearch instance={instance} labels={labels} loading={loading} inputRef={searchInputRef} />
+          ) : null}
           <span className="dt-spacer" />
           {flags.hiding || flags.pinning ? (
             <button
               type="button"
               className="dt-menu-button"
-              aria-expanded={panelOpen}
+              aria-expanded={panelOpen.open}
               aria-haspopup="dialog"
-              onClick={() => setPanelOpen((open) => !open)}
+              onClick={() => setPanelOpen((state) => ({ open: !state.open, tab: state.tab }))}
             >
               {labels.columnsButton}
             </button>
@@ -313,12 +435,16 @@ export function DataTable<TData extends RowData>({
         </div>
       ) : null}
 
-      {panelOpen ? (
-        <ColumnPanel
+      {panelOpen.open ? (
+        <TablePanel
           instance={instance}
           labels={labels}
           onReorder={handleReorder}
-          onClose={() => setPanelOpen(false)}
+          onClose={() => setPanelOpen((state) => ({ open: false, tab: state.tab }))}
+          tab={panelOpen.tab}
+          onTabChange={(tab) => setPanelOpen({ open: true, tab })}
+          focusColumnId={panelOpen.focusColumnId}
+          focusNonce={panelOpen.focusNonce}
         />
       ) : null}
 
@@ -330,7 +456,33 @@ export function DataTable<TData extends RowData>({
           labels={labels}
           onAutosize={() => autosize(menu.columnId)}
           onAutosizeAll={autosizeAll}
+          onOpenFilter={
+            canFilter(menu.columnId)
+              ? () => setFilterAt({ columnId: menu.columnId, at: menu.at })
+              : undefined
+          }
+          onOpenFilterInPanel={
+            canFilter(menu.columnId)
+              ? () =>
+                  setPanelOpen({
+                    open: true,
+                    tab: "filters",
+                    focusColumnId: menu.columnId,
+                    focusNonce: ++focusNonceRef.current,
+                  })
+              : undefined
+          }
           onClose={() => setMenu(null)}
+        />
+      ) : null}
+
+      {filterAt ? (
+        <FilterPopover
+          instance={instance}
+          column={table.getColumn(filterAt.columnId)!}
+          position={filterAt.at}
+          labels={labels}
+          onClose={closeFilter}
         />
       ) : null}
 
@@ -340,6 +492,13 @@ export function DataTable<TData extends RowData>({
         className={classNames("dt-viewport", showProgress && "dt-loading")}
         data-dt-unbounded={unbounded ? "" : undefined}
         ref={viewportRef}
+        /*
+         * Not part of the Tab order — `-1` keeps it out of a sighted
+         * keyboard user's normal path across the table — but a legal target
+         * for the programmatic focus the "Clear filters" button below sends
+         * here when there is no search box of ours to take it instead.
+         */
+        tabIndex={-1}
       >
         <table
           ref={tableRef}
@@ -397,6 +556,7 @@ export function DataTable<TData extends RowData>({
                       onReorder={handleReorder}
                       onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
                       onAutosize={autosize}
+                      drop={drop}
                     />
                   )),
               )
@@ -451,7 +611,46 @@ export function DataTable<TData extends RowData>({
         </table>
 
         {showEmpty ? (
-          <div className="dt-empty">{emptyState ?? labels.empty}</div>
+          <div className="dt-empty">
+            {/*
+              An empty state with no exit is the classic filter dead end: "No
+              rows" is true of a table with no data and of a table filtered to
+              nothing, and only one of them is something the user can undo.
+              A host's own `emptyState` still wins over both.
+            */}
+            {emptyState ??
+              (instance.filtering.isFiltered ? (
+                <>
+                  <p className="dt-empty-text">{labels.noMatches}</p>
+                  <button
+                    type="button"
+                    className="dt-menu-button"
+                    onClick={() => {
+                      instance.filtering.clearAll()
+                      /*
+                       * This button disappears the instant the rows come
+                       * back (`showEmpty` goes false), and React does not
+                       * relocate focus for an element that unmounts under
+                       * it — the same defect `QuickSearch`'s own clear
+                       * button exists to avoid (WCAG 2.4.3; see its
+                       * comment). The toolbar's search box is the natural
+                       * landing spot when there is one; with `toolbar={false}`
+                       * there is nothing of ours left on screen to hold
+                       * focus, so it falls back to the viewport, which
+                       * `tabIndex={-1}` makes a legal target without adding
+                       * it to the Tab order.
+                       */
+                      const focusTarget = searchInputRef.current ?? viewportRef.current
+                      focusTarget?.focus()
+                    }}
+                  >
+                    {labels.clearFilters}
+                  </button>
+                </>
+              ) : (
+                labels.empty
+              ))}
+          </div>
         ) : null}
       </div>
 

@@ -1,3 +1,4 @@
+import type { FilterCondition, FilterValueOption, FilterKind } from "./core/filters"
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -18,8 +19,28 @@ export interface TableLayout {
   columnPinning: ColumnPinningState
   columnSizing: ColumnSizingState
   sorting: SortingState
+  /** One condition per filtered column, implicitly ANDed. */
+  filters: FilterCondition[]
+  /** Quick search, raw as the user typed it; `""` when off. */
+  search: string
   /** Rows per page the user chose. Absent until they change it. */
   pageSize?: number
+}
+
+/**
+ * Per-column filter configuration, read from `columnDef.meta`.
+ *
+ * Every member is written `?: T | undefined` because the repo runs
+ * `exactOptionalPropertyTypes` and `meta: { filter: isNumeric ? "number" : undefined }`
+ * is the natural call site.
+ */
+export interface DataTableColumnMeta {
+  /** Which editor this column gets. `false` turns filtering off for it. */
+  filter?: FilterKind | false | undefined
+  /** Whether quick search covers this column. Default true for text-ish columns. */
+  searchable?: boolean | undefined
+  /** Fixed choices for a list filter; shown without counts. */
+  values?: FilterValueOption[] | undefined
 }
 
 /**
@@ -78,6 +99,14 @@ export interface DataTableLabels {
   clearSort: string
   empty: string
   dragHint: string
+  /**
+   * How the keyboard reorders a column, spoken on the drag handle: the
+   * handle is the only route a user who cannot drag has, and a screen
+   * reader has nowhere else to find the keys in time.
+   */
+  reorderHint: string
+  /** Where a held column now sits, announced politely as it moves. */
+  reorderPosition: (column: string, position: number, total: number) => string
   resizeColumn: string
   expandRow: string
   collapseRow: string
@@ -105,4 +134,91 @@ export interface DataTableLabels {
   loading: string
   loadFailed: string
   retry: string
+
+  /* Quick search. */
+  /** Placeholder in the toolbar's search box. */
+  search: string
+  /** Accessible name of the search box; a placeholder is not a label. */
+  searchLabel: string
+  /** Empties the search box. */
+  clearSearch: string
+  /** Announced politely once a search settles; `count` is undefined while a server has not answered. */
+  searchResults: (count: number | undefined) => string
+
+  /* The column filter editor. */
+  /** Header-menu item that opens the filter editor in a popover. */
+  filter: string
+  /** Header-menu item that opens the side panel's Filters tab on this column. */
+  filterInPanel: string
+  /** Accessible name of the filter popover, named after its column. */
+  filterTitle: (column: string) => string
+  /** Badge on an already-filtered column, as a state and not an action. */
+  filteredBadge: string
+  /** Commits the editor's draft. */
+  apply: string
+  /** Removes this column's condition. */
+  clearFilter: string
+  /** Accessible name of the operator select. */
+  operator: string
+  /** Accessible name of the single value field. */
+  filterValue: string
+  /** Accessible name of a range's lower end. */
+  rangeFrom: string
+  /** Accessible name of a range's upper end. */
+  rangeTo: string
+
+  /* Operator names. Flat, so `{ ...defaultLabels, ...mine }` overrides one of
+     them the same way it overrides every other label. */
+  opContains: string
+  opNotContains: string
+  opEquals: string
+  opNotEquals: string
+  opStartsWith: string
+  opEndsWith: string
+  opEq: string
+  opNe: string
+  opLt: string
+  opLte: string
+  opGt: string
+  opGte: string
+  opBetween: string
+  /** The date editor's four modes; all four become one half-open range. */
+  opDateIs: string
+  opDateBefore: string
+  opDateAfter: string
+  opDateBetween: string
+  opIsTrue: string
+  opIsFalse: string
+  opIn: string
+  opNotIn: string
+  /** Blankness is an operator on every kind, including a values list. */
+  opBlank: string
+  opNotBlank: string
+
+  /* Values lists. */
+  /** Search box inside a values list. */
+  searchValues: string
+  /** Ticks or unticks every choice at once. */
+  selectAll: string
+  /** The choice standing for a blank value, which is an operator and not a value. */
+  blanks: string
+  /** Shown when a column has no source of choices at all. */
+  noValues: string
+  /** Shown when a values request failed; its retry reuses `retry`. */
+  valuesFailed: string
+
+  /* The side panel's Filters tab. */
+  filtersTab: string
+  /** Marks a filtered column that is currently hidden. */
+  hiddenColumn: string
+  /** Shown in the Filters tab while nothing is filtered. */
+  noFilters: string
+  /** Clears every column filter and the search at once, from the panel. */
+  clearAllFilters: string
+
+  /* The filtered-empty state. */
+  /** Shown instead of `empty` when a filter excluded every row. */
+  noMatches: string
+  /** The way out of the filtered-empty state. */
+  clearFilters: string
 }

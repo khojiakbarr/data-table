@@ -1,7 +1,6 @@
 import type { Header, RowData } from "@tanstack/react-table"
 import { flexRender } from "@tanstack/react-table"
 import {
-  useState,
   type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
@@ -11,8 +10,11 @@ import {
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 import { classNames } from "../core/classNames"
+import { columnLabel } from "../core/columnLabel"
+import { dropRegionOf } from "../core/dropRegion"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
 import { dropSideAt, type DropSide } from "../core/reorder"
+import type { DropSlot } from "../core/useDropSlot"
 import { clampColumnWidth } from "../core/sizing"
 
 /**
@@ -40,6 +42,14 @@ interface HeaderCellProps<TData extends RowData> {
   /** Open the per-column action menu at a viewport position. */
   onOpenMenu: (at: { x: number; y: number }) => void
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
+  /**
+   * The drag shared by every header cell.
+   *
+   * It cannot live in this component: the slot is drawn on the column that
+   * stands at the DESTINATION, which is almost never the cell the pointer is
+   * over, so no cell can decide on its own whether it is wearing the slot.
+   */
+  drop: DropSlot
   /** Fit a leaf column to its content. A group's handle fits each of its leaves. */
   onAutosize: (columnId: string) => void
 }
@@ -52,10 +62,11 @@ export function HeaderCell<TData extends RowData>({
   onReorder,
   onOpenMenu,
   onAutosize,
+  drop,
 }: HeaderCellProps<TData>) {
   const { column } = header
-  const [dropSide, setDropSide] = useState<DropSide | null>(null)
-  const [isDragging, setIsDragging] = useState(false)
+  const isDragging = drop.draggedId === column.id
+  const isDropSlot = drop.slotId === column.id
 
   /**
    * A group header spans several leaf columns. Sorting and reordering act on
@@ -90,23 +101,62 @@ export function HeaderCell<TData extends RowData>({
     }
     event.dataTransfer.effectAllowed = "move"
     event.dataTransfer.setData("text/plain", column.id)
-    setIsDragging(true)
+    // `getData` is unreadable during `dragover` in every browser's protected
+    // drag mode, so who is moving has to be remembered here or the slot could
+    // never be resolved until the drop.
+    drop.start(column.id)
+  }
+
+  /**
+   * Whether a drop on this cell would really be carried out.
+   *
+   * A group header, a pinned column and the filler are not drop targets at
+   * all — that is `canDrag`. But a leaf that IS one can still be out of the
+   * dragged column's reach: the shell refuses a move across a group or a
+   * pinning boundary, so the two have to be in the same region as well. Both
+   * questions belong here, because a cell that refuses draws no slot, and a
+   * slot on a cell the drop would ignore promises a move that never happens.
+   */
+  const canDropHere = (): boolean => {
+    if (!canDrag || drop.draggedId === null) return false
+    const dragged = column.table.getColumn(drop.draggedId)
+    return dragged !== undefined && dropRegionOf(dragged) === dropRegionOf(column)
   }
 
   const handleDragOver = (event: DragEvent<HTMLTableCellElement>) => {
-    if (!canDrag) return
+    /*
+     * Refusing here is what keeps the slot honest: with no `preventDefault`
+     * the browser will not drop, and with no `over` the slot does not appear
+     * somewhere the drop would ignore. The cell just left has already cleared
+     * it, so the slot simply goes away over these.
+     */
+    if (!canDropHere()) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
-    // State here drives the caret only; the drop reads the event again.
-    setDropSide(dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect()))
+    // State here drives the slot only; the drop reads the event again.
+    drop.over(column.id, dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect()))
   }
 
   const handleDrop = (event: DragEvent<HTMLTableCellElement>) => {
     event.preventDefault()
     const draggedId = event.dataTransfer.getData("text/plain")
     const side = dropSideAt(event.clientX, event.currentTarget.getBoundingClientRect())
-    setDropSide(null)
+    drop.end()
+    // The same (target, side) the slot was resolved from, so the column lands
+    // in the slot the user was looking at — see `dropSlotId`.
     if (draggedId && draggedId !== column.id) onReorder(draggedId, column.id, side)
+  }
+
+  const handleDragLeave = (event: DragEvent<HTMLTableCellElement>) => {
+    /*
+     * `dragleave` bubbles from descendants, so crossing from the label to the
+     * resize handle fires one without the pointer having left the cell at all.
+     * Acting on those would blink the slot — and replay its opening animation
+     * — several times per column. `relatedTarget` is the element being
+     * entered; when it is inside this cell, nothing has been left.
+     */
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+    drop.leave(column.id)
   }
 
   const startResize = (event: MouseEvent<HTMLButtonElement> | TouchEvent<HTMLButtonElement>) => {
@@ -154,8 +204,7 @@ export function HeaderCell<TData extends RowData>({
     isResizing && "dt-resizing",
     canDrag && "dt-draggable",
     isDragging && "dt-dragging",
-    dropSide === "start" && "dt-drop-start",
-    dropSide === "end" && "dt-drop-end",
+    isDropSlot && "dt-drop-slot",
   )
 
   /**
@@ -171,10 +220,7 @@ export function HeaderCell<TData extends RowData>({
   }
 
   const label = flexRender(column.columnDef.header, header.getContext())
-  const columnName =
-    typeof column.columnDef.header === "string" && column.columnDef.header.length > 0
-      ? column.columnDef.header
-      : String(column.id)
+  const columnName = columnLabel(column.id, column.columnDef.header)
 
   return (
     <th
@@ -186,12 +232,14 @@ export function HeaderCell<TData extends RowData>({
       aria-sort={canSort ? ariaSort : undefined}
       draggable={canDrag && !isResizing}
       onDragStart={canDrag ? handleDragStart : undefined}
-      onDragEnd={() => {
-        setIsDragging(false)
-        setDropSide(null)
-      }}
+      /*
+       * Every way a drag can end arrives here: a drop, Escape, and the pointer
+       * released outside the window all fire `dragend` on the source. The slot
+       * must not survive any of them.
+       */
+      onDragEnd={drop.end}
       onDragOver={handleDragOver}
-      onDragLeave={() => setDropSide(null)}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onContextMenu={
         isGroup
@@ -220,6 +268,22 @@ export function HeaderCell<TData extends RowData>({
         ) : (
           <span className="dt-th-label">{label}</span>
         )}
+
+        {/*
+          The same vocabulary as the sort indicator: a mark in the header, not
+          a second control. A filtered column that is hidden has no header to
+          carry this, which is why the Filters tab lists hidden columns too.
+        */}
+        {column.getIsFiltered() ? (
+          <span
+            className="dt-filtered"
+            role="img"
+            aria-label={labels.filteredBadge}
+            title={labels.filteredBadge}
+          >
+            <FilterIcon />
+          </span>
+        ) : null}
       </div>
 
       {isGroup ? null : (
@@ -284,6 +348,24 @@ function SortIcon({ direction }: { direction: false | "asc" | "desc" }) {
     >
       {direction !== "desc" ? <path d="M3 5 L6 2 L9 5" /> : null}
       {direction !== "asc" ? <path d="M3 7 L6 10 L9 7" /> : null}
+    </svg>
+  )
+}
+
+function FilterIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M1.5 2.5 h9 l-3.4 4 v3.2 l-2.2 1.3 v-4.5 z" />
     </svg>
   )
 }

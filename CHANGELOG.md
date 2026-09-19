@@ -50,6 +50,43 @@ releases are summarised in one line rather than reconstructed.
 
 ### Added
 
+- **A Row Groups zone in the side bar's Columns tab**, under the column tree —
+  the control the grouping was built for. Dragging a column into it groups by
+  that column; dragging a second nests it inside the first. Each level is a
+  chip, outermost first, removable by its own button and draggable to renest,
+  and an empty zone is a dashed area saying what it is for rather than an
+  invisible target. The drop affordance is the slot the columns already use:
+  the chip standing at the destination is outlined, and when the destination is
+  past the last level a chip is drawn for the incoming column so there is
+  something to outline. `ReorderInvariant.test.tsx` now checks the same
+  "it lands where the slot was" property for this third target.
+  - **Two drag sources.** A column's row in the Columns tree, and its own
+    header. The header works because the shell hands the panel the column in
+    flight — `dataTransfer` is unreadable during `dragover`, so a zone left to
+    discover it at drop time could never draw a slot. It needs the panel open,
+    since that is where the zone lives.
+  - **A keyboard path, not an afterthought.** Every row in the Columns tab
+    carries a group toggle (`Group rows by Status`, `Remove Status from row
+    groups`), and a chip is renested with the keys the column list already
+    uses: Space, the arrows, Space, Escape — each step announced through a
+    live region.
+  - **No zone where grouping is impossible.** `instance.grouping.enabled` is
+    false on a client table, and the zone is then not rendered at all: a target
+    that accepted a drop and did nothing is the failure this avoids.
+  - **A floor under the group column's width.** The group column is a grouped
+    column's own slot, sized for that column's values rather than for a
+    chevron, a value and a count together. While grouped it is floored at 200px
+    plus one indent step per extra level. It is a floor and not a clamp — a
+    width the user set wins outright, so the resize handle is not fought — and
+    it is derived rather than written into the layout, so removing the last
+    chip restores the column exactly. Exported as `groupColumnMinWidth`.
+  - New labels: `rowGroupsTitle`, `rowGroupsHint`, `groupByColumn`,
+    `ungroupColumn`, `rowGroupLevel`, in all three shipped sets.
+  - New exports: `RowGroupsZone`, `RowGroupsZoneProps`, `groupColumnMinWidth`.
+    `ColumnsTab`, `TablePanel` and `TableSideBar` gain an optional
+    `draggedColumnId`.
+  - The playground's temporary grouping control is gone; the zone replaces it.
+
 - **Server-side row grouping.** `TableQuery` carries `grouping` (column ids,
   outermost first) and `expanded` (the exact key paths of the open groups),
   and the answer is a page of the flattened visible rows: your records with

@@ -130,4 +130,10 @@ export const uzLabels: DataTableLabels = {
   groupRow: (value, count) => `${value}, ${count} ta qator`,
   groupContinued: (path) => `${path.join(" › ")} (davomi)`,
   clearGrouping: "Guruhlashni tozalash",
+  rowGroupsTitle: "Qatorlar guruhlanishi",
+  rowGroupsHint: "Qatorlarni ustun boʻyicha guruhlash uchun ustunni shu yerga torting",
+  groupByColumn: (column) => `Qatorlarni «${column}» ustuni boʻyicha guruhlash`,
+  ungroupColumn: (column) => `«${column}» ustunini guruhlashdan olib tashlash`,
+  rowGroupLevel: (column, level, total) =>
+    `${column}: guruhlash darajasi ${level} / ${total}`,
 }

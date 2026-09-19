@@ -38,15 +38,6 @@ const START_HEIGHT = 620
 const EMPTY: ServerRow[] = []
 
 /**
- * Columns the temporary grouping control offers.
- *
- * Low-cardinality ones only: grouping the playground's 100 000 rows by `code`
- * would produce 100 000 group rows, which demonstrates nothing except that the
- * pager still works.
- */
-const GROUPABLE = ["status", "partner", "flagged"] as const
-
-/**
  * The library's playground: one server-backed table, a language switcher, and
  * two control groups — feature toggles and theme tokens — that drive real
  * `useDataTable` options and `<DataTable>` props. Replaces the old demo page.
@@ -128,35 +119,6 @@ export function Playground() {
           onTableHeightChange={table.tableHeight.set}
           chrome={chrome}
         />
-        {/*
-          TEMPORARY. The real control is a Row Groups zone in the table's own
-          side bar, with columns dragged into it — the next task. This stands
-          in so the grouped table can be looked at at all, and is deliberately
-          plain so nobody mistakes it for the finished thing.
-        */}
-        <fieldset className="pg-fieldset pg-temp">
-          <legend>{chrome.grouping.legend}</legend>
-          <p className="pg-hint">{chrome.grouping.note}</p>
-          <div className="pg-temp-grouping">
-            {GROUPABLE.map((columnId) => {
-              const level = table.grouping.columns.indexOf(columnId)
-              return (
-                <button
-                  key={columnId}
-                  type="button"
-                  className="pg-temp-chip"
-                  aria-pressed={level > -1}
-                  onClick={() =>
-                    level > -1 ? table.grouping.remove(columnId) : table.grouping.add(columnId)
-                  }
-                >
-                  {chrome.grouping.columns[columnId]}
-                  {level > -1 ? ` ${level + 1}` : ""}
-                </button>
-              )
-            })}
-          </div>
-        </fieldset>
 
         <button
           type="button"

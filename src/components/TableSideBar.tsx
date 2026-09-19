@@ -43,6 +43,8 @@ export interface TableSideBarProps<TData extends RowData> {
   onClose: () => void
   /** On the Filters tab, open this column's editor and focus it. */
   focusColumnId?: string | undefined
+  /** See `ColumnsTabProps.draggedColumnId`. */
+  draggedColumnId?: string | null | undefined
   /** See `TablePanelProps.focusNonce`. */
   focusNonce?: number | undefined
 }
@@ -71,6 +73,7 @@ export function TableSideBar<TData extends RowData>({
   onClose,
   focusColumnId,
   focusNonce,
+  draggedColumnId,
 }: TableSideBarProps<TData>) {
   const railRef = useRef<HTMLDivElement>(null)
   const labelOf = (name: PanelTab): string =>
@@ -172,6 +175,7 @@ export function TableSideBar<TData extends RowData>({
           onTabChange={onTabChange}
           focusColumnId={focusColumnId}
           focusNonce={focusNonce}
+          draggedColumnId={draggedColumnId}
         />
       ) : null}
     </div>

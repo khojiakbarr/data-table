@@ -1757,3 +1757,146 @@
   color: var(--dt-muted-fg);
   font-size: 12px;
 }
+
+/* ---------- the Row Groups zone ---------- */
+
+/*
+ * Under the column tree, and stuck to the bottom of the panel's scrolling box.
+ *
+ * Sticky rather than in flow: a table with forty columns puts the zone far
+ * below the fold, and a drop target that has to be scrolled to while a column
+ * is already in the hand is not a target at all. The background is opaque so
+ * the rows scrolling past underneath do not show through it.
+ */
+.dt-rowgroups {
+  position: sticky;
+  bottom: 0;
+  margin-top: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--dt-border);
+  background: var(--dt-bg);
+}
+
+.dt-rowgroups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * An empty zone says what it is for. Dashed, because the border is a promise
+ * about a place rather than a box around content — the same vocabulary the
+ * drop slot uses one rule down.
+ */
+.dt-rowgroups-empty {
+  padding: 10px 8px;
+  border: 1px dashed var(--dt-border);
+  border-radius: 6px;
+}
+
+.dt-rowgroups-placeholder {
+  color: var(--dt-muted-fg);
+  font-size: 12px;
+  text-align: center;
+}
+
+/*
+ * One level. `position: relative` is what lets `.dt-drop-slot::after` sit over
+ * it, exactly as it does on a column row.
+ */
+.dt-group-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--dt-border);
+  border-radius: 6px;
+  background: var(--dt-bg);
+  font-size: 13px;
+}
+
+/* The depth, as a numeral: the nesting read without counting chips. */
+.dt-group-chip-level {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--dt-row-hover);
+  color: var(--dt-muted-fg);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The chip's name is also its drag handle, so it carries `.dt-drag-handle` for
+ * the grab cursor and the focus ring — and then has to undo the rest of it,
+ * which is sized and centred for a 16px grip icon rather than for a run of
+ * text. Restated here rather than loosened over there: the column list's grip
+ * is the shape that class exists for.
+ */
+.dt-group-chip-name {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  width: auto;
+  min-width: 0;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 40px of pointer target on a 10px glyph — the web minimum — without the box
+ * that size would otherwise draw beside a 13px chip.
+ */
+.dt-group-chip-remove,
+.dt-group-toggle-btn {
+  flex: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dt-muted-fg);
+  cursor: pointer;
+}
+
+.dt-group-chip-remove::after,
+.dt-group-toggle-btn::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+
+.dt-group-chip-remove:hover,
+.dt-group-toggle-btn:hover {
+  background: var(--dt-row-hover);
+  color: var(--dt-fg);
+}
+
+/* Grouped, stated as a state and not only as a hover colour. */
+.dt-group-toggle-btn[aria-pressed="true"] {
+  color: var(--dt-accent-text);
+}
+
+/*
+ * The chip a column that is not grouped YET would become: outlined, unfilled,
+ * and carrying no controls, because there is nothing to remove or renest
+ * until the drop actually happens.
+ */
+.dt-group-chip-ghost {
+  border-style: dashed;
+  color: var(--dt-muted-fg);
+}

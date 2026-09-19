@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  groupColumnMinWidth,
   groupRowId,
   isGroupRow,
   isPathExpanded,
@@ -146,5 +147,22 @@ describe("pruneExpanded", () => {
     expect(pruneExpanded(null, 2)).toEqual([])
     expect(pruneExpanded(["a"], 2)).toEqual([])
     expect(pruneExpanded([[]], 2)).toEqual([])
+  })
+})
+
+describe("groupColumnMinWidth", () => {
+  it("widens by one indent step per extra level", () => {
+    // The cell holds a chevron, a value and a count, and every level past the
+    // first pushes the chevron one step further in.
+    const one = groupColumnMinWidth(1)
+    const two = groupColumnMinWidth(2)
+    expect(two - one).toBe(groupColumnMinWidth(3) - two)
+    expect(two).toBeGreaterThan(one)
+  })
+
+  it("answers the base width for a table that is not grouped", () => {
+    // Called with 0 while a grouping is being taken apart; a negative floor,
+    // or one that shrank below the base, would be nonsense.
+    expect(groupColumnMinWidth(0)).toBe(groupColumnMinWidth(1))
   })
 })

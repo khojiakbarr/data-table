@@ -120,6 +120,11 @@ export const defaultLabels: DataTableLabels = {
   groupRow: (value, count) => `${value}, ${count === 1 ? "1 row" : `${count} rows`}`,
   groupContinued: (path) => `${path.join(" › ")} (continued)`,
   clearGrouping: "Clear grouping",
+  rowGroupsTitle: "Row groups",
+  rowGroupsHint: "Drag a column here to group rows by it",
+  groupByColumn: (column) => `Group rows by ${column}`,
+  ungroupColumn: (column) => `Remove ${column} from row groups`,
+  rowGroupLevel: (column, level, total) => `${column}: group level ${level} of ${total}`,
 }
 
 /**
@@ -739,6 +744,13 @@ export function DataTable<TData extends RowData>({
            */
           onTabChange={(tab) => setPanelOpen((state) => ({ open: state.open, tab }))}
           onClose={closePanel}
+          /*
+           * A header drag is a drag the panel cannot see the start of, and
+           * `dataTransfer` is unreadable until the drop — so the column in
+           * flight is handed over here, which is what lets the Row Groups zone
+           * draw a slot for a column dragged straight off its header.
+           */
+          draggedColumnId={drop.draggedId}
           focusColumnId={panelOpen.focusColumnId}
           focusNonce={panelOpen.focusNonce}
         />

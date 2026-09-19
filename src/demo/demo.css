@@ -165,45 +165,6 @@ body {
   width: 100%;
 }
 
-/* ---------- the temporary grouping control ----------
- * Stands in for the Row Groups zone the side bar will get. Marked out with a
- * dashed border so it reads as scaffolding rather than as finished UI.
- */
-.pg-temp {
-  border: 1px dashed var(--pg-border);
-  border-radius: 6px;
-  padding: 12px;
-  margin-bottom: 16px;
-}
-.pg-temp legend {
-  padding: 0 6px;
-}
-
-.pg-temp-grouping {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.pg-temp-chip {
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 10px;
-  border: 1px solid var(--pg-border);
-  border-radius: 999px;
-  background: var(--pg-panel-bg);
-  color: var(--pg-fg);
-  cursor: pointer;
-}
-/* Inverted rather than tinted: the playground has no accent variable of its
-   own, and swapping foreground for background clears AA in both themes. */
-.pg-temp-chip[aria-pressed="true"] {
-  border-color: var(--pg-fg);
-  background: var(--pg-fg);
-  color: var(--pg-panel-bg);
-}
-
 .pg-reset {
   width: 100%;
   padding: 8px 12px;

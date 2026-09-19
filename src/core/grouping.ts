@@ -223,3 +223,48 @@ export function pruneExpanded(expanded: unknown, depth: number): FilterValue[][]
   }
   return normaliseExpanded(valid)
 }
+
+/**
+ * How wide the group column is at one level, before any indentation.
+ *
+ * Sized for what the cell actually holds — a chevron, a value and a count
+ * beside it — rather than for the values of the column that happens to be
+ * grouped. 200px is the width at which `Qabul qilingan (25 000)` fits without
+ * spilling, which is the longest of the three shipped label sets.
+ */
+const GROUP_COLUMN_BASE_WIDTH = 200
+
+/**
+ * One indent step, mirroring `--dt-indent` in `styles.css`.
+ *
+ * Restated here because the floor is computed in JavaScript — the `<colgroup>`
+ * takes its widths from `column.getSize()` — and a layout value cannot be read
+ * out of a stylesheet before the table paints. A theme that moves the token
+ * makes this an approximation, never a misalignment: it only shifts where the
+ * floor sits, and the resizer is still the last word.
+ */
+const GROUP_COLUMN_INDENT_WIDTH = 18
+
+/**
+ * The narrowest the group column may start at, for a grouping this deep.
+ *
+ * The group column is a grouped column's own slot, so by default it inherits a
+ * width chosen for that column's values — and `Status` at 90px leaves the
+ * chevron, the value and the count fighting over it. Each extra level indents
+ * the chevron one step further, so the floor grows with the nesting rather
+ * than being a single number that is too small at depth three or too wide at
+ * depth one.
+ *
+ * It is a FLOOR on the starting width and not a clamp: a width the user set
+ * themselves is theirs, so the resizer always wins — see the derived
+ * `columnSizing` in `useDataTable`.
+ *
+ * @param levels - How many columns the table is grouped by.
+ * @returns A width in pixels; the base width when nothing is grouped.
+ *
+ * @example
+ * groupColumnMinWidth(2) // 218
+ */
+export function groupColumnMinWidth(levels: number): number {
+  return GROUP_COLUMN_BASE_WIDTH + GROUP_COLUMN_INDENT_WIDTH * Math.max(0, levels - 1)
+}

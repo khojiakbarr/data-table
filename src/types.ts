@@ -319,4 +319,23 @@ export interface DataTableLabels {
   groupContinued: (path: string[]) => string
   /** The way out of the grouped-empty state, beside `clearFilters`. */
   clearGrouping: string
+
+  /* The Row Groups zone in the side panel. */
+  /** The zone's own heading. */
+  rowGroupsTitle: string
+  /** What an empty zone says it is for, so it is not an invisible target. */
+  rowGroupsHint: string
+  /**
+   * The per-column control that sends a column to the zone, and the one that
+   * takes it back. Both name the column: they are icon buttons, so the name is
+   * the only thing a screen reader has to tell one row's control from another's.
+   */
+  groupByColumn: (column: string) => string
+  ungroupColumn: (column: string) => string
+  /**
+   * A chip's place in the nesting, for a screen reader following a keyboard
+   * move — the grouping's own {@link DataTableLabels.reorderPosition}. Level 1
+   * is the outermost.
+   */
+  rowGroupLevel: (column: string, level: number, total: number) => string
 }

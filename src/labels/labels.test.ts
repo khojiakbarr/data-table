@@ -74,6 +74,16 @@ describe("function-shaped labels return sensible text", () => {
       expect(labels.filterTitle("Сумма")).toContain("Сумма")
     })
 
+    it(`${name}Labels.rowGroupLevel names the column, its level and the depth`, () => {
+      // The grouping's own `reorderPosition`: a keyboard move that says the
+      // level without saying out of how many leaves the listener with no idea
+      // how deep the nesting they are moving in goes.
+      const announced = labels.rowGroupLevel("Статус", 1, 3)
+      expect(announced).toContain("Статус")
+      expect(announced).toContain("1")
+      expect(announced).toContain("3")
+    })
+
     it(`${name}Labels.reorderPosition names the column and both numbers`, () => {
       // What a screen reader hears on every step of a keyboard reorder: the
       // column, where it is now, and out of how many. A translation that drops
@@ -153,6 +163,9 @@ describe("Uzbek orthography", () => {
     uzLabels.groupCount(253),
     uzLabels.groupRow("Qabul qilingan", 253),
     uzLabels.groupContinued(["Qabul qilingan"]),
+    uzLabels.groupByColumn("Holat"),
+    uzLabels.ungroupColumn("Holat"),
+    uzLabels.rowGroupLevel("Holat", 1, 2),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -179,14 +192,17 @@ describe("Uzbek orthography", () => {
     expect(functionKeys).toEqual([
       "columnGroup",
       "filterTitle",
+      "groupByColumn",
       "groupContinued",
       "groupCount",
       "groupRow",
       "page",
       "range",
       "reorderPosition",
+      "rowGroupLevel",
       "searchResults",
       "tableHeight",
+      "ungroupColumn",
     ])
   })
 })

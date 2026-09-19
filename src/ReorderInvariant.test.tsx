@@ -422,3 +422,181 @@ describe("what a pinned move records", () => {
     expect(order.indexOf("f")).toBeLessThan(order.indexOf("e"))
   })
 })
+
+/**
+ * The same promise, made by a third drop target.
+ *
+ * The Row Groups zone is not reordering columns — it is building a grouping —
+ * but the affordance is the same one: a chip is outlined where the dragged
+ * column will land. So it makes the same promise and can break it the same two
+ * ways, and it is checked the same way: every column dragged onto every chip,
+ * on both of its edges, with the landing read back off the grouping.
+ *
+ * The rendered order is read DURING the drag rather than before it, because
+ * the zone mints a ghost chip for a column that is not a level yet — the slot
+ * may be on a chip that did not exist a moment earlier, and that chip's place
+ * is exactly the promise being checked.
+ */
+describe("the drop keeps the slot's promise in the Row Groups zone", () => {
+  /** Two levels to start with, so a drop has somewhere to go on either side. */
+  const SEED = ["a", "b"] as const
+
+  function GroupedTable() {
+    const instance = useDataTable({
+      id: "reorder-invariant-zone",
+      data: rows,
+      columns: flatColumns,
+      mode: "server",
+      rowCount: rows.length,
+      getRowId: (row) => row.a,
+    })
+    return <DataTable instance={instance} virtualize={false} />
+  }
+
+  /** The chips as the zone is drawing them, ghost included. */
+  const chipOrder = (): string[] =>
+    [...document.querySelectorAll("li.dt-group-chip")].map(
+      (chip) => chip.getAttribute("data-column-id") ?? "",
+    )
+
+  const chipAt = (columnId: string): HTMLElement => {
+    const chip = document.querySelector<HTMLElement>(
+      `li.dt-group-chip[data-column-id="${columnId}"]`,
+    )
+    if (!chip) throw new Error(`no chip for ${columnId}`)
+    return chip
+  }
+
+  /**
+   * The element a drag of `columnId` starts from: its chip's grip while it is
+   * a level, its row's handle in the Columns list while it is not.
+   */
+  const source = (columnId: string): HTMLElement => {
+    const grip = document
+      .querySelector(`li.dt-group-chip[data-column-id="${columnId}"]`)
+      ?.querySelector<HTMLElement>(".dt-drag-handle")
+    return grip ?? panelHandle(columnId)
+  }
+
+  const zoneSurface = (): Surface => ({
+    name: "the Row Groups zone",
+    grip: source,
+    target: chipAt,
+    slot: () => slotAttribute("li.dt-group-chip.dt-drop-slot"),
+    axis: "clientY",
+  })
+
+  /** Put the seeded grouping back, by the controls a user would use. */
+  const reseed = () => {
+    const panel = document.querySelector<HTMLElement>(".dt-panel") as HTMLElement
+    const clear = within(panel).queryByRole("button", { name: "Clear grouping" })
+    if (clear) fireEvent.click(clear)
+    const list = document.querySelector<HTMLElement>("ul.dt-panel-list") as HTMLElement
+    for (const columnId of SEED) {
+      fireEvent.click(
+        within(list).getByRole("button", { name: `Group rows by ${label(columnId)}` }),
+      )
+    }
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    render(<GroupedTable />)
+    openPanel()
+    reseed()
+  })
+
+  it("renders the seed the cases below assume", () => {
+    expect(chipOrder()).toEqual([...SEED])
+  })
+
+  it("lands every column where the chip was outlined", () => {
+    const violations: string[] = []
+    const surface = zoneSurface()
+
+    for (const draggedId of LEAF_IDS) {
+      for (const targetId of SEED) {
+        for (const side of SIDES) {
+          const dataTransfer = makeDataTransfer()
+          fireEvent.dragStart(surface.grip(draggedId), { dataTransfer })
+          pointAt(surface, "dragOver", chipAt(targetId), side, dataTransfer)
+          // Read after the slot is drawn: a column arriving from the Columns
+          // list has a ghost chip by now, and that chip is part of the order.
+          const promisedOrder = chipOrder()
+          const slot = surface.slot()
+          pointAt(surface, "drop", chipAt(targetId), side, dataTransfer)
+          fireEvent.dragEnd(surface.grip(draggedId))
+
+          const after = chipOrder()
+          const where = `${label(draggedId)} onto ${label(targetId)}'s ${side}`
+
+          if (slot === null) {
+            if (after.join(" ") !== SEED.join(" ")) {
+              violations.push(`${where}: no slot, yet the grouping became ${after.join(" ")}`)
+            }
+          } else {
+            const promised = promisedOrder.indexOf(slot)
+            const landed = after.indexOf(draggedId)
+            if (landed !== promised) {
+              violations.push(
+                `${where}: the slot was at ${promised} (on ${label(slot)}), ` +
+                  `the column landed at ${landed} — ${after.join(" ")}`,
+              )
+            }
+          }
+
+          reseed()
+          if (chipOrder().join(" ") !== SEED.join(" ")) {
+            violations.push(`${where}: reseeding left ${chipOrder().join(" ")}`)
+          }
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it("lands where it announced on the keyboard path", () => {
+    const violations: string[] = []
+
+    for (const draggedId of SEED) {
+      for (let index = 0; index < SEED.length; index += 1) {
+        const before = chipOrder()
+        const from = before.indexOf(draggedId)
+        const key = index > from ? "ArrowDown" : "ArrowUp"
+        const grip = () => source(draggedId)
+
+        fireEvent.keyDown(grip(), { key: " " })
+        for (let press = 0; press < Math.abs(index - from); press += 1) {
+          fireEvent.keyDown(grip(), { key })
+        }
+        const slot = slotAttribute("li.dt-group-chip.dt-drop-slot")
+        fireEvent.keyDown(grip(), { key: " " })
+
+        const after = chipOrder()
+        const where = `${label(draggedId)} towards level ${index + 1}`
+
+        if (slot === null) {
+          violations.push(`${where}: a held chip showed no slot at all`)
+        } else {
+          const promised = before.indexOf(slot)
+          const landed = after.indexOf(draggedId)
+          if (landed !== promised) {
+            violations.push(
+              `${where}: the slot was at ${promised}, the chip landed at ${landed}`,
+            )
+          }
+          const expected = `${label(draggedId)}: group level ${promised + 1} of ${SEED.length}`
+          const said = document.querySelector(".dt-rowgroups .dt-sr-only")?.textContent ?? ""
+          if (said !== expected) {
+            violations.push(`${where}: announced "${said}", expected "${expected}"`)
+          }
+        }
+
+        reseed()
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+})

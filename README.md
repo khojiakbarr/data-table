@@ -562,12 +562,42 @@ the innermost group they belong to and never move between groups. Blanks rank
 above every value for group keys exactly as they do for records, so one rule
 covers both kinds of row.
 
+**The Row Groups zone** sits in the side bar's Columns tab, under the column
+tree. Drag a column into it — from its row in that tree, or straight off its
+header — and the table groups by it; drag a second one in and it nests inside
+the first. Each level is a chip, outermost at the top, removable by its own
+button and draggable to renest. While nothing is grouped the zone is a dashed
+area saying what it is for, rather than an invisible target. The drop
+affordance is the one the columns already use: the chip standing where the
+dragged column will land is outlined, and when the destination is past the last
+level a chip is drawn for the incoming column so there is something to outline.
+
+Nothing here needs a pointer. Every row in the Columns tab carries a group
+toggle — `Group rows by Status`, and `Remove Status from row groups` once it is
+one — and a chip is renested with the same keys the column list uses: Space to
+pick it up, the arrows to move it, Space to drop it, Escape to give up, with
+each step announced.
+
+**The zone only exists where grouping can work.** `instance.grouping.enabled`
+is false on a client table, so there is no zone on one: a drop that grouped
+fifty rows out of a hundred thousand would answer with counts for the page, and
+a target that took a drop and did nothing would be worse still.
+
 **In the table**, a grouped column leaves the body and its slot becomes the
 group column, holding the chevron, the value and the count — `received
 (25 000)` — with a mark in its header. It keeps its header, so sorting it
 still reorders that level. Nesting a second level hides that column's own
 slot; removing the grouping puts every column back exactly where it was,
 because the derived visibility never touches the layout the user arranged.
+
+**The group column has a floor under its width** while it is grouped, because
+its slot was sized for that column's values and not for a chevron, a value and
+a count side by side — a 90px `Status` would crowd all three. The floor starts
+at 200px and gains one indent step per extra level, since each level pushes the
+chevron further in. It is a floor and not a clamp: a width you set yourself, by
+the resize handle or by `columnSizing`, wins outright, and nothing is written
+into the saved layout, so taking the last chip out restores the column exactly.
+`groupColumnMinWidth(levels)` is exported for a shell that wants the same rule.
 Opening a group is a **refetch**, so the loading treatment is the one for a
 page that is already on screen: the rows stay and a progress bar shows.
 

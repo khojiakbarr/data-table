@@ -141,4 +141,9 @@ export const ruLabels: DataTableLabels = {
   groupRow: (value, count) => `${value}, ${count} ${plural(count, "строка", "строки", "строк")}`,
   groupContinued: (path) => `${path.join(" › ")} (продолжение)`,
   clearGrouping: "Очистить группировку",
+  rowGroupsTitle: "Группировка строк",
+  rowGroupsHint: "Перетащите сюда столбец, чтобы сгруппировать строки по нему",
+  groupByColumn: (column) => `Группировать строки по столбцу «${column}»`,
+  ungroupColumn: (column) => `Убрать «${column}» из группировки строк`,
+  rowGroupLevel: (column, level, total) => `${column}: уровень группировки ${level} из ${total}`,
 }

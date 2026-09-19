@@ -54,6 +54,8 @@ export interface TablePanelProps<TData extends RowData> {
   presentation?: PanelPresentation | undefined
   /** On the Filters tab, open this column's editor and focus it. */
   focusColumnId?: string | undefined
+  /** See `ColumnsTabProps.draggedColumnId`. */
+  draggedColumnId?: string | null | undefined
   /**
    * Identifies this particular focus request. A host that wants a repeat
    * request for the SAME `focusColumnId` to be honoured again — not just the
@@ -87,6 +89,7 @@ export function TablePanel<TData extends RowData>({
   presentation = "floating",
   focusColumnId,
   focusNonce,
+  draggedColumnId,
 }: TablePanelProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
   const docked = presentation === "docked"
@@ -198,7 +201,12 @@ export function TablePanel<TData extends RowData>({
             focusNonce={focusNonce}
           />
         ) : (
-          <ColumnsTab instance={instance} labels={labels} onReorder={onReorder} />
+          <ColumnsTab
+            instance={instance}
+            labels={labels}
+            onReorder={onReorder}
+            draggedColumnId={draggedColumnId}
+          />
         )}
       </div>
     </div>

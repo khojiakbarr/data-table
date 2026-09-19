@@ -17,6 +17,7 @@ import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { ColumnGroupRow } from "./ColumnGroupRow"
+import { RowGroupsZone } from "./RowGroupsZone"
 
 /**
  * What is shown, and in what order.
@@ -38,6 +39,12 @@ export interface ColumnsTabProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   labels: DataTableLabels
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
+  /**
+   * A column being dragged from OUTSIDE this list — a table header — so the
+   * Row Groups zone can draw its slot for it. A drag started inside the list
+   * is known here already and needs no telling.
+   */
+  draggedColumnId?: string | null | undefined
 }
 
 /**
@@ -50,6 +57,7 @@ export function ColumnsTab<TData extends RowData>({
   instance,
   labels,
   onReorder,
+  draggedColumnId,
 }: ColumnsTabProps<TData>) {
   const { table, flags, resetLayout, isCustomised, filtering } = instance
 
@@ -262,6 +270,7 @@ export function ColumnsTab<TData extends RowData>({
     const { column, index } = node
     const name = columnLabel(column.id, column.columnDef.header)
     const held = drop.isKeyboardGrab && drop.draggedId === column.id
+    const grouped = instance.grouping.has(column.id)
     const className = [
       "dt-panel-item",
       drop.draggedId === column.id ? "dt-panel-dragging" : "",
@@ -324,6 +333,27 @@ export function ColumnsTab<TData extends RowData>({
         <label className="dt-panel-label" htmlFor={`${instance.id}-col-${column.id}`}>
           {name}
         </label>
+
+        {instance.grouping.enabled ? (
+          <button
+            type="button"
+            className="dt-group-toggle-btn"
+            /*
+             * The keyboard route into the Row Groups zone, and back out of it.
+             * A toggle rather than a second drag idiom: the row already has a
+             * checkbox that says "shown", and this says "grouped" the same way,
+             * so there is one thing to learn per row and not two.
+             */
+            aria-pressed={grouped}
+            aria-label={grouped ? labels.ungroupColumn(name) : labels.groupByColumn(name)}
+            title={grouped ? labels.ungroupColumn(name) : labels.groupByColumn(name)}
+            onClick={() =>
+              grouped ? instance.grouping.remove(column.id) : instance.grouping.add(column.id)
+            }
+          >
+            <GroupIcon />
+          </button>
+        ) : null}
 
         {column.getIsPinned() ? (
           <span className="dt-pin-badge">
@@ -410,7 +440,40 @@ export function ColumnsTab<TData extends RowData>({
       <span className="dt-sr-only" role="status" aria-live="polite">
         {announcement}
       </span>
+
+      {/*
+        Under the tree, where AG Grid puts it — and only where it can work.
+        `grouping.enabled` is false on a client table, where grouping one page
+        of fifty rows would report counts for the page rather than for the
+        table; a zone that took a drop and answered with a wrong number, or
+        with nothing at all, is worse than no zone. So there is none.
+      */}
+      {instance.grouping.enabled ? (
+        <RowGroupsZone
+          instance={instance}
+          labels={labels}
+          incomingColumnId={drop.draggedId ?? draggedColumnId ?? null}
+        />
+      ) : null}
     </>
+  )
+}
+
+/** Stacked bars: a column's values gathered into groups. */
+function GroupIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    >
+      <path d="M1.5 2.5 H10.5 M3.5 6 H10.5 M5.5 9.5 H10.5" />
+    </svg>
   )
 }
 

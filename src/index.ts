@@ -42,6 +42,8 @@ export { ColumnsTab } from "./components/ColumnsTab"
 export type { ColumnsTabProps } from "./components/ColumnsTab"
 export { ColumnGroupRow } from "./components/ColumnGroupRow"
 export type { ColumnGroupRowProps } from "./components/ColumnGroupRow"
+export { RowGroupsZone } from "./components/RowGroupsZone"
+export type { RowGroupsZoneProps } from "./components/RowGroupsZone"
 export { FiltersTab } from "./components/FiltersTab"
 export type { FiltersTabProps } from "./components/FiltersTab"
 export { QuickSearch } from "./components/QuickSearch"
@@ -97,6 +99,7 @@ export type {
  * prune helpers are the gate a stored or hand-written grouping goes through.
  */
 export {
+  groupColumnMinWidth,
   groupRowId,
   isGroupRow,
   isPathExpanded,

@@ -43,6 +43,7 @@ import {
   type FilterValueOption,
 } from "./core/filters"
 import {
+  groupColumnMinWidth,
   groupRowId,
   isGroupRow,
   isPathExpanded,
@@ -731,6 +732,58 @@ export function useDataTable<TData extends RowData>({
   }, [grouping, groupColumnId, layout.columnVisibility])
 
   /*
+   * Widths as the table renders them: the user's own, with a floor under the
+   * group column.
+   *
+   * The group column is a grouped column's SLOT, so without this it inherits a
+   * width chosen for that column's values — and a 90px `Status` leaves the
+   * chevron, the value and the count with nowhere to go. The floor is
+   * {@link groupColumnMinWidth}, one indent step wider per level.
+   *
+   * Three things this deliberately is not:
+   *
+   * - It is not written into the layout, for the reason `columnVisibility`
+   *   above is not: taking the last chip out has to put every column back
+   *   exactly as it was, and the only way that is true by construction is if
+   *   nothing was changed to begin with.
+   * - It does not fight the resizer. A width the user set themselves is in
+   *   `layout.columnSizing`, and that wins outright — the floor only applies
+   *   where the user has expressed nothing, so a drag narrower than the floor
+   *   sticks. The floor is also what a drag STARTS from, since TanStack reads
+   *   `getSize()` at pointer-down and that reads this. The one seam is a drag
+   *   that lands on EXACTLY the declared width: `normaliseSizing` drops such an
+   *   entry as carrying no information, which is what makes "Reset width" work,
+   *   and the floor then applies again.
+   * - It does not fight the `<colgroup>` either, because it is not a second
+   *   width: it goes in through the same `columnSizing` state every other
+   *   width does, so the colgroup, the header, the body and the resize handle
+   *   all read one number.
+   */
+  const groupColumnDeclaredWidth = useMemo(
+    () => (groupColumnId === undefined ? undefined : declaredLeafSize(columns, groupColumnId)),
+    [columns, groupColumnId],
+  )
+
+  const columnSizing = useMemo(() => {
+    if (groupColumnId === undefined) return layout.columnSizing
+    // A width the user set is the user's. Only an untouched column gets a floor.
+    if (layout.columnSizing[groupColumnId] !== undefined) return layout.columnSizing
+    const declared = groupColumnDeclaredWidth ?? defaultColumnWidth
+    // Never past the table's own ceiling: a floor above `maxColumnWidth` would
+    // be a width the resizer could not reach back to.
+    const floor = Math.min(maxColumnWidth, groupColumnMinWidth(grouping.length))
+    if (declared >= floor) return layout.columnSizing
+    return { ...layout.columnSizing, [groupColumnId]: floor }
+  }, [
+    groupColumnId,
+    groupColumnDeclaredWidth,
+    grouping.length,
+    layout.columnSizing,
+    defaultColumnWidth,
+    maxColumnWidth,
+  ])
+
+  /*
    * Which rows are open is deliberately NOT part of the layout: it is a
    * transient reading position, not an arrangement the user chose to keep, and
    * restoring it on the next visit would be surprising. Group expansion is the
@@ -1055,7 +1108,7 @@ export function useDataTable<TData extends RowData>({
       columnOrder: layout.columnOrder,
       columnVisibility,
       columnPinning: layout.columnPinning,
-      columnSizing: layout.columnSizing,
+      columnSizing,
       sorting: layout.sorting,
       columnFilters,
       globalFilter: searchText,
@@ -1640,7 +1693,35 @@ interface ColumnDefShape {
   id?: string
   accessorKey?: unknown
   header?: unknown
+  size?: number
   columns?: readonly ColumnDefShape[]
+}
+
+/**
+ * A leaf column's declared width, by id.
+ *
+ * Read off the definitions rather than off the table, because the one caller
+ * runs before `useTable` does — the derived `columnSizing` is an INPUT to it.
+ * Ids are derived with {@link deriveColumnId}, the same way `collectLeafIds`
+ * does, so a column declared with an `accessorKey` and no `id` is found.
+ *
+ * @param columns - Column definitions, possibly nested.
+ * @param columnId - The leaf being looked up.
+ * @returns Its `size`, or `undefined` when it declares none or is not there.
+ */
+function declaredLeafSize(
+  columns: readonly ColumnDefShape[],
+  columnId: string,
+): number | undefined {
+  for (const [index, column] of columns.entries()) {
+    if (column.columns?.length) {
+      const nested = declaredLeafSize(column.columns, columnId)
+      if (nested !== undefined) return nested
+      continue
+    }
+    if (deriveColumnId(column, index) === columnId) return column.size
+  }
+  return undefined
 }
 
 /**

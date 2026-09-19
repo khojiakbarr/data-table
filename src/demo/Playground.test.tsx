@@ -233,9 +233,9 @@ describe("playground", () => {
     await waitForRows()
 
     /*
-     * Scoped to the table: the temporary grouping control in the sidebar names
-     * the same columns, so a page-wide `getByText("Partner")` now matches two
-     * elements. It is the COLUMN HEADER that has to move with the language.
+     * Scoped to the table: the Columns tab and the Row Groups zone name the
+     * same columns, so a page-wide `getByText("Partner")` can match more than
+     * one element. It is the COLUMN HEADER that has to move with the language.
      */
     const header = () => within(screen.getByRole("table"))
     expect(header().getByText("Partner")).toBeInTheDocument()

@@ -232,15 +232,17 @@ describe("the column filter popover", () => {
     expect(screen.queryByRole("menuitem", { name: "Filter…" })).toBeNull()
   })
 
-  it("does not offer the panel route until a shell passes one", async () => {
-    // `onOpenFilterInPanel` is declared and rendered by HeaderMenu, but
-    // nothing hands it in until Task 17 teaches the panel about tabs. An item
-    // that opened a tab which does not exist yet would be a dead end.
+  it("offers the panel route beside it, and that route opens the Filters tab", async () => {
+    // The menu's second filter item, wired by the built-in shell: §8.3's
+    // `focusColumnId` route, which is the only surface a hidden column's
+    // filter has.
     const user = userEvent.setup()
     render(<Table />)
     await user.click(screen.getByRole("button", { name: "Name: Column actions" }))
+    await user.click(screen.getByRole("menuitem", { name: "Filter in panel…" }))
 
-    expect(screen.queryByRole("menuitem", { name: "Filter in panel…" })).toBeNull()
+    expect(screen.getByRole("tab", { name: "Filters" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByLabelText("Name: Value")).toBe(document.activeElement)
   })
 
   it("is what the menu's own autofocus lands on", async () => {

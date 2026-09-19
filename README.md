@@ -783,6 +783,14 @@ the footer it takes the full `DataTableLabels` rather than a `Partial`. It write
 straight to `instance.filtering.setSearch`, so the debounce, the result-count
 announcement and the page reset come with it.
 
+`<TablePanel instance={instance} labels={…} tab={tab} onTabChange={setTab} onReorder={…} onClose={…} />` —
+the side panel with both tabs, for a shell that wants to choose which one opens;
+`<ColumnsTab>` and `<FiltersTab>` are its halves, and `<ColumnPanel>` is still
+exported and still takes exactly the four props it always did, opening on the
+Columns tab. The Filters tab lists every filterable column, **hidden ones
+included and marked** — a hidden column's filter goes on applying and its
+header is not there to say so.
+
 ---
 
 ## API

@@ -10,7 +10,7 @@ import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
-import { ColumnPanel } from "./ColumnPanel"
+import { TablePanel, type PanelTab } from "./TablePanel"
 import { QuickSearch } from "./QuickSearch"
 import { canFilterColumn } from "./FilterEditor"
 import { FilterPopover } from "./FilterPopover"
@@ -104,6 +104,16 @@ export const defaultLabels: DataTableLabels = {
   clearAllFilters: "Clear all filters",
   noMatches: "No rows match the current filters",
   clearFilters: "Clear filters",
+}
+
+/**
+ * Whether the side panel is open, which tab it is on, and — for a shell that
+ * opens it on one column — whose filter to expand.
+ */
+interface PanelState {
+  open: boolean
+  tab: PanelTab
+  focusColumnId?: string | undefined
 }
 
 export interface DataTableProps<TData extends RowData> {
@@ -219,7 +229,7 @@ export function DataTable<TData extends RowData>({
   onRetry,
 }: DataTableProps<TData>) {
   const { table, flags } = instance
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState<PanelState>({ open: false, tab: "columns" })
   const [menu, setMenu] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const [filterAt, setFilterAt] = useState<{ columnId: string; at: HeaderMenuPosition } | null>(null)
   const tableRef = useRef<HTMLTableElement>(null)
@@ -408,9 +418,9 @@ export function DataTable<TData extends RowData>({
             <button
               type="button"
               className="dt-menu-button"
-              aria-expanded={panelOpen}
+              aria-expanded={panelOpen.open}
               aria-haspopup="dialog"
-              onClick={() => setPanelOpen((open) => !open)}
+              onClick={() => setPanelOpen((state) => ({ open: !state.open, tab: state.tab }))}
             >
               {labels.columnsButton}
             </button>
@@ -418,12 +428,15 @@ export function DataTable<TData extends RowData>({
         </div>
       ) : null}
 
-      {panelOpen ? (
-        <ColumnPanel
+      {panelOpen.open ? (
+        <TablePanel
           instance={instance}
           labels={labels}
           onReorder={handleReorder}
-          onClose={() => setPanelOpen(false)}
+          onClose={() => setPanelOpen((state) => ({ open: false, tab: state.tab }))}
+          tab={panelOpen.tab}
+          onTabChange={(tab) => setPanelOpen({ open: true, tab })}
+          focusColumnId={panelOpen.focusColumnId}
         />
       ) : null}
 
@@ -438,6 +451,11 @@ export function DataTable<TData extends RowData>({
           onOpenFilter={
             canFilter(menu.columnId)
               ? () => setFilterAt({ columnId: menu.columnId, at: menu.at })
+              : undefined
+          }
+          onOpenFilterInPanel={
+            canFilter(menu.columnId)
+              ? () => setPanelOpen({ open: true, tab: "filters", focusColumnId: menu.columnId })
               : undefined
           }
           onClose={() => setMenu(null)}

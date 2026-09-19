@@ -348,7 +348,10 @@ describe("shadcn presets — host override specificity", () => {
 describe("pin badge contrast", () => {
   it("uses a token for its foreground colour, not a hardcoded white", () => {
     const styles = read("../styles.css")
-    const badge = styles.match(/\.dt-pin-badge\s*\{([^}]*)\}/)?.[1] ?? ""
+    // `[^{]*` and not `\s*`: the Filters tab's `.dt-filter-badge` shares this
+    // rule rather than declaring a second look of its own, so the selector is
+    // a group and an anchored `\s*\{` would match nothing and pass vacuously.
+    const badge = styles.match(/\.dt-pin-badge[^{]*\{([^}]*)\}/)?.[1] ?? ""
     expect(badge).toContain("color: var(--dt-accent-fg)")
     expect(badge).not.toMatch(/color:\s*#fff/)
   })

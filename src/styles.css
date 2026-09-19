@@ -555,7 +555,13 @@
   z-index: 10;
   width: 260px;
   max-height: 340px;
-  overflow: auto;
+  /*
+   * The tab strip must not scroll away from under the pointer, so the panel is
+   * a column and only its body scrolls.
+   */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 6px;
   border: 1px solid var(--dt-border);
   border-radius: var(--dt-radius);
@@ -570,6 +576,61 @@
   padding: 4px 6px 8px;
   font-size: 12px;
   color: var(--dt-muted-fg);
+}
+
+.dt-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.dt-panel-tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--dt-border);
+}
+
+.dt-panel-tab {
+  padding: 6px 8px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--dt-muted-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dt-panel-tab[aria-selected="true"] {
+  /* Accent-as-text on --dt-bg, the same pairing `.dt-link` uses. */
+  color: var(--dt-accent-text);
+  border-bottom-color: var(--dt-accent);
+}
+
+.dt-panel-tab:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+}
+
+.dt-panel-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 4px 2px;
+  border-top: 1px solid var(--dt-border);
+}
+
+/* One condition in words, beside the column it belongs to. */
+.dt-filter-summary {
+  flex: none;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dt-muted-fg);
+  font-size: 11px;
 }
 
 .dt-panel-item {
@@ -654,7 +715,8 @@
   bottom: -1px;
 }
 
-.dt-pin-badge {
+.dt-pin-badge,
+.dt-filter-badge {
   flex: none;
   font-size: 10px;
   line-height: 1;
@@ -676,6 +738,12 @@
   font-size: 12px;
   cursor: pointer;
   padding: 0;
+}
+
+/* "Clear all filters" with nothing to clear: still there, plainly inert. */
+.dt-link:disabled {
+  color: var(--dt-muted-fg);
+  cursor: default;
 }
 
 .dt-empty {

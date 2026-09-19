@@ -8176,6 +8176,8 @@ git push origin khojiakbar
 - Modify: `src/styles.css`
 - Modify: `src/index.ts`
 - Modify: `README.md`
+- Modify: `src/FilterPopover.test.tsx` (one case flips — see below)
+- Modify: `src/themes/themes.test.ts` (the pin-badge regex — see below)
 - Test: `src/FiltersPanel.test.tsx`
 
 `ColumnPanel` becomes a shell with two tabs in it. Four things about this task are easy to get
@@ -9102,6 +9104,19 @@ to
 .dt-filter-badge {
 ```
 
+That grouping breaks a check that is already in the suite: `themes.test.ts`'s "pin badge
+contrast" matches the rule with `/\.dt-pin-badge\s*\{([^}]*)\}/`, which an anchored `\s*\{`
+makes fail against `.dt-pin-badge,\n.dt-filter-badge {` — and fail *vacuously*, since the
+`?? ""` fallback would then assert on an empty string. Widen the selector half to `[^{]*`,
+with a comment saying why:
+
+```ts
+    // `[^{]*` and not `\s*`: the Filters tab's `.dt-filter-badge` shares this
+    // rule rather than declaring a second look of its own, so the selector is
+    // a group and an anchored `\s*\{` would match nothing and pass vacuously.
+    const badge = styles.match(/\.dt-pin-badge[^{]*\{([^}]*)\}/)?.[1] ?? ""
+```
+
 and add the disabled link state immediately after the `.dt-link` rule:
 
 ```css
@@ -9147,12 +9162,16 @@ pnpm typecheck && pnpm test && pnpm build
 drag handles, its persistence — and both must pass untouched: that is what "`ColumnPanel`'s current
 public props stay intact" means in practice.
 
-`pnpm test` must report **425 tests** (413 plus 12).
+`pnpm test` gains **12 tests** (`FiltersPanel.test.tsx`) and one existing case changes
+meaning rather than being added, so the file count goes up by one and the test total by
+twelve. The absolute totals printed in this plan are stale — the review rounds added
+regression tests — so check the count before and after rather than matching a number:
+this task ran 532 → 544 across 39 → 40 files.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/TablePanel.tsx src/components/ColumnsTab.tsx src/components/FiltersTab.tsx src/components/ColumnPanel.tsx src/components/DataTable.tsx src/styles.css src/index.ts src/FiltersPanel.test.tsx README.md
+git add src/components/TablePanel.tsx src/components/ColumnsTab.tsx src/components/FiltersTab.tsx src/components/ColumnPanel.tsx src/components/DataTable.tsx src/styles.css src/index.ts src/FiltersPanel.test.tsx src/FilterPopover.test.tsx src/themes/themes.test.ts README.md
 git commit -m "feat(filters): a Filters tab beside the Columns tab in the side panel"
 git push origin khojiakbar
 ```

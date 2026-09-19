@@ -1,4 +1,5 @@
 import { pruneFilters, type FilterKind } from "./filters"
+import { pruneExpanded, pruneGrouping } from "./grouping"
 import type { LayoutStorage, TableLayout } from "../types"
 
 /**
@@ -154,6 +155,33 @@ export function pruneLayout(
     pruned.sorting = stored.sorting.filter(
       (entry) => typeof entry === "object" && entry !== null && known.has(entry.id),
     )
+  }
+
+  /*
+   * Grouping, and the open branches of it.
+   *
+   * `pruneGrouping` drops a group on a column the table no longer defines —
+   * the same rule one slice over, and for the same reason: nothing on screen
+   * could take it off, and the query would go on asking a server to group by a
+   * column this table has no chip for.
+   *
+   * When that prune actually changes the grouping, the open paths are dropped
+   * WHOLESALE rather than trimmed. A path's keys are positional — index 0 is
+   * the outermost level's key — so removing a level silently re-reads every
+   * saved key as belonging to the level above it: a path saved as
+   * `["received", "Acme"]` under `["status", "partner"]` would come back
+   * meaning "the status group Acme" once `status` is gone. Reopening nothing
+   * is the honest outcome; reopening the wrong branches is not.
+   *
+   * Both are ADDITIVE keys: `FORMAT_VERSION` deliberately does not move for
+   * them, because a bump discards every stored layout — every user's column
+   * widths, order and pinning — to gain slices they have never set.
+   */
+  if (Array.isArray(stored.grouping)) {
+    const grouping = pruneGrouping(stored.grouping, knownColumnIds)
+    pruned.grouping = grouping
+    const kept = grouping.length === stored.grouping.length
+    pruned.expanded = kept ? pruneExpanded(stored.expanded, grouping.length) : []
   }
 
   // Without this a deleted column's filter stays active forever with no UI able

@@ -292,6 +292,8 @@ function emptyStoredLayout() {
     columnPinning: { start: [], end: [] },
     columnSizing: {},
     sorting: [],
+    grouping: [],
+    expanded: [],
     filters: [],
     search: "",
   }

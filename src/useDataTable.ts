@@ -39,8 +39,17 @@ import {
   type FilterCondition,
   type FilterKind,
   type FilterModel,
+  type FilterValue,
   type FilterValueOption,
 } from "./core/filters"
+import {
+  groupRowId,
+  isGroupRow,
+  isPathExpanded,
+  pruneGrouping,
+  togglePath,
+  type GroupRow,
+} from "./core/grouping"
 import { noLayoutStorage } from "./core/persistence"
 import { orderedLeafColumns } from "./core/pinning"
 import type { TableQuery, TableSearch } from "./core/query"
@@ -122,6 +131,18 @@ const FEATURES = tableFeatures({
 
 export type DataTableFeatures = typeof FEATURES
 
+/**
+ * The "not grouped" values, at module scope.
+ *
+ * `useTableQuery` keeps its query object only while every input holds its
+ * identity, so a fresh `[]` per render for a table that groups nothing would
+ * make the query new on every render and a host keyed on it refetch forever.
+ */
+const NO_GROUPING: string[] = []
+const NO_EXPANDED: FilterValue[][] = []
+/** The top level: what a row sits inside when it sits inside nothing. */
+const NO_PATH: FilterValue[] = []
+
 /** Rows per page before the user has chosen one. */
 const DEFAULT_PAGE_SIZE = 50
 /** Page sizes offered in the footer before the caller narrows them. */
@@ -180,7 +201,18 @@ export interface UseDataTableOptions<TData extends RowData> {
    * option exists to prevent.
    */
   id: string
-  data: TData[]
+  /**
+   * The rows to render.
+   *
+   * In server mode this is one page, already filtered, sorted and paged by the
+   * host. A GROUPED page is flattened — group headers and records interleaved
+   * in the order the user would see them — which is why {@link GroupRow} is in
+   * the element type: the table recognises a group row by its `kind` and never
+   * hands one to a host callback (`getRowId`, `getRowHeight`, `getSubRows`,
+   * `canExpand`, a cell renderer or `renderDetail`), so an accessor written
+   * against the host's own row is never asked to read one.
+   */
+  data: (TData | GroupRow)[]
   /**
    * Column definitions.
    *
@@ -261,8 +293,28 @@ export interface UseDataTableOptions<TData extends RowData> {
    *
    * In server mode rows come and go between pages; without an id, expansion
    * state belongs to positions instead of records.
+   *
+   * Never called for a group row: a group is not one of the host's records and
+   * carries none of its fields, so its id is its key path, joined — see
+   * {@link groupRowId}.
    */
   getRowId?: (row: TData, index: number, parent?: Row<DataTableFeatures, TData>) => string
+  /**
+   * The open group the FIRST row of `data` sits inside, from the answer to
+   * `query`. Omit it, or pass `[]`, when that row is at the top level.
+   *
+   * It exists for one case, and only a real implementation turns it up: with a
+   * group open and a page boundary falling inside it, the page comes back as
+   * leaf rows and no group header at all, and nothing else on the wire says
+   * which group they belong to — a leaf carries no path. The user would see
+   * rows under nothing. Given this, the table draws a "continued" header above
+   * them.
+   *
+   * A path on every leaf would answer the same question and cost an array per
+   * row; only the first row of a page can ask it, because every later row's
+   * context is re-established by the group header above it.
+   */
+  startPath?: FilterValue[] | undefined
   /**
    * Called with the initial query on mount and after every change to it.
    *
@@ -344,6 +396,7 @@ export function useDataTable<TData extends RowData>({
   pagination,
   filtering,
   getRowId,
+  startPath,
   onQueryChange,
   rowHeight = 40,
   getRowHeight,
@@ -390,14 +443,42 @@ export function useDataTable<TData extends RowData>({
   const filteringEnabled = filteringOptions !== null
 
   /*
+   * Grouping is SERVER-SIDE and there is no client-mode fallback in this
+   * version, so the feature exists only in server mode.
+   *
+   * The reason is not an omission. A client table holds one page — fifty rows
+   * out of a hundred thousand — and grouping those fifty would present a
+   * partial answer as if it were the whole table: counts that are wrong, and
+   * wrong in a way the user cannot see. Refusing is the honest behaviour; the
+   * grouping travels on the query instead and the host answers it.
+   */
+  const groupingEnabled = isServer
+
+  /*
    * Resolved from the column definitions and the data rather than from the
    * table, which does not exist yet: a stored layout is pruned on the very
    * first render, and pruning is where a condition whose kind no longer
    * matches its column has to be dropped.
    */
+  /*
+   * `data` with the group headers taken out, for everything that SAMPLES a row
+   * to infer something about a column — the filter kinds below, and quick
+   * search's field list further down.
+   *
+   * A group header has none of the host's fields, so sampling one reads every
+   * column as blank: a nullable column whose page happens to start with a
+   * group row would infer no filter kind and drop out of quick search, and
+   * would do it differently on every page. Identity is preserved when there is
+   * nothing to take out, so an ungrouped table's memos are untouched.
+   */
+  const sampleRows = useMemo(
+    () => (data.some(isGroupRow) ? (data.filter((row) => !isGroupRow(row)) as TData[]) : (data as TData[])),
+    [data],
+  )
+
   const filterKinds = useMemo<ReadonlyMap<string, FilterKind | false>>(
-    () => collectFilterKinds(columns, data),
-    [columns, data],
+    () => collectFilterKinds(columns, sampleRows),
+    [columns, sampleRows],
   )
 
   const {
@@ -548,11 +629,139 @@ export function useDataTable<TData extends RowData>({
   )
 
   /*
+   * The grouping actually in force, and which of its branches are open.
+   *
+   * Read through the gate rather than straight off the layout: a client-mode
+   * table with a grouping in `initialLayout` (or in a layout saved while the
+   * same table was in server mode) must not publish one, since nothing would
+   * answer it. Module-level constants keep the identity stable, which is what
+   * `useTableQuery` needs from every one of its inputs.
+   */
+  const grouping = groupingEnabled ? layout.grouping : NO_GROUPING
+  const expandedGroups = groupingEnabled ? layout.expanded : NO_EXPANDED
+
+  /*
+   * Grouping changes the row count — a grouped list is groups plus whatever
+   * is open inside them — so the page the user is on describes a result set
+   * that no longer exists, exactly as it does after a sort or a filter.
+   *
+   * Expansion is part of the query here, so it resets the page too: opening a
+   * group makes the flattened list longer and closing one makes it shorter,
+   * and an un-reset page points past the end of a shorter list.
+   *
+   * A grouping change also clears the open paths. A path's keys are
+   * positional — index 0 is the outermost level — so adding or removing a
+   * level silently re-reads every saved key as belonging to a different one:
+   * `["received", "Acme"]` under `["status", "partner"]` would come back
+   * meaning "the status group Acme" the moment `status` went away. Reopening
+   * nothing is honest; reopening the wrong branches is not.
+   */
+  const updateGrouping = useCallback(
+    (updater: Updater<TableLayout["grouping"]>) => {
+      if (!groupingEnabled) {
+        if (process.env.NODE_ENV !== "production") {
+          warnOnce(
+            `useDataTable("${id}"): grouping is server-side and was ignored in client mode. ` +
+              `Grouping one page of rows would report counts for the page rather than for the table. ` +
+              `Pass mode: "server" and answer query.grouping.`,
+          )
+        }
+        return
+      }
+      updateSlices([
+        sliceChange("grouping", (current) => pruneGrouping(apply(updater, current), columnIds)),
+        sliceChange("expanded", () => []),
+      ])
+      resetPage()
+    },
+    [groupingEnabled, id, updateSlices, columnIds, resetPage],
+  )
+
+  const toggleGroup = useCallback(
+    (path: readonly FilterValue[]) => {
+      if (!groupingEnabled || path.length === 0) return
+      updateSlice("expanded", (current) => togglePath(current, path))
+      resetPage()
+    },
+    [groupingEnabled, updateSlice, resetPage],
+  )
+
+  const collapseAllGroups = useCallback(() => {
+    if (!groupingEnabled) return
+    updateSlice("expanded", [])
+    resetPage()
+  }, [groupingEnabled, updateSlice, resetPage])
+
+  /**
+   * Which grouped column holds the group values.
+   *
+   * A grouped column leaves the body and one group column takes its place, so
+   * exactly one of them has to keep its slot. The outermost level gets it,
+   * because that is the column the user grouped by first and the one whose
+   * header still means something to sort by — and because "takes its place"
+   * is only true of a column that has a place.
+   *
+   * A grouped column the user has hidden is skipped: hiding is a view
+   * concern and must not stop the column grouping, but it should not drag a
+   * hidden column back on screen either. When every grouped column is hidden
+   * the outermost is forced visible regardless, since the group values need
+   * somewhere to render.
+   */
+  const groupColumnId = useMemo(() => {
+    if (grouping.length === 0) return undefined
+    return grouping.find((columnId) => layout.columnVisibility[columnId] !== false) ?? grouping[0]
+  }, [grouping, layout.columnVisibility])
+
+  /*
+   * Visibility as the table renders it: the user's own choices, with every
+   * grouped column but the group slot hidden.
+   *
+   * Derived here rather than written into the layout slice, which is what
+   * makes "removing the last chip puts every column back exactly where it
+   * was" true by construction: the user's `columnVisibility` is never touched,
+   * so nothing has to be restored. `onColumnVisibilityChange` applies its
+   * updater to the LAYOUT slice (see `updateSlice`), not to this object, so a
+   * tick in the Columns panel still writes what the user meant.
+   */
+  const columnVisibility = useMemo(() => {
+    if (grouping.length === 0) return layout.columnVisibility
+    const derived = { ...layout.columnVisibility }
+    for (const columnId of grouping) derived[columnId] = columnId === groupColumnId
+    return derived
+  }, [grouping, groupColumnId, layout.columnVisibility])
+
+  /*
    * Which rows are open is deliberately NOT part of the layout: it is a
    * transient reading position, not an arrangement the user chose to keep, and
-   * restoring it on the next visit would be surprising.
+   * restoring it on the next visit would be surprising. Group expansion is the
+   * documented exception and lives in the layout instead — see
+   * {@link TableLayout.expanded}.
    */
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  /**
+   * `getRowId`, with the one row the host cannot answer for handled here.
+   *
+   * A group row is not one of the host's records — it carries a key path and a
+   * count and nothing else — so there is no field for `getRowId` to read, and
+   * TanStack's positional default would key it by where it happened to land on
+   * the page. Its id is its key path joined, which is both unique among the
+   * groups of one table and stable across refetches, so an open group keeps
+   * its identity when the page is fetched again.
+   *
+   * Supplied whenever grouping is possible, even with no host `getRowId`:
+   * {@link defaultRowId} is TanStack's own default, restated, so a table that
+   * relied on it keeps exactly the ids it had.
+   */
+  const rowIdOption = useMemo(() => {
+    if (!groupingEnabled) return getRowId
+    return (row: TData, index: number, parent?: Row<DataTableFeatures, TData>): string =>
+      isGroupRow(row)
+        ? groupRowId(row.path)
+        : getRowId
+          ? getRowId(row, index, parent)
+          : defaultRowId(index, parent)
+  }, [groupingEnabled, getRowId])
 
   /*
    * Which of the options that follow a prop this render actually states.
@@ -564,7 +773,7 @@ export function useDataTable<TData extends RowData>({
    */
   const stated = useRef({ rowId: false, subRows: false, totals: false })
   stated.current = {
-    rowId: getRowId !== undefined,
+    rowId: rowIdOption !== undefined,
     subRows: getSubRows !== undefined,
     totals: isServer,
   }
@@ -625,7 +834,7 @@ export function useDataTable<TData extends RowData>({
          * not part of that gate: overriding the hidden-column narrowing is
          * what `searchFields` is for.
          */
-        const { fields, dropped } = pruneSearchFields(columns, data, declaredOverride)
+        const { fields, dropped } = pruneSearchFields(columns, sampleRows, declaredOverride)
         if (process.env.NODE_ENV !== "production" && dropped.length > 0) {
           warnOnce(
             `useDataTable("${id}"): filtering.searchFields dropped ${dropped.map((field) => `"${field}"`).join(", ")}. ` +
@@ -635,7 +844,7 @@ export function useDataTable<TData extends RowData>({
         }
         return fields
       }
-      const { fields, unresolved, excluded, declared } = collectSearchFields(columns, data, layout.columnVisibility)
+      const { fields, unresolved, excluded, declared } = collectSearchFields(columns, sampleRows, layout.columnVisibility)
       const verdicts = searchVerdictsRef.current
       const declaredIds = new Set(declared)
       const fieldsSet = new Set(fields)
@@ -683,7 +892,7 @@ export function useDataTable<TData extends RowData>({
     }
     resolvedSearchFieldsRef.current = next
     return next
-  }, [filteringEnabled, filteringOptions?.searchFields, columns, data, layout.columnVisibility])
+  }, [filteringEnabled, filteringOptions?.searchFields, columns, sampleRows, layout.columnVisibility])
 
   /*
    * Bumped by the programmatic writers — `clearAll` and `setModel` — and by
@@ -831,11 +1040,20 @@ export function useDataTable<TData extends RowData>({
 
   const table = useTable<DataTableFeatures, TData>({
     features: FEATURES,
-    data,
+    /*
+     * The one cast in this file, and it is the price of the flat grouped page.
+     * A group row travels in `data` beside the host's records because that is
+     * the order the user sees, and TanStack is generic over ONE row type. It
+     * never reaches a host callback — `rowIdOption`, `getSubRows`,
+     * `getRowCanExpand` below and `TableBody` all narrow with `isGroupRow`
+     * first — and accessors are lazy, so a cell renderer is only ever called
+     * for a row rendered as a record.
+     */
+    data: data as TData[],
     columns,
     state: {
       columnOrder: layout.columnOrder,
-      columnVisibility: layout.columnVisibility,
+      columnVisibility,
       columnPinning: layout.columnPinning,
       columnSizing: layout.columnSizing,
       sorting: layout.sorting,
@@ -844,8 +1062,10 @@ export function useDataTable<TData extends RowData>({
       pagination: { pageIndex: pageState.pageIndex, pageSize: pageState.pageSize },
       expanded,
     },
-    ...(getRowId ? { getRowId } : {}),
-    ...(getSubRows ? { getSubRows } : {}),
+    ...(rowIdOption ? { getRowId: rowIdOption } : {}),
+    // A group row has no children of the host's kind; asking would hand the
+    // host a row it has no accessor for.
+    ...(getSubRows ? { getSubRows: (row: TData) => (isGroupRow(row) ? undefined : getSubRows(row)) } : {}),
     /*
      * Every row is expandable as far as TanStack is concerned. Whether a
      * toggle actually appears is decided where it is rendered — a row shows one
@@ -853,7 +1073,11 @@ export function useDataTable<TData extends RowData>({
      * the hook cannot see the latter. Leaving the default in place instead
      * would make `toggleExpanded()` a no-op for detail panels.
      */
-    getRowCanExpand: canExpand ? (row) => canExpand(row.original) : () => true,
+    getRowCanExpand: (row) =>
+      // A group row opens through `grouping.toggle`, which is a refetch, not
+      // through TanStack's expansion — and a detail panel under a group header
+      // would be a panel for a row that is not a record.
+      isGroupRow(row.original) ? false : canExpand ? canExpand(row.original) : true,
     /*
      * TanStack collapses everything whenever `data` changes identity. Callers
      * routinely pass a fresh array per render (`data: items.slice(0, 8)`), and
@@ -1123,6 +1347,8 @@ export function useDataTable<TData extends RowData>({
     sorting: layout.sorting,
     filters: layout.filters,
     search,
+    grouping,
+    expanded: expandedGroups,
     pageIndex: pageState.pageIndex,
     pageSize: pageState.pageSize,
     onQueryChange,
@@ -1230,6 +1456,67 @@ export function useDataTable<TData extends RowData>({
   )
 
   /*
+   * Everything a host — or the drag zone that sets the grouping — needs to
+   * read, set and clear it. Shaped like {@link filteringApi}: one object with
+   * the feature's own flag, its state, and the mutators that change it, so
+   * there is one idiom for "a feature's public surface" rather than a new one
+   * per feature.
+   */
+  const groupingApi = useMemo(
+    () => ({
+      /** Whether this table can group at all — server mode only. */
+      enabled: groupingEnabled,
+      /** Column ids grouped by, outermost first. Empty means no grouping. */
+      columns: grouping as readonly string[],
+      isGrouped: grouping.length > 0,
+      /** Whether a column is one of the grouping levels. */
+      has: (columnId: string) => grouping.includes(columnId),
+      /**
+       * Which grouped column holds the group values, so a header can badge
+       * itself and the body knows which cell to render the chevron in.
+       */
+      columnId: groupColumnId,
+      /** Replace the whole grouping; unknown and repeated ids are dropped. */
+      set: (columnIds: readonly string[]) => updateGrouping([...columnIds]),
+      /**
+       * Add a level. Defaults to the innermost position; pass `atIndex` to
+       * nest it anywhere else. A column already grouped is MOVED rather than
+       * repeated, which is what a drag onto a zone that already holds it means.
+       */
+      add: (columnId: string, atIndex?: number) =>
+        updateGrouping((current) => {
+          const without = current.filter((id) => id !== columnId)
+          const at = atIndex === undefined ? without.length : Math.max(0, Math.min(atIndex, without.length))
+          return [...without.slice(0, at), columnId, ...without.slice(at)]
+        }),
+      remove: (columnId: string) => updateGrouping((current) => current.filter((id) => id !== columnId)),
+      clear: () => updateGrouping([]),
+      /** Open group key paths, outermost key first. */
+      expanded: expandedGroups as readonly FilterValue[][],
+      /**
+       * The group the first row of the current page sits inside, as the host
+       * reported it. Empty when that row is at the top level, when nothing is
+       * grouped, or when the host does not publish it.
+       */
+      startPath: (groupingEnabled ? (startPath ?? NO_PATH) : NO_PATH) as readonly FilterValue[],
+      isExpanded: (path: readonly FilterValue[]) => isPathExpanded(expandedGroups, path),
+      /** Open a closed group or close an open one. Closing drops its descendants. */
+      toggle: toggleGroup,
+      collapseAll: collapseAllGroups,
+    }),
+    [
+      groupingEnabled,
+      grouping,
+      groupColumnId,
+      expandedGroups,
+      startPath,
+      updateGrouping,
+      toggleGroup,
+      collapseAllGroups,
+    ],
+  )
+
+  /*
    * `process.env.NODE_ENV` and not `import.meta.env.DEV`: this library is built
    * in Vite's library mode, which substitutes `import.meta.env.DEV` with our
    * own build's value and so would strip the warning from the shipped bundle
@@ -1287,6 +1574,7 @@ export function useDataTable<TData extends RowData>({
     query,
     pagination: paginationApi,
     filtering: filteringApi,
+    grouping: groupingApi,
     tableHeight,
     rowHeight,
     getRowHeight,
@@ -1328,6 +1616,24 @@ function normaliseSizing(
     next[columnId] = clamped
   }
   return next
+}
+
+/**
+ * TanStack's own default row id, restated.
+ *
+ * {@link UseDataTableOptions.getRowId} becomes mandatory-in-effect once a
+ * grouped page can arrive, because a group row needs an id of its own — so
+ * this hook supplies a `getRowId` whether the host did or not. Restating the
+ * default here is what keeps a table that never passed one on exactly the ids
+ * it had: `table_getRowId` in `@tanstack/table-core` falls back to the same
+ * expression.
+ *
+ * @param index - The row's index within its parent, or within `data`.
+ * @param parent - The parent row, for tree data.
+ * @returns The id TanStack would have minted.
+ */
+function defaultRowId(index: number, parent?: { id: string }): string {
+  return parent ? `${parent.id}.${index}` : String(index)
 }
 
 interface ColumnDefShape {

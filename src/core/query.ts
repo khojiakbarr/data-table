@@ -1,5 +1,6 @@
-import type { GroupingState, SortingState } from "@tanstack/react-table"
-import type { FilterCondition } from "./filters"
+import type { SortingState } from "@tanstack/react-table"
+import type { FilterCondition, FilterValue } from "./filters"
+import { normaliseExpanded } from "./grouping"
 
 /**
  * What quick search asks for.
@@ -35,7 +36,20 @@ export interface TableQuery {
   sorting: SortingState
   filters: FilterCondition[]
   search: TableSearch | null
-  grouping: GroupingState
+  /** Column ids to group by, outermost first. Empty means no grouping. */
+  grouping: string[]
+  /**
+   * Which group rows are open, as the key path from the outermost level.
+   *
+   * Exact key paths rather than a depth or an inversion, which is right for
+   * the semantics and fine at any depth — but does not scale to "expand
+   * everything": grouping by a high-cardinality column and opening all would
+   * put one path per group into the query, and {@link queriesEqual}
+   * stringifies the whole query on every render. There is deliberately no
+   * expand-all affordance in this version; if one is ever wanted, this field
+   * gains a companion rather than growing.
+   */
+  expanded: FilterValue[][]
   pagination: { pageIndex: number; pageSize: number }
 }
 
@@ -43,6 +57,10 @@ export interface QueryInputs {
   sorting: SortingState
   filters: readonly FilterCondition[]
   search: TableSearch | null
+  /** Column ids to group by, outermost first. */
+  grouping: readonly string[]
+  /** Open group key paths; order does not matter, {@link buildQuery} canonicalises it. */
+  expanded: readonly FilterValue[][]
   pageIndex: number
   pageSize: number
 }
@@ -62,15 +80,31 @@ function compareIds(a: string, b: string): number {
  * would change the query string — and make a host refetch an identical result
  * set, with the page reset — every time a column moved.
  *
+ * `expanded` is canonicalised for the same reason, by {@link normaliseExpanded}.
+ * `grouping` is NOT sorted: its order is its meaning — the outermost level
+ * first — so it travels exactly as the user arranged it.
+ *
  * @param inputs - The state slices that feed the query.
  * @returns A new query object.
  */
-export function buildQuery({ sorting, filters, search, pageIndex, pageSize }: QueryInputs): TableQuery {
+export function buildQuery({
+  sorting,
+  filters,
+  search,
+  grouping,
+  expanded,
+  pageIndex,
+  pageSize,
+}: QueryInputs): TableQuery {
   return {
     sorting,
     filters: [...filters].sort((a, b) => compareIds(a.field, b.field)),
     search: search === null ? null : { text: search.text, fields: [...search.fields].sort(compareIds) },
-    grouping: [],
+    grouping: [...grouping],
+    // An ungrouped table has no open groups, whatever a stale slice still
+    // holds: the wire would otherwise carry paths naming levels it did not ask
+    // for, and two tables differing only in that would refetch each other.
+    expanded: grouping.length === 0 ? [] : normaliseExpanded(expanded),
     pagination: { pageIndex, pageSize },
   }
 }

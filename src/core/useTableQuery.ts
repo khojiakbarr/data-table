@@ -1,6 +1,6 @@
 import type { SortingState } from "@tanstack/react-table"
 import { useEffect, useRef } from "react"
-import type { FilterCondition } from "./filters"
+import type { FilterCondition, FilterValue } from "./filters"
 import { buildQuery, queriesEqual, type TableQuery, type TableSearch } from "./query"
 
 /** Inputs to {@link useTableQuery}. */
@@ -18,6 +18,16 @@ export interface UseTableQueryOptions {
   filters: readonly FilterCondition[]
   /** What quick search asks for, or null when it is off. */
   search: TableSearch | null
+  /**
+   * Column ids to group by, outermost first, identity-stable for the same
+   * reason as `sorting`.
+   */
+  grouping: readonly string[]
+  /**
+   * Open group key paths, identity-stable for the same reason. `buildQuery`
+   * canonicalises their order, so the order they arrive in does not matter.
+   */
+  expanded: readonly FilterValue[][]
   pageIndex: number
   pageSize: number
   /** Called with the initial query on mount and after every change to it. */
@@ -55,18 +65,20 @@ export interface UseTableQueryOptions {
  * @returns The current query, stable between renders that did not change it.
  *
  * @example
- * const query = useTableQuery({ sorting, filters, search, pageIndex, pageSize, onQueryChange })
+ * const query = useTableQuery({ sorting, filters, search, grouping, expanded, pageIndex, pageSize, onQueryChange })
  * const { data } = useQuery({ queryKey: ["rows", query], queryFn: fetchRows })
  */
 export function useTableQuery({
   sorting,
   filters,
   search,
+  grouping,
+  expanded,
   pageIndex,
   pageSize,
   onQueryChange,
 }: UseTableQueryOptions): TableQuery {
-  const candidate = buildQuery({ sorting, filters, search, pageIndex, pageSize })
+  const candidate = buildQuery({ sorting, filters, search, grouping, expanded, pageIndex, pageSize })
   const queryRef = useRef<TableQuery | undefined>(undefined)
   if (queryRef.current === undefined || !queriesEqual(queryRef.current, candidate)) {
     queryRef.current = candidate

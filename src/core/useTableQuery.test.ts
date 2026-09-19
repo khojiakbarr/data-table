@@ -25,6 +25,8 @@ describe("useTableQuery", () => {
       sorting: [{ id: "name", desc: false }],
       filters: [],
       search: null,
+      grouping: [],
+      expanded: [],
       pageIndex: 0,
       pageSize: 50,
       onQueryChange,
@@ -35,6 +37,8 @@ describe("useTableQuery", () => {
       sorting: [{ id: "name", desc: false }], // new array, same contents
       filters: [],
       search: null,
+      grouping: [],
+      expanded: [],
       pageIndex: 0,
       pageSize: 50,
       onQueryChange,
@@ -49,6 +53,8 @@ describe("useTableQuery", () => {
       sorting: [],
       filters: [],
       search: null,
+      grouping: [],
+      expanded: [],
       pageIndex: 0,
       pageSize: 50,
       onQueryChange,
@@ -56,7 +62,7 @@ describe("useTableQuery", () => {
     expect(onQueryChange).toHaveBeenCalledTimes(1)
 
     act(() => {
-      rerender({ sorting: [], filters: [], search: null, pageIndex: 0, pageSize: 50, onQueryChange }) // new array, same contents
+      rerender({ sorting: [], filters: [], search: null, grouping: [], expanded: [], pageIndex: 0, pageSize: 50, onQueryChange }) // new array, same contents
     })
 
     // A discarded-memo-shaped rebuild must not read as a second request.
@@ -69,6 +75,8 @@ describe("useTableQuery", () => {
       sorting: [],
       filters: [],
       search: null,
+      grouping: [],
+      expanded: [],
       pageIndex: 0,
       pageSize: 50,
       onQueryChange,
@@ -76,7 +84,7 @@ describe("useTableQuery", () => {
     const first = result.current
 
     act(() => {
-      rerender({ sorting: [], filters: [], search: null, pageIndex: 1, pageSize: 50, onQueryChange })
+      rerender({ sorting: [], filters: [], search: null, grouping: [], expanded: [], pageIndex: 1, pageSize: 50, onQueryChange })
     })
 
     expect(result.current).not.toBe(first)

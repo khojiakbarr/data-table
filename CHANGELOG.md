@@ -50,6 +50,37 @@ releases are summarised in one line rather than reconstructed.
 
 ### Added
 
+- **Server-side row grouping.** `TableQuery` carries `grouping` (column ids,
+  outermost first) and `expanded` (the exact key paths of the open groups),
+  and the answer is a page of the flattened visible rows: your records with
+  `GroupRow` headers interleaved in the order the user would see them. The
+  table recognises a header by its `kind` and hands one to no callback of
+  yours, so an accessor written against your own row is never asked to read
+  one. Grouping is server-side only, with no client-mode fallback: grouping
+  one page of fifty rows out of a hundred thousand would report counts for the
+  page as if they described the table.
+- **`instance.grouping`** — `{ enabled, columns, isGrouped, has, columnId,
+  set, add, remove, clear, expanded, isExpanded, toggle, collapseAll,
+  startPath }`, shaped like `instance.filtering` and `instance.pagination`.
+- **`startPath` on the answer, and as an option.** A page whose boundary falls
+  inside an open group comes back as records with no header above them, and a
+  record carries no path. Report the open group the page's first row sits
+  inside and the table draws a "continued" header above them.
+- **A grouped column leaves the body**, and its slot becomes the group column
+  holding the chevron, the value and the count, with a mark in the header it
+  keeps — so sorting it still reorders that level. Expansion reuses the row
+  expansion the table already had, so `aria-expanded`, the focus ring and the
+  reduced-motion rule are unchanged. A blank key is one group, named with the
+  same "(Blanks)" the filter editors use.
+- **Grouping and its open branches are part of the saved layout**, beside
+  `sorting`. `pruneLayout` drops a group on a column that no longer exists —
+  and then every open path with it, because a path's keys are positional and a
+  removed level would silently re-read each key as belonging to the level
+  above. `FORMAT_VERSION` deliberately does not move: both keys are additive,
+  and a bump would discard every stored layout to gain slices nobody has set.
+- **New labels**: `groupedBadge`, `groupCount`, `groupRow`, `groupContinued`
+  and `clearGrouping`, in all three shipped sets. The grouped-empty state gets
+  the same way out the filtered-empty state has.
 - **`TableSideBar`**, the rail and the docked panel, exported for a shell of
   its own.
 - **`TablePanel` takes a `presentation` prop** — `"floating"` (the default,

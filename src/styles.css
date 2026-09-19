@@ -345,6 +345,18 @@
   color: var(--dt-accent-text);
 }
 
+/*
+ * The grouped mark, sharing the filtered mark's vocabulary and its colour —
+ * the same accent-as-text pairing, for the same 3:1 non-text reason (WCAG
+ * 1.4.11). Two marks can sit side by side: a column can be filtered and
+ * grouped at once, and filtering happens first.
+ */
+.dt-grouped {
+  flex: none;
+  display: inline-flex;
+  color: var(--dt-accent-text);
+}
+
 /* ---------- body ---------- */
 
 .dt-td {
@@ -1261,6 +1273,66 @@
 .dt-tr-expanded .dt-td,
 .dt-striped .dt-tr.dt-tr-expanded .dt-td {
   background: var(--dt-row-hover);
+}
+
+/* ---------- grouped rows ---------- *
+ * A group header is an ordinary row with one cell filled in: same height, same
+ * cells, same pinned offsets, so the colgroup and every sticky column line up
+ * across it. Only its weight and its background say it is a heading.
+ */
+
+.dt-group-row .dt-td {
+  background: var(--dt-row-hover);
+  font-weight: 600;
+}
+
+/* Ties the striping rule's (0,4,0) — `.dt-striped .dt-tr[data-parity="odd"]
+   .dt-td` — with four simple selectors of its own, and wins the tie by coming
+   later in source order. The same tie-break `.dt-tr-expanded` uses above. */
+.dt-striped .dt-tr.dt-group-row .dt-td {
+  background: var(--dt-row-hover);
+}
+
+/*
+ * The group's value spills sideways rather than truncating.
+ *
+ * The group cell is the grouped COLUMN's slot, sized for that column's values
+ * — not for a chevron, a value and a count together — so `received (25 000)`
+ * in a 140px Status column would read as `rec… (25 000)`. Every other cell on
+ * a group row is empty, so there is nothing to spill onto: the text runs into
+ * the space beside it and stays legible. A pinned cell still covers it, since
+ * `.dt-pinned` is sticky at z-index 2 and this row paints a background on
+ * every cell.
+ */
+.dt-group-row .dt-group-cell,
+.dt-group-row .dt-group-cell .dt-lead {
+  overflow: visible;
+}
+
+/* The continuation header: the same row, quieter, because it repeats
+   something the previous page already said rather than announcing a new
+   group. It has no chevron — the group it names is open by definition. */
+.dt-group-continued .dt-td {
+  font-weight: 400;
+  color: var(--dt-muted-fg);
+}
+.dt-group-continued .dt-group-value {
+  font-weight: 400;
+}
+
+.dt-group-value {
+  flex: none;
+  overflow: visible;
+  text-overflow: clip;
+  font-weight: 600;
+}
+
+/* The size of the group, beside its value: present but subordinate to it. */
+.dt-group-count {
+  flex: none;
+  color: var(--dt-muted-fg);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .dt-detail-row .dt-detail-cell {

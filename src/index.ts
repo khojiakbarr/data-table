@@ -46,6 +46,7 @@ export { FiltersTab } from "./components/FiltersTab"
 export type { FiltersTabProps } from "./components/FiltersTab"
 export { QuickSearch } from "./components/QuickSearch"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
+export { GroupBodyRow } from "./components/GroupBodyRow"
 export { canFilterColumn, FilterEditor } from "./components/FilterEditor"
 export type { FilterEditorProps } from "./components/FilterEditor"
 export { FilterPopover } from "./components/FilterPopover"
@@ -88,6 +89,24 @@ export type {
   NumberCondition,
   TextCondition,
 } from "./core/filters"
+
+/*
+ * Server-side row grouping. `GroupRow` is the shape a flattened page carries
+ * beside the host's own rows; the rest is what a shell needs to read a key
+ * path — `groupRowId` is the id the table gives a group row, and the two
+ * prune helpers are the gate a stored or hand-written grouping goes through.
+ */
+export {
+  groupRowId,
+  isGroupRow,
+  isPathExpanded,
+  normaliseExpanded,
+  pathsEqual,
+  pruneExpanded,
+  pruneGrouping,
+  togglePath,
+} from "./core/grouping"
+export type { GroupRow } from "./core/grouping"
 
 export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"

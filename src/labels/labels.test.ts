@@ -150,6 +150,9 @@ describe("Uzbek orthography", () => {
     uzLabels.reorderPosition("Summa", 1, 5),
     uzLabels.columnGroup("Hujjat"),
     uzLabels.tableHeight(420),
+    uzLabels.groupCount(253),
+    uzLabels.groupRow("Qabul qilingan", 253),
+    uzLabels.groupContinued(["Qabul qilingan"]),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -176,6 +179,9 @@ describe("Uzbek orthography", () => {
     expect(functionKeys).toEqual([
       "columnGroup",
       "filterTitle",
+      "groupContinued",
+      "groupCount",
+      "groupRow",
       "page",
       "range",
       "reorderPosition",

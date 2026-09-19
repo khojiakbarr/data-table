@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from "react"
 import type { TableQuery } from "../core/query"
-import { fetchReceipts, type ServerPage } from "./fakeServer"
+import { fetchReceipts, type ServerPage, type ServerRow } from "./fakeServer"
 
 /** What {@link useReceiptsQuery} hands back to the page. */
 export interface ReceiptsQueryResult {
-  page: ServerPage | undefined
+  /**
+   * The latest page, or undefined before the first one lands.
+   *
+   * Its rows are `ServerRow`, not `ServerReceipt`: a grouped page interleaves
+   * group headers with receipts, and the library recognises them itself.
+   */
+  page: ServerPage<ServerRow> | undefined
   /**
    * Starts `true`, not `false`: `useTableQuery` only announces its initial
    * query from a passive effect, one commit after mount, so the first paint
@@ -43,7 +49,7 @@ export interface ReceiptsQueryResult {
  * const { page, loading, error, retry } = useReceiptsQuery(query)
  */
 export function useReceiptsQuery(query: TableQuery | undefined): ReceiptsQueryResult {
-  const [page, setPage] = useState<ServerPage>()
+  const [page, setPage] = useState<ServerPage<ServerRow>>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
   const [failNext, setFailNext] = useState(false)

@@ -9,7 +9,6 @@ import {
   fetchValues,
   isGroupRow,
   matchesFilter,
-  type GroupedTableQuery,
   type ServerReceipt,
   type ServerRow,
 } from "./fakeServer"
@@ -65,14 +64,26 @@ function query(filters: FilterCondition[], overrides: Partial<TableQuery> = {}):
     filters,
     search: null,
     grouping: [],
+    expanded: [],
     pagination: { pageIndex: 0, pageSize: 20 },
     ...overrides,
   }
 }
 
+/**
+ * The receipt codes of a page, in order.
+ *
+ * Narrows away the group rows a flattened page can hold: `ServerRow` is a
+ * union now that the library carries grouping, and an ungrouped page's rows
+ * are all leaves but the TYPE cannot know that.
+ */
+function codes(rows: ServerRow[]): string[] {
+  return rows.filter((row): row is ServerReceipt => !isGroupRow(row)).map((row) => row.code)
+}
+
 async function codesFor(filter: FilterCondition): Promise<string[]> {
   const page = await fetchReceipts(query([SCOPE, filter]), { delayMs: 0 })
-  return page.rows.map((row) => row.code).sort()
+  return codes(page.rows).sort()
 }
 
 describe("fetchReceipts — text operators (case-insensitive)", () => {
@@ -249,7 +260,7 @@ describe("fetchReceipts — quick search: AND over tokens, OR over fields", () =
       query([SCOPE], { search: { text: "kimyo 10007", fields: ["partner", "code"] } }),
       { delayMs: 0 },
     )
-    expect(page.rows.map((row) => row.code)).toEqual(["KR-10007"])
+    expect(codes(page.rows)).toEqual(["KR-10007"])
   })
 
   it("matches nothing when one token matches no field at all", async () => {
@@ -266,14 +277,14 @@ describe("fetchReceipts — quick search: AND over tokens, OR over fields", () =
       { delayMs: 0 },
     )
     // The row's own `partner` is `""`; the token is found in `code` instead.
-    expect(page.rows.map((row) => row.code)).toEqual(["KR-10006"])
+    expect(codes(page.rows)).toEqual(["KR-10006"])
   })
 })
 
 describe("fetchReceipts — sorting and pagination", () => {
   it("sorts by the requested column and direction", async () => {
     const page = await fetchReceipts(query([SCOPE], { sorting: [{ id: "amount", desc: false }] }), { delayMs: 0 })
-    expect(page.rows[0]?.code).toBe("KR-10000")
+    expect(codes(page.rows)[0]).toBe("KR-10000")
   })
 
   it("orders blanks above every value, so they land last ascending and first descending", async () => {
@@ -284,14 +295,14 @@ describe("fetchReceipts — sorting and pagination", () => {
       delayMs: 0,
     })
     // Postgres' documented default: NULLs sort as greater than every value.
-    expect(ascending.rows.at(-1)?.code).toBe("KR-10008")
-    expect(descending.rows[0]?.code).toBe("KR-10008")
-    expect(descending.rows[1]?.code).toBe("KR-10009")
+    expect(codes(ascending.rows).at(-1)).toBe("KR-10008")
+    expect(codes(descending.rows)[0]).toBe("KR-10008")
+    expect(codes(descending.rows)[1]).toBe("KR-10009")
   })
 
   it("slices by pageIndex/pageSize and reports the total that matched", async () => {
     const page = await fetchReceipts(query([SCOPE], { pagination: { pageIndex: 1, pageSize: 3 } }), { delayMs: 0 })
-    expect(page.rows.map((row) => row.code)).toEqual(["KR-10003", "KR-10004", "KR-10005"])
+    expect(codes(page.rows)).toEqual(["KR-10003", "KR-10004", "KR-10005"])
     expect(page.total).toBe(10)
   })
 })
@@ -533,9 +544,12 @@ describe("the fake server and filterFn_dt agree on every operator", () => {
       { kind: "list", field: "status", op: "notIn", values: ["open", "closed"] },
     ]
     const all = await fetchReceipts(query([SCOPE]), { delayMs: 0 })
+    // Ungrouped, so every row is a receipt — narrowed once here rather than at
+    // each read, since the page's TYPE is the union either way.
+    const allLeaves = all.rows.filter((row): row is ServerReceipt => !isGroupRow(row))
     for (const condition of conditions.map(canonical)) {
       const server = await codesFor(condition)
-      const client = all.rows
+      const client = allLeaves
         .filter((row) => libraryMatches(condition, row[condition.field as keyof ServerReceipt]))
         .map((row) => row.code)
         .sort()
@@ -569,8 +583,8 @@ const P_GA = "Gʻallaorol Agro MChJ"
 const P_RU = "ООО «Северный Путь»"
 const P_TK = "Toshkent Kimyo Zavodi"
 
-/** A query with the two grouping fields, as {@link GroupedTableQuery} carries them. */
-function groupedQuery(overrides: Partial<GroupedTableQuery> = {}): GroupedTableQuery {
+/** A query with the two grouping fields, as {@link TableQuery} carries them. */
+function groupedQuery(overrides: Partial<TableQuery> = {}): TableQuery {
   return {
     sorting: [],
     filters: [SCOPE],
@@ -596,7 +610,7 @@ function describeRows(rows: ServerRow[]): string[] {
   )
 }
 
-async function flattened(overrides: Partial<GroupedTableQuery>): Promise<string[]> {
+async function flattened(overrides: Partial<TableQuery>): Promise<string[]> {
   const page = await fetchReceipts(groupedQuery(overrides), { delayMs: 0 })
   return describeRows(page.rows)
 }
@@ -794,7 +808,7 @@ describe("fetchReceipts — paging a flattened, grouped result", () => {
    * `0 group closed`, `1 group in_process`, `2 group open`, `3 leaf KR-10000`,
    * `4 leaf KR-10004`, `5 leaf KR-10008`, `6 group received` — seven rows.
    */
-  const PAGED = { grouping: ["status"], expanded: [["open"]] } satisfies Partial<GroupedTableQuery>
+  const PAGED = { grouping: ["status"], expanded: [["open"]] } satisfies Partial<TableQuery>
 
   it("pages the flattened rows and totals them, group rows included", async () => {
     const page = await fetchReceipts(
@@ -811,19 +825,48 @@ describe("fetchReceipts — paging a flattened, grouped result", () => {
       { delayMs: 0 },
     )
     /*
-     * This is the ugly case, recorded rather than hidden. The page is three
-     * receipts with no group row above them, and nothing on the wire says
-     * which group they belong to: a leaf carries no `path`. A client cannot
-     * render a "…continued" header from this answer, and the user sees three
-     * rows indented under nothing.
-     *
-     * The fix is not paging — it is the wire: either a leaf carries the path
-     * of the group it sits in, or the page carries the open path its first row
-     * belongs to. Left as it is here because section 2 fixes the shape; the
-     * finding belongs to whoever adopts it.
+     * The ugly case, and the one `startPath` exists for. The page is three
+     * receipts with no group row above them, and a leaf carries no `path`, so
+     * nothing IN the rows says which group they belong to — the user would see
+     * rows under nothing and a client could draw no "continued" header. The
+     * page itself answers it instead.
      */
     expect(describeRows(page.rows)).toEqual(["leaf KR-10000", "leaf KR-10004", "leaf KR-10008"])
     expect(page.rows.every((row) => !isGroupRow(row))).toBe(true)
+    expect(page.startPath).toEqual(["open"])
+  })
+
+  it("says a page's first row sits at the top level when it does", async () => {
+    const page = await fetchReceipts(
+      groupedQuery({ ...PAGED, pagination: { pageIndex: 0, pageSize: 3 } }),
+      { delayMs: 0 },
+    )
+    // The first row is a top-level group header; it is inside nothing.
+    expect(page.startPath).toEqual([])
+  })
+
+  it("says nothing about a container for an ungrouped page", async () => {
+    const page = await fetchReceipts(groupedQuery({}), { delayMs: 0 })
+    expect(page.startPath).toEqual([])
+  })
+
+  it("reports the innermost open group a nested page starts inside", async () => {
+    /*
+     * `received` open and `ООО «Северный Путь»` open inside it. Flattened:
+     * `0 closed`, `1 in_process`, `2 open`, `3 received`, `4 ООО …`,
+     * `5 leaf KR-10002`. A page starting at row 5 is one orphan leaf whose
+     * container is the SECOND-level group, not the first.
+     */
+    const page = await fetchReceipts(
+      groupedQuery({
+        grouping: ["status", "partner"],
+        expanded: [["received"], ["received", P_RU]],
+        pagination: { pageIndex: 5, pageSize: 1 },
+      }),
+      { delayMs: 0 },
+    )
+    expect(describeRows(page.rows)).toEqual(["leaf KR-10002"])
+    expect(page.startPath).toEqual(["received", P_RU])
   })
 
   it("lets a group row end a page and its children start the next", async () => {

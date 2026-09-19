@@ -43,6 +43,15 @@ export interface ChromeStrings {
   }
   /** The control that arms the injected failure, so the error banner is reachable. */
   failNext: string
+  /**
+   * The TEMPORARY grouping control.
+   *
+   * The real one is a Row Groups zone in the side bar, with columns dragged
+   * into it; it is the next task. Until it lands this is the only way to see a
+   * grouped table at all, which is why the legend says so out loud rather than
+   * pretending to be the finished control.
+   */
+  grouping: { legend: string; note: string; columns: Record<"status" | "partner" | "flagged", string> }
   resetAll: string
 }
 
@@ -104,6 +113,11 @@ const en: ChromeStrings = {
     reset: "Reset theme",
   },
   failNext: "Fail the next request",
+  grouping: {
+    legend: "Row groups (temporary)",
+    note: "Stands in for the Row Groups zone until it lands. Click to nest, click again to remove.",
+    columns: { status: "Status", partner: "Partner", flagged: "Flagged" },
+  },
   resetAll: "Reset everything",
 }
 
@@ -168,6 +182,11 @@ const ru: ChromeStrings = {
     reset: "Сбросить тему",
   },
   failNext: "Сымитировать ошибку в следующем запросе",
+  grouping: {
+    legend: "Группировка строк (временно)",
+    note: "Заменяет зону «Группы строк», пока её нет. Нажмите, чтобы вложить, ещё раз — чтобы убрать.",
+    columns: { status: "Статус", partner: "Контрагент", flagged: "Отмечено" },
+  },
   resetAll: "Сбросить всё",
 }
 
@@ -232,6 +251,11 @@ const uz: ChromeStrings = {
     reset: "Mavzuni tiklash",
   },
   failNext: "Keyingi soʻrovni xatoga uchratish",
+  grouping: {
+    legend: "Qator guruhlari (vaqtinchalik)",
+    note: "Guruhlar zonasi tayyor boʻlgunicha oʻrnini bosadi. Bosing — ichma-ich, yana bosing — olib tashlanadi.",
+    columns: { status: "Holat", partner: "Kontragent", flagged: "Belgilangan" },
+  },
   resetAll: "Hammasini tiklash",
 }
 

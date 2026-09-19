@@ -11,7 +11,7 @@ import { FeatureControls } from "./FeatureControls"
 import { LanguageSwitcher } from "./LanguageSwitcher"
 import { ThemeControls } from "./ThemeControls"
 import { buildReceiptColumns, ReceiptDetail } from "./receiptColumns"
-import { fetchValues, type ServerReceipt } from "./fakeServer"
+import { fetchValues, type ServerReceipt, type ServerRow } from "./fakeServer"
 import {
   DEFAULT_FEATURES,
   DEFAULT_THEME,
@@ -35,7 +35,16 @@ const storage = localStorageLayout()
  * table then renders at until "Reset" clears it.
  */
 const START_HEIGHT = 620
-const EMPTY: ServerReceipt[] = []
+const EMPTY: ServerRow[] = []
+
+/**
+ * Columns the temporary grouping control offers.
+ *
+ * Low-cardinality ones only: grouping the playground's 100 000 rows by `code`
+ * would produce 100 000 group rows, which demonstrates nothing except that the
+ * pager still works.
+ */
+const GROUPABLE = ["status", "partner", "flagged"] as const
 
 /**
  * The library's playground: one server-backed table, a language switcher, and
@@ -67,7 +76,7 @@ export function Playground() {
   const baseMode = useBaseThemeMode(theme.theme)
   const themeValues = resolveThemeValues(theme, baseMode)
 
-  const table = useDataTable({
+  const table = useDataTable<ServerReceipt>({
     id: "playground",
     columns,
     data: page?.rows ?? EMPTY,
@@ -75,6 +84,9 @@ export function Playground() {
     // `rowCount` stays unset — not `undefined` — until the first page
     // resolves, which is what `exactOptionalPropertyTypes` requires here.
     ...(page ? { rowCount: page.total } : {}),
+    // Which open group the page's first row sits inside, so the table can draw
+    // a "continued" header when a page boundary falls inside a group.
+    ...(page ? { startPath: page.startPath } : {}),
     getRowId: (row) => row.id,
     onQueryChange: setQuery,
     storage,
@@ -116,6 +128,36 @@ export function Playground() {
           onTableHeightChange={table.tableHeight.set}
           chrome={chrome}
         />
+        {/*
+          TEMPORARY. The real control is a Row Groups zone in the table's own
+          side bar, with columns dragged into it — the next task. This stands
+          in so the grouped table can be looked at at all, and is deliberately
+          plain so nobody mistakes it for the finished thing.
+        */}
+        <fieldset className="pg-fieldset pg-temp">
+          <legend>{chrome.grouping.legend}</legend>
+          <p className="pg-hint">{chrome.grouping.note}</p>
+          <div className="pg-temp-grouping">
+            {GROUPABLE.map((columnId) => {
+              const level = table.grouping.columns.indexOf(columnId)
+              return (
+                <button
+                  key={columnId}
+                  type="button"
+                  className="pg-temp-chip"
+                  aria-pressed={level > -1}
+                  onClick={() =>
+                    level > -1 ? table.grouping.remove(columnId) : table.grouping.add(columnId)
+                  }
+                >
+                  {chrome.grouping.columns[columnId]}
+                  {level > -1 ? ` ${level + 1}` : ""}
+                </button>
+              )
+            })}
+          </div>
+        </fieldset>
+
         <button
           type="button"
           className="pg-reset"

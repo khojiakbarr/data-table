@@ -1,5 +1,16 @@
 import type { FilterCondition, FilterValue, FilterValueOption } from "../core/filters"
+import type { GroupRow } from "../core/grouping"
 import type { TableQuery, TableSearch } from "../core/query"
+
+/*
+ * A group header is the LIBRARY's shape, re-exported here so this file's own
+ * tests and the playground read it from the endpoint they are testing. It was
+ * declared here first, on purpose: implementing grouping on the fake server
+ * before the library is what let the wire be validated by something that
+ * actually had to answer it — and `startPath` below is the field that work
+ * turned up. The library has since adopted it verbatim.
+ */
+export { isGroupRow, type GroupRow } from "../core/grouping"
 
 /**
  * One row as the fake backend would return it.
@@ -66,86 +77,40 @@ const ALL: ServerReceipt[] = Array.from({ length: ROW_COUNT }, (_, index) => {
 })
 
 /**
- * A group header in the flattened page.
- *
- * It carries its identity and its size and nothing else: the value and the
- * count are what the group cell renders — `received (25 000)` — and
- * aggregations, AG Grid's Values zone, are deliberately outside this version.
- *
- * `path` is the key path from the outermost grouping level, so a group at the
- * second level is `["received", "Toshkent Kimyo Zavodi"]`. It is the same
- * shape `expanded` carries, which is what identifies a group without a
- * server-minted id and leaves room for a lazy, per-group fetch later.
- *
- * `count` is the number of **leaf** rows beneath it at every depth, not the
- * number of children at the next level down. An outer group's count is
- * therefore the sum of its children's counts, and a user reading
- * `received (25 000)` is being told how many receipts are in there — which is
- * the only reading of that number that survives opening the group.
- */
-export interface GroupRow {
-  kind: "group"
-  /** The key path identifying this group, outermost first. */
-  path: FilterValue[]
-  /** How many leaf rows are under it, at every depth. */
-  count: number
-}
-
-/**
  * One row of a flattened page: a group header, or an ordinary leaf.
  *
  * The union is the price of the flat page, and it is not free — every consumer
- * of `rows` now has to narrow before it can read a field, and a grouped page
- * has no `id` on half its rows for `getRowId` to return. That cost is real and
- * is the reason {@link fetchReceipts} still has an ungrouped overload: the
- * playground's own hook and page are written against `ServerReceipt[]` and
- * cannot see a union until they are migrated with the library.
+ * of `rows` has to narrow before it can read a field, and a grouped page has
+ * no `id` on half its rows for `getRowId` to return. The library carries that
+ * cost where it belongs: it recognises a group row itself and hands one to no
+ * host callback, so the playground's columns still read `ServerReceipt`.
  */
 export type ServerRow = ServerReceipt | GroupRow
 
 /**
- * Whether a flattened row is a group header rather than a receipt.
+ * One page of results, as {@link fetchReceipts} resolves it.
  *
- * The discriminant is `kind`, present only on a group row, so a leaf needs no
- * marker field and the wire stays exactly what it already was for leaves.
+ * `total` is the number of rows the pager is paging — the length of the whole
+ * flattened list, group rows included — which is the leaf count only when
+ * nothing is grouped.
  *
- * @param row - One row off a flattened page.
- * @returns Whether it is a group, narrowing it.
- *
- * @example
- * const label = isGroupRow(row) ? `${row.path.at(-1)} (${row.count})` : row.code
- */
-export function isGroupRow(row: ServerRow): row is GroupRow {
-  return "kind" in row && row.kind === "group"
-}
-
-/**
- * The query with the two fields grouping adds, defined here first.
- *
- * Declared in the demo rather than in `core/query.ts` on purpose: the point of
- * implementing grouping on the fake server before the library is that the wire
- * shape gets validated by something that actually has to answer it. The
- * library adopts this verbatim afterwards — `grouping` is already reserved on
- * {@link TableQuery} and empty since stage 1; only `expanded` is new.
- */
-export interface GroupedTableQuery extends TableQuery {
-  /** Column ids to group by, outermost first. Empty means no grouping. */
-  grouping: string[]
-  /** Which group rows are open, as the key path from the outermost level. */
-  expanded: FilterValue[][]
-}
-
-/**
- * One page of results, as `fetchReceipts` resolves it.
- *
- * Generic in its row so the ungrouped answer keeps the exact type it has
- * always had. `total` is the number of rows the pager is paging — the length
- * of the whole flattened list, group rows included — which is the leaf count
- * only when nothing is grouped.
+ * `startPath` is the open group the page's FIRST row sits inside, or `[]` when
+ * that row is at the top level (and always, for an ungrouped page). It exists
+ * because of a case only a real implementation turns up: with one group open
+ * and a page boundary falling inside it, the page comes back as three leaf
+ * rows and no group row at all, and nothing else on the wire says which group
+ * they belong to — a leaf carries no path. The user would see rows indented
+ * under nothing and a client could draw no "continued" header. The alternative
+ * fix, a path on every leaf, costs an array per row to answer a question only
+ * the first row of a page can ask: every later row's context is re-established
+ * by the group row above it. One field per page is the smaller, sufficient
+ * answer.
  */
 export interface ServerPage<TRow = ServerReceipt> {
   rows: TRow[]
   total: number
+  /** The open group path the first row of this page sits inside; `[]` at the top level. */
+  startPath: FilterValue[]
 }
 
 /**
@@ -457,6 +422,19 @@ function isExpanded(expanded: FilterValue[][], path: FilterValue[]): boolean {
 }
 
 /**
+ * One row of the flattened list, with the group it sits inside.
+ *
+ * `container` is what {@link ServerPage.startPath} is read from for the first
+ * row of a page: it is never sent for every row, which is the whole point of
+ * that field, but it has to be KNOWN for every row to be read off one of them.
+ */
+interface FlatRow {
+  row: ServerRow
+  /** The open group this row sits inside, or `[]` at the top level. */
+  container: FilterValue[]
+}
+
+/**
  * Flatten the tree into the rows a user with those groups open would see.
  *
  * A group's children are emitted only when the group itself is open, so a path
@@ -468,23 +446,32 @@ function isExpanded(expanded: FilterValue[][], path: FilterValue[]): boolean {
  * @param nodes - One level's groups, already ordered.
  * @param expanded - The open key paths off the wire.
  * @param prefix - The key path of the parent, empty at the outermost level.
- * @returns Group rows and leaves interleaved, in visible order.
+ * @returns Group rows and leaves interleaved, in visible order, each with the
+ *   group it sits inside.
  */
-function flattenGroups(nodes: GroupNode[], expanded: FilterValue[][], prefix: FilterValue[]): ServerRow[] {
-  const out: ServerRow[] = []
+function flattenGroups(nodes: GroupNode[], expanded: FilterValue[][], prefix: FilterValue[]): FlatRow[] {
+  const out: FlatRow[] = []
   for (const node of nodes) {
     const path = [...prefix, node.key]
-    out.push({ kind: "group", path, count: node.count })
+    // A group row sits inside its PARENT, not inside itself: `startPath` says
+    // what a page's first row is under, and a group header is under the group
+    // above it.
+    out.push({ row: { kind: "group", path, count: node.count }, container: prefix })
     if (!isExpanded(expanded, path)) continue
     // A loop rather than `push(...rows)`: an open group here can hold
     // twenty-five thousand leaves, and spreading that many arguments is how a
     // call stack overflows on a page that was only ever going to show fifty.
-    for (const row of node.children.length > 0 ? flattenGroups(node.children, expanded, path) : node.leaves) {
-      out.push(row)
+    if (node.children.length > 0) {
+      for (const child of flattenGroups(node.children, expanded, path)) out.push(child)
+    } else {
+      for (const leaf of node.leaves) out.push({ row: leaf, container: path })
     }
   }
   return out
 }
+
+/** The top level: what a row sits inside when it sits inside nothing. */
+const NO_PATH: FilterValue[] = []
 
 /** What `fetchReceipts` accepts beside the query. */
 export interface FetchOptions {
@@ -522,20 +509,8 @@ export interface FetchOptions {
  * const page = await fetchReceipts(query, { signal: controller.signal })
  * const grouped = await fetchReceipts({ ...query, grouping: ["status"], expanded: [["open"]] })
  */
-export function fetchReceipts(query: GroupedTableQuery, options?: FetchOptions): Promise<ServerPage<ServerRow>>
-/**
- * The pre-grouping signature, kept while `buildQuery` still pins `grouping` to
- * `[]` and publishes no `expanded`: those callers get back the leaf rows they
- * are written against instead of a union they cannot yet narrow. A caller that
- * means to group passes `expanded` — `[]` when nothing is open — and gets the
- * honest row type.
- */
 export function fetchReceipts(
-  query: TableQuery & { expanded?: never },
-  options?: FetchOptions,
-): Promise<ServerPage>
-export function fetchReceipts(
-  query: TableQuery & { expanded?: FilterValue[][] },
+  query: TableQuery,
   options: FetchOptions = {},
 ): Promise<ServerPage<ServerRow>> {
   const { fail = false, delayMs = 300, signal } = options
@@ -567,16 +542,25 @@ export function fetchReceipts(
       // A group on a column this endpoint does not serve groups nothing, the
       // same way a condition on one constrains nothing.
       const groupBy = query.grouping.filter((id) => FIELD_READERS[id] !== undefined)
-      const visible: ServerRow[] =
+      const visible: FlatRow[] =
         groupBy.length === 0
-          ? sortLeaves(matched, sort)
-          : flattenGroups(buildLevel(matched, groupBy, 0, sort), query.expanded ?? [], [])
+          ? sortLeaves(matched, sort).map((row) => ({ row, container: NO_PATH }))
+          : flattenGroups(buildLevel(matched, groupBy, 0, sort), query.expanded, [])
       const { pageIndex, pageSize } = query.pagination
+      const from = pageIndex * pageSize
+      const page = visible.slice(from, from + pageSize)
       // The total is what matched, not what exists: it is what the footer
       // counts and what the page clamp is measured against. Grouped, that is
       // the length of the flattened list — group rows are rows the pager pages
       // past, so a total of leaves alone would let the pager run off the end.
-      resolve({ rows: visible.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize), total: visible.length })
+      resolve({
+        rows: page.map((entry) => entry.row),
+        total: visible.length,
+        // Read off the FIRST row of the page, which is the only row whose
+        // context nothing else on the page can establish — see
+        // {@link ServerPage.startPath}.
+        startPath: page[0]?.container ?? NO_PATH,
+      })
     }, delayMs)
     signal?.addEventListener("abort", onAbort, { once: true })
   })

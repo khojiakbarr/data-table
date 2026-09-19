@@ -115,6 +115,11 @@ export const defaultLabels: DataTableLabels = {
   clearAllFilters: "Clear all filters",
   noMatches: "No rows match the current filters",
   clearFilters: "Clear filters",
+  groupedBadge: "Grouped",
+  groupCount: (count) => `(${count})`,
+  groupRow: (value, count) => `${value}, ${count === 1 ? "1 row" : `${count} rows`}`,
+  groupContinued: (path) => `${path.join(" › ")} (continued)`,
+  clearGrouping: "Clear grouping",
 }
 
 /**
@@ -401,6 +406,14 @@ export function DataTable<TData extends RowData>({
    */
   const showProgress = loading && !showSkeleton
   /*
+   * Whether the empty state can offer anything to undo. An empty state with no
+   * exit is the classic filter dead end: "No rows" is true of a table with no
+   * data and of a table narrowed to nothing, and only the second is something
+   * the user can undo. Grouping narrows the same way filtering does, so it
+   * earns the same way out.
+   */
+  const hasEmptyWayOut = instance.filtering.isFiltered || instance.grouping.isGrouped
+  /*
    * Virtualisation needs something to scroll. A table nobody gave a height to
    * grows to fit its rows instead, and then renders all of them; this notices
    * that state and asks the stylesheet for a fallback bound. A table that is
@@ -470,6 +483,12 @@ export function DataTable<TData extends RowData>({
   const closePanel = useCallback(() => {
     setPanelOpen((state) => ({ open: false, tab: state.tab }))
   }, [])
+
+  /** Where focus goes when an empty-state button clears itself out of existence. */
+  const restoreEmptyStateFocus = (): void => {
+    const focusTarget = searchInputRef.current ?? viewportRef.current
+    focusTarget?.focus()
+  }
 
   return (
     <div
@@ -584,6 +603,7 @@ export function DataTable<TData extends RowData>({
                         flags={flags}
                         labels={labels}
                         sticky={stickyHeader}
+                        grouped={instance.grouping.has(header.column.id)}
                         onReorder={handleReorder}
                         onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
                         onAutosize={autosize}
@@ -643,40 +663,54 @@ export function DataTable<TData extends RowData>({
 
           {showEmpty ? (
             <div className="dt-empty">
-              {/*
-                An empty state with no exit is the classic filter dead end: "No
-                rows" is true of a table with no data and of a table filtered to
-                nothing, and only one of them is something the user can undo.
-                A host's own `emptyState` still wins over both.
-              */}
+              {/* A host's own `emptyState` wins over both branches below. */}
               {emptyState ??
-                (instance.filtering.isFiltered ? (
+                (hasEmptyWayOut ? (
                   <>
                     <p className="dt-empty-text">{labels.noMatches}</p>
-                    <button
-                      type="button"
-                      className="dt-menu-button"
-                      onClick={() => {
-                        instance.filtering.clearAll()
-                        /*
-                         * This button disappears the instant the rows come
-                         * back (`showEmpty` goes false), and React does not
-                         * relocate focus for an element that unmounts under
-                         * it — the same defect `QuickSearch`'s own clear
-                         * button exists to avoid (WCAG 2.4.3; see its
-                         * comment). The toolbar's search box is the natural
-                         * landing spot when there is one; with `toolbar={false}`
-                         * there is nothing of ours left on screen to hold
-                         * focus, so it falls back to the viewport, which
-                         * `tabIndex={-1}` makes a legal target without adding
-                         * it to the Tab order.
-                         */
-                        const focusTarget = searchInputRef.current ?? viewportRef.current
-                        focusTarget?.focus()
-                      }}
-                    >
-                      {labels.clearFilters}
-                    </button>
+                    {/*
+                      Every button here disappears the instant the rows come
+                      back (`showEmpty` goes false), and React does not
+                      relocate focus for an element that unmounts under it —
+                      the same defect `QuickSearch`'s own clear button exists
+                      to avoid (WCAG 2.4.3; see its comment). The toolbar's
+                      search box is the natural landing spot when there is
+                      one; with `toolbar={false}` there is nothing of ours
+                      left on screen to hold focus, so it falls back to the
+                      viewport, which `tabIndex={-1}` makes a legal target
+                      without adding it to the Tab order.
+                    */}
+                    {instance.filtering.isFiltered ? (
+                      <button
+                        type="button"
+                        className="dt-menu-button"
+                        onClick={() => {
+                          instance.filtering.clearAll()
+                          restoreEmptyStateFocus()
+                        }}
+                      >
+                        {labels.clearFilters}
+                      </button>
+                    ) : null}
+                    {/*
+                      A grouping can empty a table on its own — a group on a
+                      column the endpoint does not serve, or one whose every
+                      key was filtered away — and then "Clear filters" is
+                      either absent or does not help. The way out has to name
+                      the thing that is actually in the way.
+                    */}
+                    {instance.grouping.isGrouped ? (
+                      <button
+                        type="button"
+                        className="dt-menu-button"
+                        onClick={() => {
+                          instance.grouping.clear()
+                          restoreEmptyStateFocus()
+                        }}
+                      >
+                        {labels.clearGrouping}
+                      </button>
+                    ) : null}
                   </>
                 ) : (
                   labels.empty

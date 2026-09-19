@@ -39,6 +39,14 @@ interface HeaderCellProps<TData extends RowData> {
   labels: DataTableLabels
   /** Keep the header in view while the body scrolls. */
   sticky: boolean
+  /**
+   * Whether the rows are grouped by this column.
+   *
+   * A mark in the header rather than a control, like the filter and sort
+   * indicators beside it: the column's values have left the body and the user
+   * should be able to see which column they went to without opening a panel.
+   */
+  grouped?: boolean
   /** Open the per-column action menu at a viewport position. */
   onOpenMenu: (at: { x: number; y: number }) => void
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
@@ -59,6 +67,7 @@ export function HeaderCell<TData extends RowData>({
   flags,
   labels,
   sticky,
+  grouped = false,
   onReorder,
   onOpenMenu,
   onAutosize,
@@ -284,6 +293,17 @@ export function HeaderCell<TData extends RowData>({
             <FilterIcon />
           </span>
         ) : null}
+
+        {grouped ? (
+          <span
+            className="dt-grouped"
+            role="img"
+            aria-label={labels.groupedBadge}
+            title={labels.groupedBadge}
+          >
+            <GroupIcon />
+          </span>
+        ) : null}
       </div>
 
       {isGroup ? null : (
@@ -348,6 +368,26 @@ function SortIcon({ direction }: { direction: false | "asc" | "desc" }) {
     >
       {direction !== "desc" ? <path d="M3 5 L6 2 L9 5" /> : null}
       {direction !== "asc" ? <path d="M3 7 L6 10 L9 7" /> : null}
+    </svg>
+  )
+}
+
+/** Three stacked bars, indented: rows gathered under a heading. */
+function GroupIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
+      <path d="M1.5 2.5 h9" />
+      <path d="M4 6 h6.5" />
+      <path d="M4 9.5 h6.5" />
     </svg>
   )
 }

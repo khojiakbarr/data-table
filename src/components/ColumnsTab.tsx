@@ -310,7 +310,15 @@ export function ColumnsTab<TData extends RowData>({
           id={`${instance.id}-col-${column.id}`}
           type="checkbox"
           checked={column.getIsVisible()}
-          disabled={!flags.hiding || !column.getCanHide()}
+          /*
+           * A grouped column's visibility is not the user's to set while it is
+           * grouped: its values have left the body and the table decides which
+           * one keeps a slot for the group values. Offering a tick that the
+           * derived visibility would immediately overrule is worse than
+           * offering none — removing it from the Row Groups zone is what puts
+           * the column back.
+           */
+          disabled={!flags.hiding || !column.getCanHide() || instance.grouping.has(column.id)}
           onChange={column.getToggleVisibilityHandler()}
         />
         <label className="dt-panel-label" htmlFor={`${instance.id}-col-${column.id}`}>

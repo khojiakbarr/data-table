@@ -200,8 +200,8 @@ actually drives both the row and the token.
 
 Set `mode: "server"` and the table stops sorting and paging: `data` is one
 page, already sorted, and the table tells you what it wants through a
-`TableQuery` — sorting, filters, quick search, pagination, and (reserved for
-row grouping) `grouping`. With TanStack Query:
+`TableQuery` — sorting, filters, quick search, row grouping and pagination.
+With TanStack Query:
 
 ```tsx
 const EMPTY: Receipt[] = [] // stable identity, so an empty page isn't a new `data` array every render
@@ -275,6 +275,7 @@ you hand to your backend and translate into SQL without interpreting anything.
   ],
   "search": { "text": "KR-102", "fields": ["code", "partner", "status"] },
   "grouping": [],
+  "expanded": [],
   "pagination": { "pageIndex": 0, "pageSize": 50 }
 }
 ```
@@ -462,6 +463,128 @@ answer stays on screen, dimmed and `aria-busy`, and a rejected one keeps it and
 offers a retry; `signal` aborts a superseded request. Declaring `meta.values` on
 a client-mode column trades the free counts for fixed labels, which is a real
 trade.
+
+### Row grouping
+
+Grouping is **server-side**. The table holds one page of fifty rows out of a
+hundred thousand; grouping those fifty would present a partial answer as if it
+were the whole table — counts that are wrong, and wrong in a way the user
+cannot see. So the grouping travels on the query and your backend answers it.
+There is no client-mode fallback: `instance.grouping` refuses to set one, and
+says so in a development warning.
+
+```ts
+instance.grouping.add("status")        // group by status
+instance.grouping.add("partner")       // nest partner inside it
+instance.grouping.toggle(["received"]) // open a group, by its key path
+instance.grouping.clear()              // every column back exactly where it was
+```
+
+Two fields go out and one comes back:
+
+```json
+{
+  "grouping": ["status", "partner"],
+  "expanded": [["received"], ["received", "Toshkent Kimyo Zavodi"]]
+}
+```
+
+`grouping` is column ids, **outermost first** — its order is its nesting, so
+unlike `filters` it is not sorted. `expanded` is the exact key paths of the
+groups the user has opened, canonicalised so that opening A then B produces
+the same query as opening B then A.
+
+The answer is a page of the **flattened visible rows** — what the user would
+see with those groups open — where a row is either one of your records or a
+group header:
+
+```ts
+interface GroupRow {
+  kind: "group"
+  /** The key path identifying this group, outermost first. */
+  path: (string | number | boolean)[]
+  /** How many LEAF rows are under it, at every depth. */
+  count: number
+}
+```
+
+Return them interleaved in `data`, in visible order. The table recognises a
+group header by its `kind` and hands one to no callback of yours — not
+`getRowId`, `getRowHeight`, `getSubRows`, `canExpand`, a cell renderer or
+`renderDetail` — so your accessors never see a row they have no fields for.
+`kind: "group"` is therefore **reserved**: a record of your own carrying it
+would be drawn as a header.
+
+`rowCount` is the length of the whole flattened list, group headers included:
+they are rows the pager pages past, and a total of records alone would let it
+run off the end.
+
+**One more field on the answer: `startPath`.** With a group open and a page
+boundary falling inside it, a page comes back as records with no header above
+them — and a record carries no path, so nothing in the rows says which group
+they belong to. Report the open group the page's FIRST row sits inside (`[]`
+at the top level) and the table draws a "continued" header above them. Only
+the first row can ask: every later row's context is re-established by the
+header above it, which is why this is one field per page rather than a path
+per row.
+
+```ts
+useDataTable({ mode: "server", data: page.rows, rowCount: page.total, startPath: page.startPath, … })
+```
+
+**The SQL.** Group the level being listed, filtered by the open path, and
+count:
+
+```sql
+SELECT COALESCE(NULLIF(status::text, ''), '') AS key, COUNT(*) AS count
+FROM receipts
+WHERE <the filters and the search, exactly as above>
+GROUP BY 1
+ORDER BY (key = '') , key   -- blanks above every value, as everywhere else
+```
+
+`COALESCE(NULLIF(col::text, ''), '')` and not a bare `GROUP BY col`: **a blank
+key is one group, keyed by `""`**. A literal group-by gives two — one for
+`NULL`, one for `''` — and the contract does not survive that split, because
+`blank` matches both: a "(Blanks)" filter would report twenty thousand rows
+beside two headers dividing them, the filter and the counts disagreeing about
+the same word.
+
+**Order of operations, and it matters**: filter and search, then group, then
+sort within a level, then flatten against the open paths, then page. A backend
+that groups before it filters returns counts that do not match the rows under
+them.
+
+**Sorting a grouped table sorts within its level.** Group headers are ordered
+by their own key; the level whose column the sort names takes the sort's
+direction while every other level stays ascending; records are ordered inside
+the innermost group they belong to and never move between groups. Blanks rank
+above every value for group keys exactly as they do for records, so one rule
+covers both kinds of row.
+
+**In the table**, a grouped column leaves the body and its slot becomes the
+group column, holding the chevron, the value and the count — `received
+(25 000)` — with a mark in its header. It keeps its header, so sorting it
+still reorders that level. Nesting a second level hides that column's own
+slot; removing the grouping puts every column back exactly where it was,
+because the derived visibility never touches the layout the user arranged.
+Opening a group is a **refetch**, so the loading treatment is the one for a
+page that is already on screen: the rows stay and a progress bar shows.
+
+**Grouping and its open branches are part of the saved layout**, beside
+`sorting`. Every change to either resets the page, the way sorting does.
+
+**What is deliberately not here.** Aggregations (AG Grid's Values zone) are
+out of this version — a header carries its value and its count and nothing
+else. So is "expand everything": `expanded` is exact key paths, which is right
+for the semantics and fine at any depth, but opening every group of a
+high-cardinality column would put one path per group into a query that is
+compared by `JSON.stringify` on every render. If one is ever wanted, `expanded`
+gains a companion rather than growing. And there is no per-group lazy fetch:
+one flat page keeps one request and one answer, and composes with the paging
+and virtualisation that already exist. The cost is the refetch on expand; the
+shape leaves room for the lazy version later, because `expanded` already
+travels as key paths.
 
 ---
 
@@ -870,7 +993,7 @@ to a docked bar, the component did not change.
 | Option | Type | Default | |
 |---|---|---|---|
 | `id` | `string` | — | **Required.** Unique per application; the persistence key. |
-| `data` | `TData[]` | — | |
+| `data` | `(TData \| GroupRow)[]` | — | One page in server mode. A grouped page interleaves group headers; the table recognises them and hands one to no callback of yours. |
 | `columns` | `ColumnDef[]` | — | Standard TanStack column definitions. |
 | `storage` | `LayoutStorage` | none | Where layouts live. |
 | `initialLayout` | `Partial<TableLayout>` | `{}` | Applied on a user's first visit. |
@@ -885,13 +1008,16 @@ to a docked bar, the component did not change.
 | `rowCount` | `number` | — | Total rows across all pages. Server mode only; undefined until known. |
 | `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
 | `filtering` | `boolean \| FilteringOptions` | on | `{ debounceMs?, persist?, searchFields?, loadValues? }`. `false` turns filtering off. |
-| `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. |
+| `startPath` | `FilterValue[]` | `[]` | The open group the page's first row sits inside. See [Row grouping](#row-grouping). |
+| `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. Never called for a group header, whose id is its key path joined. |
 | `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
 | `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
 | `heightVersion` | `string \| number` | — | Changes when `getRowHeight` starts answering differently, for a change too narrow for the table to sample. See [Large data](#large-data). |
 
-Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, rowHeight, getRowHeight, heightVersion }`.
+Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, grouping, tableHeight, rowHeight, getRowHeight, heightVersion }`.
+
+`grouping` is `{ enabled, columns, isGrouped, has, columnId, set, add, remove, clear, expanded, isExpanded, toggle, collapseAll, startPath }` — see [Row grouping](#row-grouping).
 
 ### `<DataTable />`
 
@@ -902,7 +1028,7 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
-| `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters button while `instance.filtering.isFiltered` | Supplying this replaces **both** defaults, including the filtered-empty exit — a host that wants its own art for "no data" but still wants a way out of a filtered-empty table should branch on `instance.filtering.isFiltered` itself. |
+| `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters and/or Clear grouping button while the table is filtered or grouped | Supplying this replaces **both** defaults, including the narrowed-empty exit — a host that wants its own art for "no data" but still wants a way out should branch on `instance.filtering.isFiltered` and `instance.grouping.isGrouped` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | |
 | `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |

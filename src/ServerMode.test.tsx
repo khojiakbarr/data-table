@@ -25,7 +25,8 @@ describe("server mode", () => {
     localStorage.clear()
     localStorageLayout().save("srv", {
       columnOrder: [], columnVisibility: {}, columnPinning: { start: [], end: [] },
-      columnSizing: {}, sorting: [{ id: "name", desc: true }], filters: [], search: "",
+      columnSizing: {}, sorting: [{ id: "name", desc: true }], grouping: [], expanded: [],
+      filters: [], search: "",
       pageSize: 100,
     })
     const onQueryChange = vi.fn<(query: TableQuery) => void>()
@@ -42,7 +43,7 @@ describe("server mode", () => {
     // this fire twice on mount — harmless for a fetch keyed on the query.
     expect(onQueryChange).toHaveBeenCalledTimes(1)
     expect(onQueryChange.mock.calls[0]?.[0]).toEqual({
-      sorting: [{ id: "name", desc: true }], filters: [], search: null, grouping: [],
+      sorting: [{ id: "name", desc: true }], filters: [], search: null, expanded: [], grouping: [],
       pagination: { pageIndex: 0, pageSize: 100 },
     })
   })

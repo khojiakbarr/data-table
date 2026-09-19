@@ -1,4 +1,4 @@
-import type { FilterCondition, FilterValueOption, FilterKind } from "./core/filters"
+import type { FilterCondition, FilterValue, FilterValueOption, FilterKind } from "./core/filters"
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -19,6 +19,26 @@ export interface TableLayout {
   columnPinning: ColumnPinningState
   columnSizing: ColumnSizingState
   sorting: SortingState
+  /**
+   * Column ids the rows are grouped by, outermost first. Empty means no
+   * grouping.
+   *
+   * It sits beside `sorting` because it is the same kind of thing: an
+   * arrangement of the whole result set that the user chose, that the query
+   * carries, and that they expect to find again on their next visit.
+   */
+  grouping: string[]
+  /**
+   * Which group rows are open, as key paths from the outermost level.
+   *
+   * Row expansion normally is NOT part of the layout — a detail panel is a
+   * transient reading position, and restoring it would be surprising. A group
+   * is different: with grouping computed server-side, which groups are open is
+   * part of the query, and a grouping restored with every branch shut is not
+   * the table the user left. It is saved with the `grouping` it describes and
+   * dropped with it.
+   */
+  expanded: FilterValue[][]
   /** One condition per filtered column, implicitly ANDed. */
   filters: FilterCondition[]
   /** Quick search, raw as the user typed it; `""` when off. */
@@ -275,4 +295,28 @@ export interface DataTableLabels {
   noMatches: string
   /** The way out of the filtered-empty state. */
   clearFilters: string
+
+  /* Row grouping. */
+  /** Badge on a grouped column's header, as a state and not an action. */
+  groupedBadge: string
+  /**
+   * The count beside a group's value: `received (25 000)`.
+   *
+   * Nothing is spoken here — {@link DataTableLabels.groupRow} is what a screen
+   * reader gets — so this is the number and its brackets, in whatever form the
+   * language writes them.
+   */
+  groupCount: (count: number) => string
+  /**
+   * A group row named for a screen reader: its value and how many rows are in
+   * it. The count is spoken, so a language with plural agreement agrees it.
+   */
+  groupRow: (value: string, count: number) => string
+  /**
+   * The header above a page that starts INSIDE a group, whose own header was
+   * on the previous page. `path` is the group's key path, outermost first.
+   */
+  groupContinued: (path: string[]) => string
+  /** The way out of the grouped-empty state, beside `clearFilters`. */
+  clearGrouping: string
 }

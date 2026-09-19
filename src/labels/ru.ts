@@ -136,4 +136,9 @@ export const ruLabels: DataTableLabels = {
   clearAllFilters: "Очистить все фильтры",
   noMatches: "Нет строк, удовлетворяющих фильтрам",
   clearFilters: "Очистить фильтры",
+  groupedBadge: "Сгруппировано",
+  groupCount: (count) => `(${count})`,
+  groupRow: (value, count) => `${value}, ${count} ${plural(count, "строка", "строки", "строк")}`,
+  groupContinued: (path) => `${path.join(" › ")} (продолжение)`,
+  clearGrouping: "Очистить группировку",
 }

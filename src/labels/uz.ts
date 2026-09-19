@@ -123,4 +123,11 @@ export const uzLabels: DataTableLabels = {
   clearAllFilters: "Barcha filtrlarni tozalash",
   noMatches: "Filtrlarga mos qator topilmadi",
   clearFilters: "Filtrlarni tozalash",
+  groupedBadge: "Guruhlangan",
+  groupCount: (count) => `(${count})`,
+  // A numeral governs the bare singular in Uzbek: `5 ta qator`, never
+  // `qatorlar` — the same rule `searchResults` follows above.
+  groupRow: (value, count) => `${value}, ${count} ta qator`,
+  groupContinued: (path) => `${path.join(" › ")} (davomi)`,
+  clearGrouping: "Guruhlashni tozalash",
 }

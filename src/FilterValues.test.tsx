@@ -117,6 +117,27 @@ function EmptyDataTable() {
   )
 }
 
+/** Every row blank on the filtered column: faceting runs, but finds no real value. */
+function BlanksOnlyTable() {
+  const rows: Row[] = [
+    { id: "b0", name: "A", tag: "", size: "s", when: new Date(2026, 0, 1) },
+    { id: "b1", name: "B", tag: "", size: "m", when: new Date(2026, 0, 2) },
+  ]
+  const instance = useDataTable<Row>({
+    id: "values-blanks-only",
+    columns,
+    data: rows,
+    getRowId: (row) => row.id,
+  })
+  return (
+    <FilterEditor
+      instance={instance}
+      column={instance.table.getColumn("tag")!}
+      labels={defaultLabels}
+    />
+  )
+}
+
 /**
  * A host that re-renders with a fresh `loadValues` arrow every time, the shape
  * `filtering={{ loadValues: (id, o) => api.facets(id, o) }}` produces and the
@@ -362,5 +383,105 @@ describe("a values filter", () => {
     // render must not refire the effect, or a host that re-renders faster
     // than the backend answers would re-issue and abort the request forever.
     expect(spy).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps the (Blanks) row when faceting counts blank rows but finds no other value", () => {
+    render(<BlanksOnlyTable />)
+
+    // Blankness is an operator, not a member of the values list: a note that
+    // there is nothing to *pick* must not also hide the one control that lets
+    // the user filter for blankness — which is exactly what is left to filter
+    // on here (facets = { options: [], blanks: 2 }).
+    expect(screen.getByText("No values to choose from")).toBeInTheDocument()
+    expect(screen.getByLabelText("(Blanks)")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Select all")).toBeNull()
+  })
+
+  it("keeps a ticked (Blanks) visible and checked under a search that does not match it", async () => {
+    const user = userEvent.setup()
+    render(<Table columnId="tag" />)
+
+    await user.click(screen.getByLabelText("(Blanks)"))
+    expect(screen.getByLabelText("(Blanks)")).toBeChecked()
+
+    await user.type(screen.getByLabelText("Tag: Search values"), "zzz")
+
+    // Without this, a user who ticks (Blanks) and then types anything that
+    // does not literally match "(Blanks)" loses the only control that could
+    // untick it, short of clearing the search first.
+    expect(screen.getByLabelText("(Blanks)")).toBeInTheDocument()
+    expect(screen.getByLabelText("(Blanks)")).toBeChecked()
+  })
+
+  it("trusts the host's answer instead of re-filtering it by a literal substring match", async () => {
+    // A backend that matches more broadly than a literal substring — the
+    // common Postgres unaccent/ILIKE case, or any transliterating search —
+    // can resolve a label that does not itself contain the typed needle.
+    const loadValues = vi.fn().mockResolvedValue([{ value: "José" }])
+    const user = userEvent.setup()
+    render(<Table columnId="tag" server loadValues={loadValues} />)
+    expect(await screen.findByLabelText("José")).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText("Tag: Search values"), "jose")
+    await waitFor(() =>
+      expect(loadValues).toHaveBeenCalledWith("tag", expect.objectContaining({ search: "jose" })),
+    )
+
+    // "josé" does not contain "jose": a local `.includes()` re-filter would
+    // drop the server's own answer and show the "no data" lie in its place.
+    expect(screen.getByLabelText("José")).toBeInTheDocument()
+    expect(screen.queryByText("No values to choose from")).toBeNull()
+  })
+
+  it("keeps a stale server answer listed while a new one is in flight, even when it does not match what was typed", async () => {
+    let release: ((options: FilterValueOption[]) => void) | undefined
+    const loadValues = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { value: "INV-1001", count: 1 },
+        { value: "INV-1002", count: 1 },
+      ])
+      .mockImplementationOnce(
+        () => new Promise<FilterValueOption[]>((resolve) => { release = resolve }),
+      )
+    const user = userEvent.setup()
+    render(<Table columnId="tag" server loadValues={loadValues} />)
+    expect(await screen.findByLabelText("INV-1001")).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText("Tag: Search values"), "2024")
+    await waitFor(() => expect(loadValues).toHaveBeenCalledTimes(2))
+
+    // Neither stale label contains "2024": narrowing them locally against the
+    // immediate needle — rather than trusting the request already out for it
+    // — would clear the list and flip to the "no data" note before the server
+    // has even answered for what was typed.
+    expect(screen.getByLabelText("INV-1001")).toBeInTheDocument()
+    expect(screen.queryByText("No values to choose from")).toBeNull()
+    expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "true")
+
+    release?.([{ value: "INV-2024", count: 3 }])
+    await waitFor(() => expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "false"))
+    expect(await screen.findByLabelText("INV-2024")).toBeInTheDocument()
+  })
+
+  it("does not show the no-values note alongside a first-load failure", async () => {
+    const loadValues = vi.fn().mockRejectedValue(new Error("no"))
+    render(<Table columnId="tag" server loadValues={loadValues} />)
+
+    expect(await screen.findByText("Could not load values")).toBeInTheDocument()
+    // The failure already explains the empty list and offers Retry; the
+    // "no data" note beside it would repeat that and undercut Retry.
+    expect(screen.queryByText("No values to choose from")).toBeNull()
+  })
+
+  it("announces a values load failure to assistive technology", async () => {
+    const loadValues = vi.fn().mockRejectedValue(new Error("no"))
+    render(<Table columnId="tag" server loadValues={loadValues} />)
+
+    // Matches `TableStatus`'s own `.dt-error` treatment: without `role="alert"`
+    // a screen-reader user who searched and hit a rejected request hears
+    // nothing and keeps reading a stale, silently-dimmed list.
+    const failure = await screen.findByRole("alert")
+    expect(failure).toHaveTextContent("Could not load values")
   })
 })

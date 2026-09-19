@@ -90,23 +90,60 @@ export function FilterValues<TData extends RowData>({
   const options: FilterValueOption[] = missing.length === 0 ? sourced : [...sourced, ...missing]
 
   /*
-   * Filtered locally in both modes: server-side the host has already narrowed
-   * the list, but the previous result stays on screen while a new one is in
-   * flight, and it should narrow with the box rather than lag behind it.
+   * Filtered locally only where nothing has narrowed the answer for us
+   * already. In server mode the host has already narrowed `options` for
+   * `search` (debounced) — re-filtering it against the *immediate* `needle`
+   * drops any match the backend found by something other than a literal
+   * substring (accents, transliteration, a tokenised search engine —
+   * Postgres `unaccent`/ILIKE is the common case), and, on every keystroke
+   * before the debounce fires, narrows the still-displayed previous answer
+   * against a needle that answer was never asked to match. Both read as
+   * "there is no data" on top of a server that just said otherwise; staleness
+   * is carried by `aria-busy` alone (below), not by pre-narrowing the list.
    */
-  const visible = options.filter(
-    (option) =>
-      needle === "" ||
-      String(option.label ?? option.value)
-        .toLowerCase()
-        .includes(needle.toLowerCase()),
-  )
+  const visible = usesServer
+    ? options
+    : options.filter(
+        (option) =>
+          needle === "" ||
+          String(option.label ?? option.value)
+            .toLowerCase()
+            .includes(needle.toLowerCase()),
+      )
   const visibleValues = visible.map((option) => option.value)
   const blankSelected = draft.op === "blank"
   const allSelected =
     visible.length > 0 && visibleValues.every((value) => draft.values.includes(value))
   /** A value set and blankness cannot both be carried, so choosing one drops the other. */
   const valueOp = draft.op === "blank" || draft.op === "notBlank" ? "in" : draft.op
+
+  /*
+   * (Blanks) is an operator, not a member of `options`, so whether it is
+   * offered has nothing to do with whether any *value* matched — the round-1
+   * fix conflated the two and hid the only control that can express
+   * blankness exactly when blankness was the only thing left to filter on.
+   * It narrows with the same search box as the real values, except while it
+   * is the active selection: a ticked (Blanks) stays offered regardless of
+   * what was typed after it was ticked, the same way a ticked value the
+   * source stopped listing stays offered (`missing`, above) — otherwise a
+   * user could not find the box again to untick it without first clearing
+   * the search. `facets` (not `hasSource`) gates it because it is the one
+   * source that actually counts blank rows; `meta.values` and `loadValues`
+   * carry no such count.
+   */
+  const blanksAvailable = facets !== null && facets.blanks > 0
+  const blanksMatchNeedle =
+    needle === "" || labels.blanks.toLowerCase().includes(needle.toLowerCase())
+  const showBlanks = (blanksAvailable && blanksMatchNeedle) || blankSelected
+  /*
+   * The note stands in for Select all and the value rows only (finding: it
+   * used to suppress (Blanks) too, hiding the only control that could express
+   * blankness exactly when blankness was the only thing left to filter on).
+   * A rejected request already has its own failure line and Retry on screen
+   * above, so the note is withheld there too — showing both is the same "no
+   * data" lie next to the real explanation, and it undercuts the Retry.
+   */
+  const showNote = visible.length === 0 && !loaded.loading && !loaded.failed
 
   const toggleValue = (value: FilterValue, on: boolean) => {
     const values = on
@@ -142,7 +179,12 @@ export function FilterValues<TData extends RowData>({
       />
 
       {loaded.failed ? (
-        <p className="dt-values-failed">
+        // `role="alert"` matches `TableStatus`'s own `.dt-error` treatment
+        // (§6.3: this surface pays its error state with `loadFailed`/`retry`'s
+        // own treatment) — without it, a screen-reader user who searched and
+        // hit a rejected request hears nothing and keeps reading a stale,
+        // silently-dimmed list.
+        <p className="dt-values-failed" role="alert">
           <span>{labels.valuesFailed}</span>
           <button type="button" className="dt-link" onClick={loaded.retry}>
             {labels.retry}
@@ -160,59 +202,68 @@ export function FilterValues<TData extends RowData>({
       */}
       <ul className="dt-values-list" aria-busy={loaded.loading}>
         {/*
-          "A source exists but produced nothing" is still the no-choices case
-          §5.3 forbids showing as a bare, live checkbox list: a needle that
-          matches nothing, or a first client render with no data yet, both
-          read as "there is no data" without this note — and worse, a stray
-          click on a live Select All there would write `values: []`, which
-          `draftToCondition` turns into null and silently clears an existing
-          filter. Loading is exempted: a fetch already in flight is its own
-          state, carried by `aria-busy` on the list above.
+          "A source exists but produced no matching value" is still the
+          no-choices case §5.3 forbids showing as a bare, live checkbox list:
+          a needle that matches nothing, or a first client render with no data
+          yet, both read as "there is no data" without this note — and worse,
+          a stray click on a live Select All there would write `values: []`,
+          which `draftToCondition` turns into null and silently clears an
+          existing filter. Loading and a failure are both exempted: a fetch in
+          flight is its own state (`aria-busy` on the list above), and a
+          failure already explains the empty list and offers its own retry —
+          the note beside it would both repeat that and undercut Retry.
+          Whether to show it has nothing to do with (Blanks), rendered on its
+          own below: that box is an operator, not a member of this list, so
+          it is never part of what the note stands in for.
         */}
-        {visible.length === 0 && !loaded.loading ? (
+        {showNote ? (
           <li className="dt-values-item">
             <p className="dt-filter-note">{labels.noValues}</p>
           </li>
         ) : (
-          <>
-            <li className="dt-values-item">
-              <label className="dt-values-label">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={(event) => toggleAll(event.target.checked)}
-                />
-                <span>{labels.selectAll}</span>
-              </label>
-            </li>
+          <li className="dt-values-item">
+            <label className="dt-values-label">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(event) => toggleAll(event.target.checked)}
+              />
+              <span>{labels.selectAll}</span>
+            </label>
+          </li>
+        )}
 
-            <li className="dt-values-item">
-              <label className="dt-values-label">
-                <input
-                  type="checkbox"
-                  checked={blankSelected}
-                  onChange={(event) =>
-                    /*
-                     * Blankness is an operator, not a member: `{ op: "in", values:
-                     * [null] }` matches nullish rows on the client and returns
-                     * nothing on the server, because `NULL = ANY(ARRAY[NULL])` is
-                     * NULL and never true.
-                     */
-                    onDraft(
-                      event.target.checked
-                        ? { kind: "list", op: "blank", values: [] }
-                        : { kind: "list", op: "in", values: [] },
-                    )
-                  }
-                />
-                <span>{labels.blanks}</span>
-              </label>
-              {facets === null || facets.blanks === 0 ? null : (
-                <span className="dt-values-count">{facets.blanks}</span>
-              )}
-            </li>
+        {showBlanks ? (
+          <li className="dt-values-item">
+            <label className="dt-values-label">
+              <input
+                type="checkbox"
+                checked={blankSelected}
+                onChange={(event) =>
+                  /*
+                   * Blankness is an operator, not a member: `{ op: "in", values:
+                   * [null] }` matches nullish rows on the client and returns
+                   * nothing on the server, because `NULL = ANY(ARRAY[NULL])` is
+                   * NULL and never true.
+                   */
+                  onDraft(
+                    event.target.checked
+                      ? { kind: "list", op: "blank", values: [] }
+                      : { kind: "list", op: "in", values: [] },
+                  )
+                }
+              />
+              <span>{labels.blanks}</span>
+            </label>
+            {facets === null || facets.blanks === 0 ? null : (
+              <span className="dt-values-count">{facets.blanks}</span>
+            )}
+          </li>
+        ) : null}
 
-            {visible.map((option) => (
+        {showNote
+          ? null
+          : visible.map((option) => (
               <li key={`${typeof option.value}:${String(option.value)}`} className="dt-values-item">
                 <label className="dt-values-label">
                   <input
@@ -227,8 +278,6 @@ export function FilterValues<TData extends RowData>({
                 )}
               </li>
             ))}
-          </>
-        )}
       </ul>
     </div>
   )

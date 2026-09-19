@@ -4,6 +4,12 @@ import "./styles.css"
 export { DataTable, defaultLabels } from "./components/DataTable"
 export type { DataTableProps } from "./components/DataTable"
 
+/* Translated label sets. Each is typed as the whole `DataTableLabels`, not a
+   `Partial`, so a key added to the interface fails to compile here instead of
+   silently staying English. */
+export { ruLabels } from "./labels/ru"
+export { uzLabels } from "./labels/uz"
+
 /* The behaviour, for a shell of your own. */
 export { useDataTable } from "./useDataTable"
 export type {

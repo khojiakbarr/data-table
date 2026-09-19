@@ -1,0 +1,102 @@
+import type { DataTableLabels } from "../types"
+
+/**
+ * Uzbek labels for the built-in shell.
+ *
+ * Pass as `labels={uzLabels}`, or spread to override a few:
+ * `labels={{ ...uzLabels, empty: "Hech narsa yo'q" }}`. Typed as the whole
+ * `DataTableLabels` rather than a `Partial`, so a key added to the interface
+ * fails to compile here instead of silently falling back to English.
+ *
+ * No plural helper, unlike {@link ruLabels}: a numeral in Uzbek governs the
+ * bare singular, so it is `5 qator`, never `5 qatorlar`. Counted labels below
+ * therefore interpolate the noun as it stands.
+ *
+ * @example
+ * <DataTable instance={table} labels={uzLabels} />
+ */
+export const uzLabels: DataTableLabels = {
+  columnsButton: "Ustunlar",
+  columnsTitle: "Ustunlar",
+  showAll: "Hammasini ko'rsatish",
+  reset: "Tiklash",
+  pinStart: "Chapga mahkamlash",
+  pinEnd: "O'ngga mahkamlash",
+  unpin: "Mahkamlashni bekor qilish",
+  hide: "Yashirish",
+  sortAscending: "O'sish bo'yicha saralash",
+  sortDescending: "Kamayish bo'yicha saralash",
+  clearSort: "Saralashni bekor qilish",
+  empty: "Qator yo'q",
+  dragHint: "Tartibni o'zgartirish uchun torting",
+  resizeColumn: "ustun kengligini o'zgartirish",
+  expandRow: "Qatorni ochish",
+  collapseRow: "Qatorni yopish",
+  columnActions: "Ustun amallari",
+  autosize: "Ustunni moslash",
+  autosizeAll: "Barcha ustunlarni moslash",
+  resetWidth: "Kenglikni tiklash",
+  pinnedStartBadge: "Chapda",
+  pinnedEndBadge: "O'ngda",
+  rows: "Qator",
+  rowsPerPage: "Sahifadagi qatorlar",
+  range: (from, to, total) => `${from}–${to} / ${total ?? "…"}`,
+  page: (page, count) => `${page}-sahifa, jami ${count ?? "…"}`,
+  pageNumber: "Sahifa raqami",
+  pagination: "Sahifalash",
+  firstPage: "Birinchi sahifa",
+  previousPage: "Oldingi sahifa",
+  nextPage: "Keyingi sahifa",
+  lastPage: "Oxirgi sahifa",
+  loading: "Yuklanmoqda",
+  loadFailed: "Qatorlarni yuklab bo'lmadi",
+  retry: "Qayta urinish",
+  search: "Qidirish",
+  searchLabel: "Qatorlar ichidan qidirish",
+  clearSearch: "Qidiruvni tozalash",
+  searchResults: (count) => (count === undefined ? "Qidirilmoqda" : `${count} ta qator topildi`),
+  filter: "Filtr…",
+  filterInPanel: "Panelda filtrlash…",
+  filterTitle: (column) => `Filtr: ${column}`,
+  filteredBadge: "Filtrlangan",
+  apply: "Qo'llash",
+  clearFilter: "Filtrni tozalash",
+  operator: "Shart",
+  filterValue: "Qiymat",
+  rangeFrom: "Dan",
+  rangeTo: "Gacha",
+  opContains: "Ichida bor",
+  opNotContains: "Ichida yo'q",
+  opEquals: "Teng",
+  opNotEquals: "Teng emas",
+  opStartsWith: "Shu bilan boshlanadi",
+  opEndsWith: "Shu bilan tugaydi",
+  opEq: "Teng",
+  opNe: "Teng emas",
+  opLt: "Kichik",
+  opLte: "Kichik yoki teng",
+  opGt: "Katta",
+  opGte: "Katta yoki teng",
+  opBetween: "Oralig'ida",
+  opDateIs: "Shu kuni",
+  opDateBefore: "Shu kungacha",
+  opDateAfter: "Shu kundan keyin",
+  opDateBetween: "Oralig'ida",
+  opIsTrue: "Ha",
+  opIsFalse: "Yo'q",
+  opIn: "Shulardan biri",
+  opNotIn: "Shulardan hech biri",
+  opBlank: "Bo'sh",
+  opNotBlank: "Bo'sh emas",
+  searchValues: "Qiymatlarni qidirish",
+  selectAll: "Hammasini tanlash",
+  blanks: "(Bo'sh)",
+  noValues: "Tanlash uchun qiymat yo'q",
+  valuesFailed: "Qiymatlarni yuklab bo'lmadi",
+  filtersTab: "Filtrlar",
+  hiddenColumn: "Yashirilgan",
+  noFilters: "Filtr qo'yilmagan",
+  clearAllFilters: "Barcha filtrlarni tozalash",
+  noMatches: "Filtrlarga mos qator topilmadi",
+  clearFilters: "Filtrlarni tozalash",
+}

@@ -9,19 +9,31 @@ export interface ServerReceipt {
   amount: number
   status: string
   date: string
+  /** Demonstrates the boolean filter kind end to end. */
+  flagged: boolean
 }
 
 const PARTNERS = ["Oʻzbekiston Temir Yoʻllari", "Gʻallaorol Agro MChJ", "ООО «Северный Путь»", "Toshkent Kimyo Zavodi"]
 const STATUSES = ["open", "in_process", "received", "closed"]
 
-/** 10 000 rows, generated once. */
-const ALL: ServerReceipt[] = Array.from({ length: 10_000 }, (_, index) => ({
+/**
+ * How many rows the playground holds.
+ *
+ * Large enough that virtualisation is the only thing keeping the DOM small —
+ * the point the playground exists to demonstrate — rather than a token amount
+ * that would render fine unvirtualised too.
+ */
+const ROW_COUNT = 100_000
+
+/** Generated once at module scope, never inside a component. */
+const ALL: ServerReceipt[] = Array.from({ length: ROW_COUNT }, (_, index) => ({
   id: `rc-${index}`,
   code: `KR-${10_000 + index}`,
   partner: PARTNERS[index % PARTNERS.length] as string,
   amount: ((index * 918_233) % 210_000_000) + 310_000,
   status: STATUSES[index % STATUSES.length] as string,
   date: `2026-${String((index % 12) + 1).padStart(2, "0")}-${String((index % 28) + 1).padStart(2, "0")}`,
+  flagged: index % 7 === 0,
 }))
 
 /** One page of results, as `fetchReceipts` resolves it. */
@@ -43,6 +55,7 @@ const FIELD_READERS: Record<string, (row: ServerReceipt) => unknown> = {
   amount: (row) => row.amount,
   status: (row) => row.status,
   date: (row) => row.date,
+  flagged: (row) => row.flagged,
 }
 
 /** `(col IS NULL OR col::text = '')`, in one predicate. */

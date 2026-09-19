@@ -28,6 +28,18 @@ export interface FiltersTabProps<TData extends RowData> {
   focusNonce?: number | undefined
 }
 
+/** The focus request this tab has already acted on, and what it opened for it. */
+interface HonouredFocus {
+  id: string | undefined
+  nonce: number | undefined
+  /**
+   * Bumped for every honoured request, and folded into the open editor's React
+   * key — which is what makes an identical repeat re-arm the editor's one-shot
+   * `autoFocus` latch. See the comment at its only write.
+   */
+  key: number
+}
+
 /**
  * The side panel's Filters half.
  *
@@ -47,12 +59,16 @@ export function FiltersTab<TData extends RowData>({
    * The seed above only runs on mount, and a shell that leaves this tab
    * mounted can send a new focus request while it stays on the Filters tab:
    * keyboard activation of a header menu's "Filter in panel…" item fires no
-   * `pointerdown`, so nothing closes and remounts the panel first. Comparing
+   * `pointerdown`, so nothing closes and remounts the panel first.
+   *
+   * BOTH identifiers are held, and either one changing is a new request.
    * `focusColumnId` alone missed the case where the SAME column is asked for
    * twice in a row — the prop would already equal the last one honoured, so
-   * nothing looked like a new request. `focusNonce` gives every request its
-   * own identity instead, so the comparison below is "asked again", never
-   * "value happens to match".
+   * nothing looked like a new request. `focusNonce` alone missed the shell
+   * that never sends one: it is optional on the exported props, and
+   * `TablePanel` is exported so a host can drive the panel itself, for which
+   * the comparison would read `undefined !== undefined` on every render and
+   * make `focusColumnId` dead from mount onwards.
    *
    * Held in state rather than a ref, matching `openId` above: a render can be
    * thrown away, and a ref written during one that is would leave this
@@ -60,9 +76,25 @@ export function FiltersTab<TData extends RowData>({
    * argument `useTableQuery` documents for not caching derived identity in a
    * ref across renders.
    */
-  const [honouredNonce, setHonouredNonce] = useState(focusNonce)
-  if (focusColumnId !== undefined && focusNonce !== honouredNonce) {
-    setHonouredNonce(focusNonce)
+  const [honoured, setHonoured] = useState<HonouredFocus>(() => ({
+    id: focusColumnId,
+    nonce: focusNonce,
+    key: 0,
+  }))
+  const isNewRequest = focusColumnId !== honoured.id || focusNonce !== honoured.nonce
+  if (focusColumnId !== undefined && isNewRequest) {
+    /*
+     * `key` is what makes an honoured request actually reopen the editor.
+     * Asking for a column whose editor is still open writes the `openId` the
+     * tab already holds, React bails out of the identical write, and nothing
+     * remounts `FilterEditor` — whose `autoFocus` is a one-shot latch, set at
+     * mount and cleared by its own effect. The menu unmounts on activation
+     * and restores focus nowhere, so the request would silently drop focus to
+     * `<body>`. Remounting discards an uncommitted draft, which is already
+     * what collapsing and reopening the entry does and is the right answer to
+     * "open this column's filter".
+     */
+    setHonoured({ id: focusColumnId, nonce: focusNonce, key: honoured.key + 1 })
     setOpenId(focusColumnId)
   }
 
@@ -138,10 +170,13 @@ export function FiltersTab<TData extends RowData>({
 
               {open ? (
                 <FilterEditor
+                  // The honoured request, not the raw prop: its `key` re-arms
+                  // the editor's one-shot focus latch for an identical repeat.
+                  key={column.id === honoured.id ? honoured.key : undefined}
                   instance={instance}
                   column={column}
                   labels={labels}
-                  autoFocus={column.id === focusColumnId}
+                  autoFocus={column.id === honoured.id}
                 />
               ) : null}
             </li>

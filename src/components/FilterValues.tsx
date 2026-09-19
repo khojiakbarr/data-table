@@ -136,14 +136,25 @@ export function FilterValues<TData extends RowData>({
     needle === "" || labels.blanks.toLowerCase().includes(needle.toLowerCase())
   const showBlanks = (blanksAvailable && blanksMatchNeedle) || blankSelected
   /*
-   * The note stands in for Select all and the value rows only (finding: it
-   * used to suppress (Blanks) too, hiding the only control that could express
-   * blankness exactly when blankness was the only thing left to filter on).
-   * A rejected request already has its own failure line and Retry on screen
-   * above, so the note is withheld there too — showing both is the same "no
-   * data" lie next to the real explanation, and it undercuts the Retry.
+   * Select all belongs to exactly one state — a list with something in it —
+   * and the other three each say for themselves why there is nothing to
+   * select. Gating Select all on the note instead left it live over zero
+   * options in the two states where the list is *guaranteed* empty, and there
+   * `toggleAll` can only write `values: []` with the operator forced back to
+   * "in", which `draftToCondition` turns into null and which then silently
+   * clears an existing filter — a blank/notBlank draft carries no values to
+   * save it. So: in flight says so in words as well as in `aria-busy` (the
+   * attribute alone leaves a sighted user an empty box, and `labels.loading`
+   * already names this state for the table's own progress bar); failed says
+   * nothing extra, because the failure line above already explains the empty
+   * list and the note beside it would repeat that and undercut its Retry; and
+   * a list that is simply empty gets the note. (Blanks) is an operator rather
+   * than a member of this list, so it renders below on its own terms and none
+   * of this applies to it.
    */
-  const showNote = visible.length === 0 && !loaded.loading && !loaded.failed
+  const hasOptions = visible.length > 0
+  const showNote = !hasOptions && !loaded.loading && !loaded.failed
+  const emptyNote = loaded.loading ? labels.loading : showNote ? labels.noValues : null
 
   const toggleValue = (value: FilterValue, on: boolean) => {
     const values = on
@@ -202,25 +213,13 @@ export function FilterValues<TData extends RowData>({
       */}
       <ul className="dt-values-list" aria-busy={loaded.loading}>
         {/*
+          Select all, or whatever stands in for it (`emptyNote` above).
           "A source exists but produced no matching value" is still the
           no-choices case §5.3 forbids showing as a bare, live checkbox list:
           a needle that matches nothing, or a first client render with no data
-          yet, both read as "there is no data" without this note — and worse,
-          a stray click on a live Select All there would write `values: []`,
-          which `draftToCondition` turns into null and silently clears an
-          existing filter. Loading and a failure are both exempted: a fetch in
-          flight is its own state (`aria-busy` on the list above), and a
-          failure already explains the empty list and offers its own retry —
-          the note beside it would both repeat that and undercut Retry.
-          Whether to show it has nothing to do with (Blanks), rendered on its
-          own below: that box is an operator, not a member of this list, so
-          it is never part of what the note stands in for.
+          yet, both read as "there is no data" without a note saying otherwise.
         */}
-        {showNote ? (
-          <li className="dt-values-item">
-            <p className="dt-filter-note">{labels.noValues}</p>
-          </li>
-        ) : (
+        {hasOptions ? (
           <li className="dt-values-item">
             <label className="dt-values-label">
               <input
@@ -230,6 +229,10 @@ export function FilterValues<TData extends RowData>({
               />
               <span>{labels.selectAll}</span>
             </label>
+          </li>
+        ) : emptyNote === null ? null : (
+          <li className="dt-values-item">
+            <p className="dt-filter-note">{emptyNote}</p>
           </li>
         )}
 
@@ -261,23 +264,21 @@ export function FilterValues<TData extends RowData>({
           </li>
         ) : null}
 
-        {showNote
-          ? null
-          : visible.map((option) => (
-              <li key={`${typeof option.value}:${String(option.value)}`} className="dt-values-item">
-                <label className="dt-values-label">
-                  <input
-                    type="checkbox"
-                    checked={draft.values.includes(option.value)}
-                    onChange={(event) => toggleValue(option.value, event.target.checked)}
-                  />
-                  <span>{option.label ?? String(option.value)}</span>
-                </label>
-                {option.count === undefined ? null : (
-                  <span className="dt-values-count">{option.count}</span>
-                )}
-              </li>
-            ))}
+        {visible.map((option) => (
+          <li key={`${typeof option.value}:${String(option.value)}`} className="dt-values-item">
+            <label className="dt-values-label">
+              <input
+                type="checkbox"
+                checked={draft.values.includes(option.value)}
+                onChange={(event) => toggleValue(option.value, event.target.checked)}
+              />
+              <span>{option.label ?? String(option.value)}</span>
+            </label>
+            {option.count === undefined ? null : (
+              <span className="dt-values-count">{option.count}</span>
+            )}
+          </li>
+        ))}
       </ul>
     </div>
   )
@@ -354,11 +355,20 @@ function useLoadedValues<TData extends RowData>(
   enabled: boolean,
 ): LoadedValues {
   const { loadValues } = instance.filtering
+  /*
+   * Seeded busy when a request is going to be issued. The effect that issues
+   * it runs one commit after mount, so a `loading: false` seed makes the very
+   * first commit of a server-mode list column an empty list with nothing in
+   * flight — which the note above reads as "there is nothing to choose from"
+   * about a request nobody has made yet, and then replaces a frame later.
+   * `enabled` already means "there is a `loadValues` and it is this column's
+   * source", which is the same condition the effect itself runs under.
+   */
   const [state, setState] = useState<{
     options: FilterValueOption[]
     loading: boolean
     failed: boolean
-  }>({ options: [], loading: false, failed: false })
+  }>(() => ({ options: [], loading: enabled, failed: false }))
   const [attempt, setAttempt] = useState(0)
   const retry = useCallback(() => setAttempt((count) => count + 1), [])
 

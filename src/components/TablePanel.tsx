@@ -34,9 +34,9 @@ export interface TablePanelProps<TData extends RowData> {
    * Identifies this particular focus request. A host that wants a repeat
    * request for the SAME `focusColumnId` to be honoured again — not just the
    * first time that column is named — bumps this on every request; the
-   * built-in shell does, from the header menu. Omit it and only the first
-   * request for a given column takes effect while this component stays
-   * mounted.
+   * built-in shell does, from the header menu. Omit it and every *change* of
+   * `focusColumnId` is still honoured; only naming the same column twice in a
+   * row is then indistinguishable from a re-render, and does nothing.
    */
   focusNonce?: number | undefined
 }

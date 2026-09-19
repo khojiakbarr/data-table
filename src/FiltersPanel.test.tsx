@@ -262,6 +262,25 @@ describe("the side panel's tabs", () => {
     expect(screen.getByLabelText("Name: Value")).toBe(document.activeElement)
   })
 
+  it("follows a new focusColumnId from a shell that passes no nonce", () => {
+    const { rerender } = render(<LonePanel focusColumnId="name" />)
+    expect(screen.getByLabelText("Name: Value")).toBe(document.activeElement)
+
+    rerender(<LonePanel focusColumnId="amount" />)
+
+    /*
+     * `focusNonce` is optional on both exported prop types, and `TablePanel`
+     * is exported precisely so a shell can drive the panel itself — such a
+     * shell passes no nonce on any render. Gating the honour check on the
+     * nonce ALONE made the comparison `undefined !== undefined`, always
+     * false, so `focusColumnId` was a dead prop from mount onwards: naming a
+     * different column did nothing at all.
+     */
+    expect(screen.getByLabelText("Amount: Value")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Name: Value")).toBeNull()
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+  })
+
   it("opens on one column's editor from the header menu's second filter item", async () => {
     const user = userEvent.setup()
     render(<Table />)
@@ -335,6 +354,29 @@ describe("the side panel's tabs", () => {
     // `focusColumnId` honoured would see the identical string and do
     // nothing — this is the bug the nonce exists to prevent.
     await openAmountFromMenu(user)
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+  })
+
+  it("follows a repeat focusColumnId request for a column whose editor never closed", async () => {
+    const user = userEvent.setup()
+    render(<Table />)
+
+    await openAmountFromMenu(user)
+    expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
+
+    /*
+     * The untested half of the nonce bug. Nothing is collapsed in between, so
+     * the honoured request writes the `openId` the tab already holds: React
+     * bails out of an identical `useState` write, `FilterEditor` never
+     * remounts, and its one-shot `autoFocus` latch — set at mount and cleared
+     * by the effect beside it — never fires again. The menu unmounts on
+     * activation without restoring focus anywhere, so focus falls to `<body>`
+     * and a keyboard user's next Tab restarts from the top of the document
+     * (WCAG 2.4.3). Only an honoured request driving the editor's own
+     * identity re-arms the latch.
+     */
+    await openAmountFromMenu(user)
+
     expect(screen.getByLabelText("Amount: Value")).toBe(document.activeElement)
   })
 

@@ -1,12 +1,13 @@
 import { createColumnHelper } from "@tanstack/react-table"
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
+import { renderToStaticMarkup } from "react-dom/server"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DataTable, defaultLabels } from "./components/DataTable"
 import { FilterEditor } from "./components/FilterEditor"
-import type { FilterValueOption } from "./core/filters"
-import { useDataTable, type DataTableFeatures } from "./useDataTable"
+import type { FilterCondition, FilterValueOption } from "./core/filters"
+import { useDataTable, type DataTableFeatures, type DataTableInstance } from "./useDataTable"
 
 /**
  * The values list: where its choices come from, in which order of preference,
@@ -46,6 +47,17 @@ const data: Row[] = [
   { id: "r3", name: "Nur", tag: "", size: "m", when: new Date(2026, 3, 2) },
 ]
 
+/**
+ * The conditions the table has actually committed, rendered beside the editor.
+ *
+ * In server mode no row ever leaves the table, so the rendered rows cannot say
+ * whether a click changed the model — and "changed nothing" is exactly what
+ * the blank-operator cases below have to prove.
+ */
+function ConditionsProbe({ instance }: { instance: DataTableInstance<Row> }) {
+  return <span data-testid="conditions">{JSON.stringify(instance.filtering.conditions)}</span>
+}
+
 function Table({
   columnId,
   server = false,
@@ -70,6 +82,7 @@ function Table({
         column={instance.table.getColumn(columnId)!}
         labels={defaultLabels}
       />
+      <ConditionsProbe instance={instance} />
       <DataTable instance={instance} virtualize={false} />
     </>
   )
@@ -176,6 +189,11 @@ function LiveCallbackTable({ spy }: { spy: (columnId: string, options: { search:
 const shown = () => screen.getAllByRole("row").filter((row) => row.classList.contains("dt-tr"))
 /** The list item one checkbox sits in, so its count can be read beside it. */
 const itemFor = (name: string) => screen.getByLabelText(name).closest("li") as HTMLElement
+/** What {@link ConditionsProbe} reports the table is currently filtering by. */
+const conditions = (): FilterCondition[] =>
+  JSON.parse(screen.getByTestId("conditions").textContent ?? "[]") as FilterCondition[]
+/** A `loadValues` that never settles, so the request stays in flight. */
+const neverSettles = () => new Promise<FilterValueOption[]>(() => undefined)
 
 beforeEach(() => localStorage.clear())
 
@@ -472,6 +490,108 @@ describe("a values filter", () => {
     // The failure already explains the empty list and offers Retry; the
     // "no data" note beside it would repeat that and undercut Retry.
     expect(screen.queryByText("No values to choose from")).toBeNull()
+  })
+
+  it("drops the ticked values when the operator select moves to blankness", async () => {
+    const user = userEvent.setup()
+    render(<Table columnId="tag" />)
+
+    await user.click(screen.getByLabelText("open"))
+    expect(shown()).toHaveLength(2)
+
+    fireEvent.change(screen.getByLabelText("Tag: Operator"), { target: { value: "blank" } })
+
+    /*
+     * "A list condition carries a value set OR blankness, never both" is the
+     * rule the (Blanks) checkbox already enforces on its own path; the
+     * operator select went around it and left `values` populated. The
+     * published condition carries no values at all, so a still-ticked "open"
+     * has the list contradicting the query that is filtering the rows.
+     */
+    expect(conditions()).toEqual([{ kind: "list", field: "tag", op: "blank" }])
+    expect(shown()).toHaveLength(1)
+    expect(screen.getByLabelText("open")).not.toBeChecked()
+    expect(screen.getByLabelText("(Blanks)")).toBeChecked()
+  })
+
+  it("does not destroy the filter when a value is ticked after moving to blankness", async () => {
+    const user = userEvent.setup()
+    render(<Table columnId="tag" />)
+
+    await user.click(screen.getByLabelText("open"))
+    fireEvent.change(screen.getByLabelText("Tag: Operator"), { target: { value: "blank" } })
+    expect(shown()).toHaveLength(1)
+
+    await user.click(screen.getByLabelText("open"))
+
+    /*
+     * With the stale tick left in place this click *unticks* it: `values`
+     * goes empty, `draftToCondition` returns null and `commit` clears the
+     * column — the user removes a filter they never asked to remove. Ticking
+     * it now means what it says.
+     */
+    expect(conditions()).toEqual([{ kind: "list", field: "tag", op: "in", values: ["open"] }])
+    expect(shown()).toHaveLength(2)
+    expect(screen.getByLabelText("Tag: Operator")).toHaveValue("in")
+  })
+
+  it("offers nothing to click over a values list that is still loading", async () => {
+    const loadValues = vi.fn().mockImplementation(neverSettles)
+    render(<Table columnId="tag" server loadValues={loadValues} />)
+
+    fireEvent.change(screen.getByLabelText("Tag: Operator"), { target: { value: "blank" } })
+    expect(conditions()).toEqual([{ kind: "list", field: "tag", op: "blank" }])
+
+    /*
+     * The list is guaranteed empty while the first request is out, and a live
+     * Select all over zero options can only call `toggleAll(true)` with
+     * nothing to add: `values` stays `[]` with the operator forced back to
+     * "in", `draftToCondition` returns null, and `commit` clears the filter
+     * just set. The busy list says why it is empty; (Blanks) is an operator
+     * rather than a member and keeps working throughout.
+     */
+    expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "true")
+    expect(screen.queryByLabelText("Select all")).toBeNull()
+    // `aria-busy` alone leaves a sighted user an empty box, so the state says
+    // itself in words too — `labels.loading`, the one that already names it.
+    expect(screen.getByText("Loading")).toBeInTheDocument()
+    expect(screen.queryByText("No values to choose from")).toBeNull()
+    expect(screen.getByLabelText("(Blanks)")).toBeChecked()
+    expect(conditions()).toEqual([{ kind: "list", field: "tag", op: "blank" }])
+  })
+
+  it("offers nothing to click over a values list whose request failed", async () => {
+    const loadValues = vi.fn().mockRejectedValue(new Error("no"))
+    render(<Table columnId="tag" server loadValues={loadValues} />)
+    expect(await screen.findByText("Could not load values")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Tag: Operator"), { target: { value: "notBlank" } })
+
+    // A rejection is persistent, not a race: this state lasts until a Retry
+    // succeeds. The failure line and its Retry already explain the empty list
+    // — the note would repeat them, and a Select all beside them would clear
+    // the filter on a click that could not mean anything else.
+    expect(screen.queryByLabelText("Select all")).toBeNull()
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0)
+    expect(screen.queryByText("No values to choose from")).toBeNull()
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
+    expect(conditions()).toEqual([{ kind: "list", field: "tag", op: "notBlank" }])
+  })
+
+  it("commits the busy list, not the no-values note, on a server column's first render", () => {
+    // `renderToStaticMarkup` runs no effects at all, which is exactly the
+    // pre-effect state a real first paint commits — RTL's `render()` flushes
+    // effects inside `act()` and would hide the flash.
+    const markup = renderToStaticMarkup(
+      <Table columnId="tag" server loadValues={neverSettles} />,
+    )
+
+    // Seeded `loading: false`, the very first commit of a server-mode list
+    // column paints "there is nothing to choose from" about a request nobody
+    // has issued yet.
+    expect(markup).not.toContain("No values to choose from")
+    expect(markup).toContain('aria-busy="true"')
+    expect(markup).toContain("Loading")
   })
 
   it("announces a values load failure to assistive technology", async () => {

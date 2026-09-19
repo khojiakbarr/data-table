@@ -188,7 +188,21 @@ export function withOperator(draft: FilterDraft, operator: string): FilterDraft 
     }
     case "list": {
       const op = pickOperator(LIST_OPS, operator)
-      return op === null ? draft : { ...draft, op }
+      if (op === null) return draft
+      /*
+       * A list condition carries a value set OR blankness, never both — the
+       * rule `draftToCondition` and `listCondition` already apply by ignoring
+       * `values` for a blank operator. Every other kind may keep what was
+       * typed under a blank operator, because nothing renders it: a list is
+       * the one kind whose values stay on screen, so a kept set would leave
+       * the checkboxes claiming a membership the published query does not
+       * filter on, and the next click on a stale tick would empty the set,
+       * build no condition at all and clear a filter nobody asked to remove.
+       * Enforced here rather than at the checkbox, so every path that
+       * switches operator is covered by the one rule.
+       */
+      const blank = op === "blank" || op === "notBlank"
+      return { ...draft, op, values: blank ? [] : draft.values }
     }
   }
 }

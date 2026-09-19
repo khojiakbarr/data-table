@@ -1,5 +1,5 @@
 import type { Column, RowData } from "@tanstack/react-table"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { columnLabel } from "../core/columnLabel"
 import type { ListDraft } from "../core/filterDraft"
 import { isFilterValue, type FilterValue, type FilterValueOption } from "../core/filters"
@@ -70,9 +70,24 @@ export function FilterValues<TData extends RowData>({
     instance.filtering.loadValues !== undefined
   const loaded = useLoadedValues(instance, column.id, search, usesServer)
 
-  const options = declared ?? facets?.options ?? loaded.options
+  const sourced = declared ?? facets?.options ?? loaded.options
   const hasSource = declared !== undefined || facets !== null || usesServer
   if (!hasSource) return <p className="dt-filter-note">{labels.noValues}</p>
+
+  /*
+   * A ticked value the current source no longer offers is unioned back in.
+   * Without this, narrowing the source (a facet count going to zero under
+   * another column's filter, a server answer that no longer includes it)
+   * silently un-lists a member that is still active in the condition, and the
+   * list shows nothing selected on a column that is filtering rows away — the
+   * narrowing half of the Excel/AG Grid behaviour without the half that keeps
+   * selected members present. No count is given for it, since the source that
+   * would have supplied one does not carry it any more.
+   */
+  const missing: FilterValueOption[] = draft.values
+    .filter((value) => !sourced.some((option) => option.value === value))
+    .map((value) => ({ value }))
+  const options: FilterValueOption[] = missing.length === 0 ? sourced : [...sourced, ...missing]
 
   /*
    * Filtered locally in both modes: server-side the host has already narrowed
@@ -86,9 +101,10 @@ export function FilterValues<TData extends RowData>({
         .toLowerCase()
         .includes(needle.toLowerCase()),
   )
+  const visibleValues = visible.map((option) => option.value)
   const blankSelected = draft.op === "blank"
   const allSelected =
-    visible.length > 0 && visible.every((option) => draft.values.includes(option.value))
+    visible.length > 0 && visibleValues.every((value) => draft.values.includes(value))
   /** A value set and blankness cannot both be carried, so choosing one drops the other. */
   const valueOp = draft.op === "blank" || draft.op === "notBlank" ? "in" : draft.op
 
@@ -96,6 +112,21 @@ export function FilterValues<TData extends RowData>({
     const values = on
       ? [...draft.values, value]
       : draft.values.filter((member) => member !== value)
+    onDraft({ kind: "list", op: valueOp, values })
+  }
+
+  /*
+   * Select all reads and writes the visible slice only, as a union/difference
+   * over `draft.values` rather than a replacement of it. A plain "check ->
+   * write the visible values, uncheck -> write []" silently discards whatever
+   * the search box has hidden: ticking a new value under a search can drop an
+   * already-selected one outside it, and unticking a fully-selected list under
+   * a search can wipe out selections the user never touched or saw.
+   */
+  const toggleAll = (on: boolean) => {
+    const values = on
+      ? [...draft.values, ...visibleValues.filter((value) => !draft.values.includes(value))]
+      : draft.values.filter((value) => !visibleValues.includes(value))
     onDraft({ kind: "list", op: valueOp, values })
   }
 
@@ -128,64 +159,76 @@ export function FilterValues<TData extends RowData>({
         and 200ms ease `.dt-loading tbody` already uses for the rows.
       */}
       <ul className="dt-values-list" aria-busy={loaded.loading}>
-        <li className="dt-values-item">
-          <label className="dt-values-label">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={(event) =>
-                onDraft({
-                  kind: "list",
-                  op: valueOp,
-                  values: event.target.checked ? visible.map((option) => option.value) : [],
-                })
-              }
-            />
-            <span>{labels.selectAll}</span>
-          </label>
-        </li>
-
-        <li className="dt-values-item">
-          <label className="dt-values-label">
-            <input
-              type="checkbox"
-              checked={blankSelected}
-              onChange={(event) =>
-                /*
-                 * Blankness is an operator, not a member: `{ op: "in", values:
-                 * [null] }` matches nullish rows on the client and returns
-                 * nothing on the server, because `NULL = ANY(ARRAY[NULL])` is
-                 * NULL and never true.
-                 */
-                onDraft(
-                  event.target.checked
-                    ? { kind: "list", op: "blank", values: [] }
-                    : { kind: "list", op: "in", values: [] },
-                )
-              }
-            />
-            <span>{labels.blanks}</span>
-          </label>
-          {facets === null || facets.blanks === 0 ? null : (
-            <span className="dt-values-count">{facets.blanks}</span>
-          )}
-        </li>
-
-        {visible.map((option) => (
-          <li key={`${typeof option.value}:${String(option.value)}`} className="dt-values-item">
-            <label className="dt-values-label">
-              <input
-                type="checkbox"
-                checked={draft.values.includes(option.value)}
-                onChange={(event) => toggleValue(option.value, event.target.checked)}
-              />
-              <span>{option.label ?? String(option.value)}</span>
-            </label>
-            {option.count === undefined ? null : (
-              <span className="dt-values-count">{option.count}</span>
-            )}
+        {/*
+          "A source exists but produced nothing" is still the no-choices case
+          §5.3 forbids showing as a bare, live checkbox list: a needle that
+          matches nothing, or a first client render with no data yet, both
+          read as "there is no data" without this note — and worse, a stray
+          click on a live Select All there would write `values: []`, which
+          `draftToCondition` turns into null and silently clears an existing
+          filter. Loading is exempted: a fetch already in flight is its own
+          state, carried by `aria-busy` on the list above.
+        */}
+        {visible.length === 0 && !loaded.loading ? (
+          <li className="dt-values-item">
+            <p className="dt-filter-note">{labels.noValues}</p>
           </li>
-        ))}
+        ) : (
+          <>
+            <li className="dt-values-item">
+              <label className="dt-values-label">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={(event) => toggleAll(event.target.checked)}
+                />
+                <span>{labels.selectAll}</span>
+              </label>
+            </li>
+
+            <li className="dt-values-item">
+              <label className="dt-values-label">
+                <input
+                  type="checkbox"
+                  checked={blankSelected}
+                  onChange={(event) =>
+                    /*
+                     * Blankness is an operator, not a member: `{ op: "in", values:
+                     * [null] }` matches nullish rows on the client and returns
+                     * nothing on the server, because `NULL = ANY(ARRAY[NULL])` is
+                     * NULL and never true.
+                     */
+                    onDraft(
+                      event.target.checked
+                        ? { kind: "list", op: "blank", values: [] }
+                        : { kind: "list", op: "in", values: [] },
+                    )
+                  }
+                />
+                <span>{labels.blanks}</span>
+              </label>
+              {facets === null || facets.blanks === 0 ? null : (
+                <span className="dt-values-count">{facets.blanks}</span>
+              )}
+            </li>
+
+            {visible.map((option) => (
+              <li key={`${typeof option.value}:${String(option.value)}`} className="dt-values-item">
+                <label className="dt-values-label">
+                  <input
+                    type="checkbox"
+                    checked={draft.values.includes(option.value)}
+                    onChange={(event) => toggleValue(option.value, event.target.checked)}
+                  />
+                  <span>{option.label ?? String(option.value)}</span>
+                </label>
+                {option.count === undefined ? null : (
+                  <span className="dt-values-count">{option.count}</span>
+                )}
+              </li>
+            ))}
+          </>
+        )}
       </ul>
     </div>
   )
@@ -240,6 +283,14 @@ interface LoadedValues {
  * falling back to an empty list is the same "there is no data" lie §5.3
  * rejects for a column with no callback at all.
  *
+ * `loadValues` itself is held in a ref rather than named as a dependency, the
+ * same contract `useTableQuery`'s `onQueryChange` documents: a host wired as
+ * `filtering={{ loadValues: (id, o) => api.facets(id, o) }}` — the shape the
+ * README's own example uses — hands a fresh arrow to every render, and naming
+ * it as a dependency would refetch (and abort the in-flight request) on every
+ * one of the host's re-renders, not just the ones that actually change what
+ * should be asked for.
+ *
  * @param instance - The table instance, for its `loadValues`.
  * @param columnId - Which column's values to ask for.
  * @param search - The editor's search box, already debounced.
@@ -262,12 +313,20 @@ function useLoadedValues<TData extends RowData>(
   const [attempt, setAttempt] = useState(0)
   const retry = useCallback(() => setAttempt((count) => count + 1), [])
 
+  // Refreshed on every render, unconditionally: this is what keeps the ref
+  // current without making the callback's own identity a dependency below.
+  const loadValuesRef = useRef(loadValues)
   useEffect(() => {
-    if (!enabled || loadValues === undefined) return
+    loadValuesRef.current = loadValues
+  })
+
+  useEffect(() => {
+    const currentLoadValues = loadValuesRef.current
+    if (!enabled || currentLoadValues === undefined) return
     const controller = new AbortController()
     let cancelled = false
     setState((current) => ({ ...current, loading: true, failed: false }))
-    loadValues(columnId, { search, signal: controller.signal })
+    currentLoadValues(columnId, { search, signal: controller.signal })
       .then((options) => {
         if (!cancelled) setState({ options, loading: false, failed: false })
       })
@@ -280,7 +339,10 @@ function useLoadedValues<TData extends RowData>(
       // on top of a faster second one.
       controller.abort()
     }
-  }, [enabled, loadValues, columnId, search, attempt])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadValues is read from
+    // loadValuesRef.current on purpose (see the JSDoc above); naming it here would
+    // reintroduce the refetch-on-every-host-render bug this ref exists to fix.
+  }, [enabled, columnId, search, attempt])
 
   return { ...state, retry }
 }

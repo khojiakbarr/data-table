@@ -1,6 +1,7 @@
 import { createColumnHelper } from "@tanstack/react-table"
 import { render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DataTable, defaultLabels } from "./components/DataTable"
 import { FilterEditor } from "./components/FilterEditor"
@@ -70,6 +71,83 @@ function Table({
         labels={defaultLabels}
       />
       <DataTable instance={instance} virtualize={false} />
+    </>
+  )
+}
+
+/** Two editors open at once, so one column's filter can narrow another's facets. */
+function TwoFilterTable() {
+  const instance = useDataTable<Row>({
+    id: "values-two-filters",
+    columns,
+    data,
+    getRowId: (row) => row.id,
+  })
+  return (
+    <>
+      <FilterEditor
+        instance={instance}
+        column={instance.table.getColumn("tag")!}
+        labels={defaultLabels}
+      />
+      <FilterEditor
+        instance={instance}
+        column={instance.table.getColumn("name")!}
+        labels={defaultLabels}
+      />
+      <DataTable instance={instance} virtualize={false} />
+    </>
+  )
+}
+
+/** A client-mode column with no rows yet — the ordinary first render of async client data. */
+function EmptyDataTable() {
+  const instance = useDataTable<Row>({
+    id: "values-empty-data",
+    columns,
+    data: [],
+    getRowId: (row) => row.id,
+  })
+  return (
+    <FilterEditor
+      instance={instance}
+      column={instance.table.getColumn("tag")!}
+      labels={defaultLabels}
+    />
+  )
+}
+
+/**
+ * A host that re-renders with a fresh `loadValues` arrow every time, the shape
+ * `filtering={{ loadValues: (id, o) => api.facets(id, o) }}` produces and the
+ * one a host wired to TanStack Query hands down on every `isFetching` flip.
+ */
+function LiveCallbackTable({ spy }: { spy: (columnId: string, options: { search: string }) => void }) {
+  const [, forceRerender] = useState(0)
+  const instance = useDataTable<Row>({
+    id: "values-live-callback",
+    columns,
+    data,
+    getRowId: (row) => row.id,
+    mode: "server",
+    rowCount: data.length,
+    filtering: {
+      loadValues: async (columnId, options) => {
+        spy(columnId, { search: options.search })
+        return [{ value: "open", count: 7 }]
+      },
+    },
+  })
+  return (
+    <>
+      <FilterEditor
+        instance={instance}
+        column={instance.table.getColumn("tag")!}
+        labels={defaultLabels}
+      />
+      <button type="button" onClick={() => forceRerender((count) => count + 1)}>
+        Re-render host
+      </button>
     </>
   )
 }
@@ -188,5 +266,101 @@ describe("a values filter", () => {
     // Faceting is off in server mode — it could only compute a confidently
     // wrong list from the one page in hand — and there is no callback.
     expect(screen.getByText("No values to choose from")).toBeInTheDocument()
+  })
+
+  it("keeps a ticked value listed and checked once another filter narrows it out of the facets", async () => {
+    const user = userEvent.setup()
+    render(<TwoFilterTable />)
+
+    await user.click(screen.getByLabelText("open"))
+    expect(shown()).toHaveLength(2)
+
+    await user.type(screen.getByLabelText("Name: Value"), "Kimyo")
+    await user.tab()
+
+    // The Name filter now excludes every "open" row, so `tag`'s facets —
+    // narrowed by every OTHER column's filter — no longer contain "open" at
+    // all. The condition still does, and the list must say so: an unticked
+    // "open" here would contradict the very filter hiding every row.
+    expect(shown()).toHaveLength(0)
+    expect(screen.getByLabelText("open")).toBeChecked()
+  })
+
+  it("keeps a hidden selection when Select all is ticked under a search", async () => {
+    const user = userEvent.setup()
+    render(<Table columnId="tag" />)
+
+    await user.click(screen.getByLabelText("open"))
+    expect(shown()).toHaveLength(2)
+
+    await user.type(screen.getByLabelText("Tag: Search values"), "cl")
+    await user.click(screen.getByLabelText("Select all"))
+
+    // Select all must union the visible slice into the existing selection,
+    // not replace it: "open" was ticked before the search and is not shown
+    // under "cl", so it must survive.
+    expect(screen.getByLabelText("Tag: Operator")).toHaveValue("in")
+    expect(shown()).toHaveLength(3)
+  })
+
+  it("keeps a hidden selection when Select all is unticked under a search", async () => {
+    const user = userEvent.setup()
+    render(<Table columnId="tag" />)
+
+    await user.click(screen.getByLabelText("open"))
+    await user.click(screen.getByLabelText("closed"))
+    expect(shown()).toHaveLength(3)
+
+    await user.type(screen.getByLabelText("Tag: Search values"), "cl")
+    expect(screen.getByLabelText("Select all")).toBeChecked()
+    await user.click(screen.getByLabelText("Select all"))
+
+    // Unticking Select all under a search must only drop the visible member
+    // ("closed"): "open" was never shown under "cl" and the user never acted
+    // on it, so the condition must still carry it.
+    expect(shown()).toHaveLength(2)
+    expect(screen.getByLabelText("Tag: Operator")).toHaveValue("in")
+  })
+
+  it("shows a note instead of a bare checkbox list when a search matches nothing", async () => {
+    const user = userEvent.setup()
+    render(<Table columnId="tag" />)
+
+    await user.type(screen.getByLabelText("Tag: Search values"), "zzz")
+
+    // A source that exists but produced nothing is still the no-choices case:
+    // an empty `<ul>` here reads as "there is no data", and a live Select All
+    // left over it would write `values: []` on a stray click, which
+    // `draftToCondition` turns into null and silently clears the filter.
+    expect(screen.getByText("No values to choose from")).toBeInTheDocument()
+    expect(screen.queryByRole("checkbox")).toBeNull()
+  })
+
+  it("shows a note rather than an empty checkbox list for a column with no rows yet", () => {
+    render(<EmptyDataTable />)
+
+    // The ordinary first render of async client data: a source (faceting)
+    // exists, but it has nothing to offer yet. Byte-identical to the "no
+    // matches" case above, and the same lie either way if left unhandled.
+    expect(screen.getByText("No values to choose from")).toBeInTheDocument()
+    expect(screen.queryByRole("checkbox")).toBeNull()
+  })
+
+  it("does not refetch when the host hands down a fresh loadValues on every render", async () => {
+    const user = userEvent.setup()
+    const spy = vi.fn()
+    render(<LiveCallbackTable spy={spy} />)
+
+    expect(await screen.findByLabelText("open")).toBeInTheDocument()
+    expect(spy).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole("button", { name: "Re-render host" }))
+    await user.click(screen.getByRole("button", { name: "Re-render host" }))
+
+    // `loadValues` is held in a ref, the same contract `useTableQuery`'s
+    // `onQueryChange` documents: an inline arrow's new identity on every host
+    // render must not refire the effect, or a host that re-renders faster
+    // than the backend answers would re-issue and abort the request forever.
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 })

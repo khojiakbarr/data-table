@@ -31,15 +31,24 @@ export type { PaginationApi } from "./core/usePagination"
 export { HeaderCell } from "./components/HeaderCell"
 export { HeaderMenu } from "./components/HeaderMenu"
 export type { HeaderMenuPosition } from "./components/HeaderMenu"
+export { HeightGrip } from "./components/HeightGrip"
+export type { HeightGripProps } from "./components/HeightGrip"
 export { ColumnPanel } from "./components/ColumnPanel"
 export { TablePanel } from "./components/TablePanel"
-export type { PanelTab, TablePanelProps } from "./components/TablePanel"
+export type { PanelPresentation, PanelTab, TablePanelProps } from "./components/TablePanel"
+export { TableSideBar } from "./components/TableSideBar"
+export type { TableSideBarProps } from "./components/TableSideBar"
 export { ColumnsTab } from "./components/ColumnsTab"
 export type { ColumnsTabProps } from "./components/ColumnsTab"
+export { ColumnGroupRow } from "./components/ColumnGroupRow"
+export type { ColumnGroupRowProps } from "./components/ColumnGroupRow"
+export { RowGroupsZone } from "./components/RowGroupsZone"
+export type { RowGroupsZoneProps } from "./components/RowGroupsZone"
 export { FiltersTab } from "./components/FiltersTab"
 export type { FiltersTabProps } from "./components/FiltersTab"
 export { QuickSearch } from "./components/QuickSearch"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
+export { GroupBodyRow } from "./components/GroupBodyRow"
 export { canFilterColumn, FilterEditor } from "./components/FilterEditor"
 export type { FilterEditorProps } from "./components/FilterEditor"
 export { FilterPopover } from "./components/FilterPopover"
@@ -83,6 +92,25 @@ export type {
   TextCondition,
 } from "./core/filters"
 
+/*
+ * Server-side row grouping. `GroupRow` is the shape a flattened page carries
+ * beside the host's own rows; the rest is what a shell needs to read a key
+ * path — `groupRowId` is the id the table gives a group row, and the two
+ * prune helpers are the gate a stored or hand-written grouping goes through.
+ */
+export {
+  groupColumnMinWidth,
+  groupRowId,
+  isGroupRow,
+  isPathExpanded,
+  normaliseExpanded,
+  pathsEqual,
+  pruneExpanded,
+  pruneGrouping,
+  togglePath,
+} from "./core/grouping"
+export type { GroupRow } from "./core/grouping"
+
 export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"
 export { collectColumnFacts, collectFilterKinds, resolveFilterKind } from "./core/filterKinds"
@@ -118,8 +146,21 @@ export type { PrunedSearchFields, SearchFieldsResult, SearchNeedle } from "./cor
 export { useDebouncedValue } from "./core/useDebouncedValue"
 
 /* Helpers worth borrowing rather than rewriting. */
-export { fillerIndex, headerPinning, pinnedStyle, renderedLeafColumns } from "./core/pinning"
+export {
+  fillerIndex,
+  headerPinning,
+  orderedLeafColumns,
+  pinnedStyle,
+  renderedLeafColumns,
+} from "./core/pinning"
 export type { HeaderPinning } from "./core/pinning"
+export { buildColumnTree, groupVisibility, leafColumnsOfNode } from "./core/columnTree"
+export type {
+  ColumnTreeGroup,
+  ColumnTreeLeaf,
+  ColumnTreeNode,
+  GroupVisibility,
+} from "./core/columnTree"
 export { columnLabel } from "./core/columnLabel"
 export { dropAtIndex, dropSideAt, dropSlotId, moveColumn, reachableRange } from "./core/reorder"
 export type { DropSide } from "./core/reorder"
@@ -133,6 +174,7 @@ export { useClampedPlacement } from "./core/useClampedPlacement"
 export type { ClampedPoint } from "./core/useClampedPlacement"
 export { clampColumnWidth, columnBounds } from "./core/sizing"
 export type { ColumnBounds } from "./core/sizing"
+export { clampTableHeight, minTableHeight, tableHeightStep } from "./core/tableHeight"
 export { localStorageLayout, noLayoutStorage, pruneLayout } from "./core/persistence"
 export { useRowVirtualizer } from "./core/useRowVirtualizer"
 export type { RowVirtualizerOptions, RowVirtualizerResult, RenderedItem } from "./core/useRowVirtualizer"

@@ -232,7 +232,13 @@ describe("playground", () => {
     render(<Playground />)
     await waitForRows()
 
-    expect(screen.getByText("Partner")).toBeInTheDocument()
+    /*
+     * Scoped to the table: the Columns tab and the Row Groups zone name the
+     * same columns, so a page-wide `getByText("Partner")` can match more than
+     * one element. It is the COLUMN HEADER that has to move with the language.
+     */
+    const header = () => within(screen.getByRole("table"))
+    expect(header().getByText("Partner")).toBeInTheDocument()
     expect(screen.getByText(CHROME.en.resetAll)).toBeInTheDocument()
 
     await user.click(screen.getByLabelText("Русский"))
@@ -240,13 +246,13 @@ describe("playground", () => {
     // The column header is the page's own translation, the sidebar copy is
     // `CHROME.ru`, and the toolbar button is the library's `ruLabels` — all
     // three have to move for the switcher to have done its job.
-    await waitFor(() => expect(screen.getByText("Контрагент")).toBeInTheDocument())
+    await waitFor(() => expect(header().getByText("Контрагент")).toBeInTheDocument())
     expect(screen.getByText(CHROME.ru.resetAll)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Столбцы" })).toBeInTheDocument()
     expect(screen.queryByText(CHROME.en.resetAll)).not.toBeInTheDocument()
 
     await user.click(screen.getByLabelText("Oʻzbekcha"))
-    await waitFor(() => expect(screen.getByText("Kontragent")).toBeInTheDocument())
+    await waitFor(() => expect(header().getByText("Kontragent")).toBeInTheDocument())
     expect(screen.getByText(CHROME.uz.resetAll)).toBeInTheDocument()
   })
 })

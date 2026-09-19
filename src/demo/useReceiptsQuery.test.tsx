@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { TableQuery } from "../core/query"
-import type { ServerPage } from "./fakeServer"
+import { isGroupRow, type ServerPage } from "./fakeServer"
 import { useReceiptsQuery } from "./useReceiptsQuery"
 
 /**
@@ -42,12 +42,15 @@ const queryFor = (pageIndex: number): TableQuery => ({
   filters: [],
   search: null,
   grouping: [],
+  expanded: [],
   pagination: { pageIndex, pageSize: 50 },
 })
 
 const pageOf = (code: string): ServerPage => ({
   rows: [{ id: code, code, partner: null, amount: null, status: "open", date: "2026-01-01", flagged: false }],
   total: 100,
+  // Ungrouped, so the first row sits inside no group.
+  startPath: [],
 })
 
 /** The request the hook has open for that page, once its effect has run. */
@@ -96,7 +99,8 @@ describe("useReceiptsQuery", () => {
       requestFor(0).resolve(pageOf("KR-stale"))
     })
 
-    expect(result.current.page?.rows[0]?.code).toBe("KR-current")
+    const first = result.current.page?.rows[0]
+    expect(first !== undefined && !isGroupRow(first) ? first.code : undefined).toBe("KR-current")
   })
 
   it("keeps a deliberate abort out of the error banner", async () => {

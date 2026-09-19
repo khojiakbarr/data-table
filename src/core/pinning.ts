@@ -118,6 +118,13 @@ interface PinnedBuckets<TData extends RowData> {
   getEndVisibleLeafColumns: () => AnyColumn<TData>[]
 }
 
+/** The same three buckets, before visibility is applied. */
+interface LeafBuckets<TData extends RowData> {
+  getStartLeafColumns: () => AnyColumn<TData>[]
+  getCenterLeafColumns: () => AnyColumn<TData>[]
+  getEndLeafColumns: () => AnyColumn<TData>[]
+}
+
 /**
  * Visible leaf columns in the order they are rendered.
  *
@@ -143,6 +150,36 @@ export function renderedLeafColumns<TData extends RowData>(
     ...table.getStartVisibleLeafColumns(),
     ...table.getCenterVisibleLeafColumns(),
     ...table.getEndVisibleLeafColumns(),
+  ]
+}
+
+/**
+ * Every leaf column in render order, hidden ones included.
+ *
+ * {@link renderedLeafColumns} answers "what is on screen", which is right for
+ * a `<colgroup>` and wrong for a list that has to offer a hidden column back:
+ * built from the visible buckets, a column disappears from the Columns panel
+ * the moment it is unticked, and the tick that would bring it back goes with
+ * it. The same is true of a saved order — a fallback order that omits the
+ * hidden columns moves them all to the end on the first drag, because
+ * TanStack appends whatever `columnOrder` does not name.
+ *
+ * Order is otherwise identical: start-pinned, then scrolling, then end-pinned,
+ * each in its own arrangement's order.
+ *
+ * @param table - The table instance.
+ * @returns Every leaf column, left to right, visible or not.
+ *
+ * @example
+ * const rows = orderedLeafColumns(table) // what the Columns panel lists
+ */
+export function orderedLeafColumns<TData extends RowData>(
+  table: LeafBuckets<TData>,
+): AnyColumn<TData>[] {
+  return [
+    ...table.getStartLeafColumns(),
+    ...table.getCenterLeafColumns(),
+    ...table.getEndLeafColumns(),
   ]
 }
 

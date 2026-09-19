@@ -69,7 +69,7 @@ async function openPanel() {
  * sort, resize, the kebab — and every one of them starts with its name.
  */
 const handleFor = (name: string): HTMLElement =>
-  within(screen.getByRole("dialog")).getByRole("button", {
+  within(document.querySelector<HTMLElement>(".dt-panel")!).getByRole("button", {
     name: new RegExp(`^${name}: Drag`),
   })
 
@@ -291,7 +291,7 @@ describe("reordering from the keyboard in the Columns tab", () => {
     fireEvent.keyDown(handle, { key: " " })
     fireEvent.keyDown(handle, { key: "Escape" })
 
-    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(document.querySelector(".dt-panel")).not.toBeNull()
   })
 
   it("really moves a pinned column within its own section", async () => {

@@ -4,7 +4,14 @@ import { filterFn_dt } from "../core/filterFn"
 import { rebuildCondition, type FilterCondition } from "../core/filters"
 import type { TableQuery } from "../core/query"
 import type { DataTableFeatures } from "../useDataTable"
-import { fetchReceipts, fetchValues, matchesFilter, type ServerReceipt } from "./fakeServer"
+import {
+  fetchReceipts,
+  fetchValues,
+  isGroupRow,
+  matchesFilter,
+  type ServerReceipt,
+  type ServerRow,
+} from "./fakeServer"
 
 /**
  * Drives the fake server directly, one case per operator — and then checks its
@@ -57,14 +64,26 @@ function query(filters: FilterCondition[], overrides: Partial<TableQuery> = {}):
     filters,
     search: null,
     grouping: [],
+    expanded: [],
     pagination: { pageIndex: 0, pageSize: 20 },
     ...overrides,
   }
 }
 
+/**
+ * The receipt codes of a page, in order.
+ *
+ * Narrows away the group rows a flattened page can hold: `ServerRow` is a
+ * union now that the library carries grouping, and an ungrouped page's rows
+ * are all leaves but the TYPE cannot know that.
+ */
+function codes(rows: ServerRow[]): string[] {
+  return rows.filter((row): row is ServerReceipt => !isGroupRow(row)).map((row) => row.code)
+}
+
 async function codesFor(filter: FilterCondition): Promise<string[]> {
   const page = await fetchReceipts(query([SCOPE, filter]), { delayMs: 0 })
-  return page.rows.map((row) => row.code).sort()
+  return codes(page.rows).sort()
 }
 
 describe("fetchReceipts — text operators (case-insensitive)", () => {
@@ -241,7 +260,7 @@ describe("fetchReceipts — quick search: AND over tokens, OR over fields", () =
       query([SCOPE], { search: { text: "kimyo 10007", fields: ["partner", "code"] } }),
       { delayMs: 0 },
     )
-    expect(page.rows.map((row) => row.code)).toEqual(["KR-10007"])
+    expect(codes(page.rows)).toEqual(["KR-10007"])
   })
 
   it("matches nothing when one token matches no field at all", async () => {
@@ -258,14 +277,14 @@ describe("fetchReceipts — quick search: AND over tokens, OR over fields", () =
       { delayMs: 0 },
     )
     // The row's own `partner` is `""`; the token is found in `code` instead.
-    expect(page.rows.map((row) => row.code)).toEqual(["KR-10006"])
+    expect(codes(page.rows)).toEqual(["KR-10006"])
   })
 })
 
 describe("fetchReceipts — sorting and pagination", () => {
   it("sorts by the requested column and direction", async () => {
     const page = await fetchReceipts(query([SCOPE], { sorting: [{ id: "amount", desc: false }] }), { delayMs: 0 })
-    expect(page.rows[0]?.code).toBe("KR-10000")
+    expect(codes(page.rows)[0]).toBe("KR-10000")
   })
 
   it("orders blanks above every value, so they land last ascending and first descending", async () => {
@@ -276,14 +295,14 @@ describe("fetchReceipts — sorting and pagination", () => {
       delayMs: 0,
     })
     // Postgres' documented default: NULLs sort as greater than every value.
-    expect(ascending.rows.at(-1)?.code).toBe("KR-10008")
-    expect(descending.rows[0]?.code).toBe("KR-10008")
-    expect(descending.rows[1]?.code).toBe("KR-10009")
+    expect(codes(ascending.rows).at(-1)).toBe("KR-10008")
+    expect(codes(descending.rows)[0]).toBe("KR-10008")
+    expect(codes(descending.rows)[1]).toBe("KR-10009")
   })
 
   it("slices by pageIndex/pageSize and reports the total that matched", async () => {
     const page = await fetchReceipts(query([SCOPE], { pagination: { pageIndex: 1, pageSize: 3 } }), { delayMs: 0 })
-    expect(page.rows.map((row) => row.code)).toEqual(["KR-10003", "KR-10004", "KR-10005"])
+    expect(codes(page.rows)).toEqual(["KR-10003", "KR-10004", "KR-10005"])
     expect(page.total).toBe(10)
   })
 })
@@ -525,13 +544,428 @@ describe("the fake server and filterFn_dt agree on every operator", () => {
       { kind: "list", field: "status", op: "notIn", values: ["open", "closed"] },
     ]
     const all = await fetchReceipts(query([SCOPE]), { delayMs: 0 })
+    // Ungrouped, so every row is a receipt — narrowed once here rather than at
+    // each read, since the page's TYPE is the union either way.
+    const allLeaves = all.rows.filter((row): row is ServerReceipt => !isGroupRow(row))
     for (const condition of conditions.map(canonical)) {
       const server = await codesFor(condition)
-      const client = all.rows
+      const client = allLeaves
         .filter((row) => libraryMatches(condition, row[condition.field as keyof ServerReceipt]))
         .map((row) => row.code)
         .sort()
       expect({ condition, codes: server }).toEqual({ condition, codes: client })
     }
+  })
+})
+
+/**
+ * Grouping: the wire shape of section 2, driven against the only thing that
+ * has to answer it honestly.
+ *
+ * The same ten-row scope as every test above, so each group's membership can
+ * be read straight off the table in this file's opening docblock:
+ *
+ * | code     | status     | partner                    |
+ * |----------|------------|----------------------------|
+ * | KR-10000 | open       | Oʻzbekiston Temir Yoʻllari |
+ * | KR-10001 | in_process | Gʻallaorol Agro MChJ       |
+ * | KR-10002 | received   | ООО «Северный Путь»        |
+ * | KR-10003 | closed     | Toshkent Kimyo Zavodi      |
+ * | KR-10004 | open       | Oʻzbekiston Temir Yoʻllari |
+ * | KR-10005 | in_process | null                       |
+ * | KR-10006 | received   | ""                         |
+ * | KR-10007 | closed     | Toshkent Kimyo Zavodi      |
+ * | KR-10008 | open       | Oʻzbekiston Temir Yoʻllari |
+ * | KR-10009 | in_process | Gʻallaorol Agro MChJ       |
+ */
+const P_UZ = "Oʻzbekiston Temir Yoʻllari"
+const P_GA = "Gʻallaorol Agro MChJ"
+const P_RU = "ООО «Северный Путь»"
+const P_TK = "Toshkent Kimyo Zavodi"
+
+/** A query with the two grouping fields, as {@link TableQuery} carries them. */
+function groupedQuery(overrides: Partial<TableQuery> = {}): TableQuery {
+  return {
+    sorting: [],
+    filters: [SCOPE],
+    search: null,
+    grouping: [],
+    expanded: [],
+    pagination: { pageIndex: 0, pageSize: 50 },
+    ...overrides,
+  }
+}
+
+/**
+ * A flattened page as one readable list.
+ *
+ * Asserting on strings rather than on objects because the thing under test is
+ * an *order* of mixed rows: `["group open (3)", "leaf KR-10000", ...]` fails
+ * with a diff a reader can act on, where an array of two different object
+ * shapes does not.
+ */
+function describeRows(rows: ServerRow[]): string[] {
+  return rows.map((row) =>
+    isGroupRow(row) ? `group ${row.path.join(" / ")} (${row.count})` : `leaf ${row.code}`,
+  )
+}
+
+async function flattened(overrides: Partial<TableQuery>): Promise<string[]> {
+  const page = await fetchReceipts(groupedQuery(overrides), { delayMs: 0 })
+  return describeRows(page.rows)
+}
+
+describe("fetchReceipts — grouping, one level", () => {
+  it("returns one group row per distinct value, ordered by key, when nothing is open", async () => {
+    expect(await flattened({ grouping: ["status"] })).toEqual([
+      "group closed (2)",
+      "group in_process (3)",
+      "group open (3)",
+      "group received (2)",
+    ])
+  })
+
+  it("counts leaves, so the counts of a level sum to the rows that matched", async () => {
+    const page = await fetchReceipts(groupedQuery({ grouping: ["status"] }), { delayMs: 0 })
+    const total = page.rows.filter(isGroupRow).reduce((sum, row) => sum + row.count, 0)
+    expect(total).toBe(10)
+    // And the page's own total is the flattened list, not the leaves: four
+    // group rows are four rows the pager has to page past.
+    expect(page.total).toBe(4)
+  })
+
+  it("emits a group's leaves only when its path is open", async () => {
+    expect(await flattened({ grouping: ["status"], expanded: [["open"]] })).toEqual([
+      "group closed (2)",
+      "group in_process (3)",
+      "group open (3)",
+      "leaf KR-10000",
+      "leaf KR-10004",
+      "leaf KR-10008",
+      "group received (2)",
+    ])
+  })
+
+  it("ignores a path that names no group, rather than failing or emptying the page", async () => {
+    expect(await flattened({ grouping: ["status"], expanded: [["no-such-status"]] })).toEqual([
+      "group closed (2)",
+      "group in_process (3)",
+      "group open (3)",
+      "group received (2)",
+    ])
+  })
+})
+
+describe("fetchReceipts — grouping, two levels", () => {
+  it("nests the second level inside the first, opening one branch at a time", async () => {
+    expect(
+      await flattened({ grouping: ["status", "partner"], expanded: [["in_process"], ["in_process", P_GA]] }),
+    ).toEqual([
+      "group closed (2)",
+      "group in_process (3)",
+      `group in_process / ${P_GA} (2)`,
+      "leaf KR-10001",
+      "leaf KR-10009",
+      "group in_process /  (1)",
+      "group open (3)",
+      "group received (2)",
+    ])
+  })
+
+  it("gives an outer group the leaves beneath it at every depth, so its children's counts sum to it", async () => {
+    const page = await fetchReceipts(
+      groupedQuery({
+        grouping: ["status", "partner"],
+        expanded: [["closed"], ["in_process"], ["open"], ["received"]],
+      }),
+      { delayMs: 0 },
+    )
+    const groups = page.rows.filter(isGroupRow)
+    const outer = groups.filter((row) => row.path.length === 1)
+    const inner = groups.filter((row) => row.path.length === 2)
+    // What a user reads on `in_process (3)` is "three receipts in there",
+    // which is only true if the number keeps meaning leaves at every depth.
+    for (const parent of outer) {
+      const children = inner.filter((row) => row.path[0] === parent.path[0])
+      expect({ path: parent.path, count: parent.count }).toEqual({
+        path: parent.path,
+        count: children.reduce((sum, child) => sum + child.count, 0),
+      })
+    }
+    expect(outer.reduce((sum, row) => sum + row.count, 0)).toBe(10)
+  })
+
+  it("leaves an open path inert while its parent is closed", async () => {
+    // The child is not on the page at all, so "open" cannot describe it. A
+    // client may hold the deep path across a collapse; it simply does nothing
+    // until the parent is opened again.
+    expect(await flattened({ grouping: ["status", "partner"], expanded: [["open", P_UZ]] })).toEqual([
+      "group closed (2)",
+      "group in_process (3)",
+      "group open (3)",
+      "group received (2)",
+    ])
+  })
+})
+
+describe("fetchReceipts — a blank group key", () => {
+  it("collapses both shapes of blankness into one group, keyed by the empty string", async () => {
+    // `FilterValue` excludes null deliberately, so a key path cannot carry
+    // one; and `blank` matches null and "" alike, so splitting them here would
+    // put two group rows beside a "(Blanks)" filter that counts them as one.
+    expect(await flattened({ grouping: ["partner"] })).toEqual([
+      `group ${P_GA} (2)`,
+      `group ${P_UZ} (3)`,
+      `group ${P_TK} (2)`,
+      `group ${P_RU} (1)`,
+      "group  (2)",
+    ])
+  })
+
+  it("opens the blank group by the empty-string path, like any other", async () => {
+    expect(await flattened({ grouping: ["partner"], expanded: [[""]] })).toEqual([
+      `group ${P_GA} (2)`,
+      `group ${P_UZ} (3)`,
+      `group ${P_TK} (2)`,
+      `group ${P_RU} (1)`,
+      "group  (2)",
+      "leaf KR-10005",
+      "leaf KR-10006",
+    ])
+  })
+
+  it("agrees with the blank filter over the whole table", async () => {
+    const grouped = await fetchReceipts(
+      { ...groupedQuery({ grouping: ["partner"] }), filters: [] },
+      { delayMs: 0 },
+    )
+    const blankGroup = grouped.rows.filter(isGroupRow).find((row) => row.path[0] === "")
+    const filtered = await fetchReceipts(
+      query([{ kind: "text", field: "partner", op: "blank" }], { pagination: { pageIndex: 0, pageSize: 1 } }),
+      { delayMs: 0 },
+    )
+    // One null and one "" per ten rows, counted once by each side.
+    expect(blankGroup?.count).toBe(20_000)
+    expect(filtered.total).toBe(20_000)
+  })
+
+  it("puts the blank group last ascending and first descending, as blanks sort everywhere else", async () => {
+    const descending = await flattened({ grouping: ["partner"], sorting: [{ id: "partner", desc: true }] })
+    expect(descending[0]).toBe("group  (2)")
+    expect(descending.at(-1)).toBe(`group ${P_GA} (2)`)
+  })
+})
+
+describe("fetchReceipts — sorting a grouped table: within a level", () => {
+  it("gives the sorted column's own level the direction, and leaves the others ascending", async () => {
+    expect(
+      await flattened({ grouping: ["status"], sorting: [{ id: "status", desc: true }], expanded: [["open"]] }),
+    ).toEqual([
+      "group received (2)",
+      "group open (3)",
+      "leaf KR-10000",
+      "leaf KR-10004",
+      "leaf KR-10008",
+      "group in_process (3)",
+      "group closed (2)",
+    ])
+  })
+
+  it("orders leaves inside their own group, never moving one between groups", async () => {
+    expect(
+      await flattened({ grouping: ["status"], sorting: [{ id: "amount", desc: true }], expanded: [["open"]] }),
+    ).toEqual([
+      // The group rows stay ascending: the sort names `amount`, which is no
+      // level's column.
+      "group closed (2)",
+      "group in_process (3)",
+      "group open (3)",
+      // Blank amounts rank above every value, so KR-10008's null comes first
+      // descending — the same rule the ungrouped page follows.
+      "leaf KR-10008",
+      "leaf KR-10004",
+      "leaf KR-10000",
+      "group received (2)",
+    ])
+  })
+
+  it("sorts a grouped column's headers and not its leaves, which all share that value", async () => {
+    const ascending = await flattened({ grouping: ["status"], expanded: [["open"]] })
+    const descending = await flattened({
+      grouping: ["status"],
+      sorting: [{ id: "status", desc: true }],
+      expanded: [["open"]],
+    })
+    const leaves = (rows: string[]): string[] => rows.filter((row) => row.startsWith("leaf"))
+    expect(leaves(descending)).toEqual(leaves(ascending))
+  })
+})
+
+describe("fetchReceipts — paging a flattened, grouped result", () => {
+  /**
+   * The flattened list this section pages, in full:
+   *
+   * `0 group closed`, `1 group in_process`, `2 group open`, `3 leaf KR-10000`,
+   * `4 leaf KR-10004`, `5 leaf KR-10008`, `6 group received` — seven rows.
+   */
+  const PAGED = { grouping: ["status"], expanded: [["open"]] } satisfies Partial<TableQuery>
+
+  it("pages the flattened rows and totals them, group rows included", async () => {
+    const page = await fetchReceipts(
+      groupedQuery({ ...PAGED, pagination: { pageIndex: 0, pageSize: 3 } }),
+      { delayMs: 0 },
+    )
+    expect(describeRows(page.rows)).toEqual(["group closed (2)", "group in_process (3)", "group open (3)"])
+    expect(page.total).toBe(7)
+  })
+
+  it("hands back a page of orphan leaves when the boundary falls inside a group", async () => {
+    const page = await fetchReceipts(
+      groupedQuery({ ...PAGED, pagination: { pageIndex: 1, pageSize: 3 } }),
+      { delayMs: 0 },
+    )
+    /*
+     * The ugly case, and the one `startPath` exists for. The page is three
+     * receipts with no group row above them, and a leaf carries no `path`, so
+     * nothing IN the rows says which group they belong to — the user would see
+     * rows under nothing and a client could draw no "continued" header. The
+     * page itself answers it instead.
+     */
+    expect(describeRows(page.rows)).toEqual(["leaf KR-10000", "leaf KR-10004", "leaf KR-10008"])
+    expect(page.rows.every((row) => !isGroupRow(row))).toBe(true)
+    expect(page.startPath).toEqual(["open"])
+  })
+
+  it("says a page's first row sits at the top level when it does", async () => {
+    const page = await fetchReceipts(
+      groupedQuery({ ...PAGED, pagination: { pageIndex: 0, pageSize: 3 } }),
+      { delayMs: 0 },
+    )
+    // The first row is a top-level group header; it is inside nothing.
+    expect(page.startPath).toEqual([])
+  })
+
+  it("says nothing about a container for an ungrouped page", async () => {
+    const page = await fetchReceipts(groupedQuery({}), { delayMs: 0 })
+    expect(page.startPath).toEqual([])
+  })
+
+  it("reports the innermost open group a nested page starts inside", async () => {
+    /*
+     * `received` open and `ООО «Северный Путь»` open inside it. Flattened:
+     * `0 closed`, `1 in_process`, `2 open`, `3 received`, `4 ООО …`,
+     * `5 leaf KR-10002`. A page starting at row 5 is one orphan leaf whose
+     * container is the SECOND-level group, not the first.
+     */
+    const page = await fetchReceipts(
+      groupedQuery({
+        grouping: ["status", "partner"],
+        expanded: [["received"], ["received", P_RU]],
+        pagination: { pageIndex: 5, pageSize: 1 },
+      }),
+      { delayMs: 0 },
+    )
+    expect(describeRows(page.rows)).toEqual(["leaf KR-10002"])
+    expect(page.startPath).toEqual(["received", P_RU])
+  })
+
+  it("lets a group row end a page and its children start the next", async () => {
+    const first = await fetchReceipts(
+      groupedQuery({ ...PAGED, pagination: { pageIndex: 2, pageSize: 1 } }),
+      { delayMs: 0 },
+    )
+    const second = await fetchReceipts(
+      groupedQuery({ ...PAGED, pagination: { pageIndex: 3, pageSize: 1 } }),
+      { delayMs: 0 },
+    )
+    // Benign, unlike the case above: the header is visible on its own page and
+    // the count on it already told the user what is coming.
+    expect(describeRows(first.rows)).toEqual(["group open (3)"])
+    expect(describeRows(second.rows)).toEqual(["leaf KR-10000"])
+  })
+})
+
+describe("fetchReceipts — grouping composed with filtering and search", () => {
+  it("filters before it groups, so a count never describes rows the filter removed", async () => {
+    // Without the blank partner rows: KR-10005 leaves in_process and KR-10006
+    // leaves received. Grouping first and filtering after would report
+    // `in_process (3)` above two rows.
+    expect(
+      await flattened({
+        filters: [SCOPE, { kind: "text", field: "partner", op: "notBlank" }],
+        grouping: ["status"],
+        expanded: [["in_process"]],
+      }),
+    ).toEqual([
+      "group closed (2)",
+      "group in_process (2)",
+      "leaf KR-10001",
+      "leaf KR-10009",
+      "group open (3)",
+      "group received (1)",
+    ])
+  })
+
+  it("searches before it groups, and shows only the groups that survived", async () => {
+    expect(
+      await flattened({
+        search: { text: "kimyo", fields: ["partner"] },
+        grouping: ["status"],
+        expanded: [["closed"]],
+      }),
+    ).toEqual(["group closed (2)", "leaf KR-10003", "leaf KR-10007"])
+  })
+
+  it("changes neither the filtering nor the ungrouped total", async () => {
+    const ungrouped = await fetchReceipts(groupedQuery({}), { delayMs: 0 })
+    const grouped = await fetchReceipts(
+      groupedQuery({
+        grouping: ["status"],
+        expanded: [["closed"], ["in_process"], ["open"], ["received"]],
+      }),
+      { delayMs: 0 },
+    )
+    const leafCodes = (rows: ServerRow[]): string[] =>
+      rows.filter((row) => !isGroupRow(row)).map((row) => (row as ServerReceipt).code).sort()
+    // The same rows select, whatever they are grouped by; only their order and
+    // the headers between them change.
+    expect(leafCodes(grouped.rows)).toEqual(leafCodes(ungrouped.rows))
+    expect(ungrouped.total).toBe(10)
+  })
+
+  it("groups nothing on a column this endpoint does not serve", async () => {
+    // The same rule a condition on an unknown column follows: it constrains
+    // nothing, rather than emptying the page or inventing a blank group.
+    expect(await flattened({ grouping: ["no-such-column"] })).toEqual(
+      describeRows((await fetchReceipts(groupedQuery({}), { delayMs: 0 })).rows),
+    )
+  })
+})
+
+describe("fetchReceipts — grouping at the size the playground actually holds", () => {
+  it("opens a twenty-five-thousand-row group and still hands back fifty rows", async () => {
+    const page = await fetchReceipts(
+      {
+        sorting: [],
+        filters: [],
+        search: null,
+        grouping: ["status"],
+        expanded: [["open"]],
+        pagination: { pageIndex: 0, pageSize: 50 },
+      },
+      { delayMs: 0 },
+    )
+    // Four headers and every leaf of the open one: the flattened list is the
+    // whole visible table, and the page is a window on it. Building it by
+    // spreading the leaves into an array would overflow the call stack here,
+    // which is why `flattenGroups` loops.
+    expect(page.total).toBe(4 + 25_000)
+    expect(page.rows).toHaveLength(50)
+    expect(describeRows(page.rows.slice(0, 4))).toEqual([
+      "group closed (25000)",
+      "group in_process (25000)",
+      "group open (25000)",
+      "leaf KR-10000",
+    ])
   })
 })

@@ -8,10 +8,16 @@ import { TablePanel, type PanelTab } from "./TablePanel"
 /**
  * The panel behind the "Columns" button, opened on its Columns tab.
  *
- * Kept as its own export with the same four props it has always had: it is
- * part of the published shell, and a host rendering it should not have to
- * learn about tabs to keep working. A shell that wants to choose the tab — or
- * to open the panel on one column's filter — renders {@link TablePanel}.
+ * Kept as its own export with the same four props it has always had, and with
+ * the same behaviour: a floating popover that closes on an outside press and
+ * on Escape. The built-in shell no longer renders it — it docks
+ * {@link TablePanel} inside a side bar instead — but that is a change to the
+ * shell, not to this component, so a host rendering it keeps exactly the panel
+ * it had. The presentation is passed explicitly below rather than left to the
+ * default, because it is this component's contract and not an accident.
+ *
+ * A shell that wants to choose the tab — or to open the panel on one column's
+ * filter, or to dock it — renders {@link TablePanel} directly.
  */
 interface ColumnPanelProps<TData extends RowData> {
   instance: DataTableInstance<TData>
@@ -21,13 +27,14 @@ interface ColumnPanelProps<TData extends RowData> {
 }
 
 /**
- * The side panel with its own tab state, opening on Columns.
+ * The floating side panel with its own tab state, opening on Columns.
  *
  * @param props - See {@link ColumnPanelProps}; unchanged from before the panel
- *   grew a second tab.
- * @returns {@link TablePanel}, driven by this component's own tab state.
+ *   grew a second tab, and unchanged by the docked side bar.
+ * @returns {@link TablePanel} in its floating presentation, driven by this
+ *   component's own tab state.
  */
 export function ColumnPanel<TData extends RowData>(props: ColumnPanelProps<TData>) {
   const [tab, setTab] = useState<PanelTab>("columns")
-  return <TablePanel {...props} tab={tab} onTabChange={setTab} />
+  return <TablePanel {...props} presentation="floating" tab={tab} onTabChange={setTab} />
 }

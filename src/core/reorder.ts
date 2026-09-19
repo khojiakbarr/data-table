@@ -173,3 +173,73 @@ export function dropSideAt(
   if (!Number.isFinite(clientX) || rect.width === 0) return "start"
   return (clientX as number) - rect.left > rect.width / 2 ? "end" : "start"
 }
+
+/**
+ * Move a column to the front of an order.
+ *
+ * What a grouped table does to its group column, so the tree reads from the
+ * left edge rather than from wherever that column happened to be declared.
+ *
+ * Leading the FLAT order is enough to lead the screen, and that is worth
+ * saying because neither of the boundaries a user's own drag is refused at
+ * applies to this move. A column group cannot be torn, because the group
+ * column has already left its group — `hoistGroupColumn` takes it out of the
+ * definitions, since a leaf leading the table from inside a group would have
+ * that group's header drawn twice. And a pinning section cannot be crossed,
+ * because the sections are rendered from `columnPinning` and not from this:
+ * the pinned ids here are filtered out of the scrolling run, so where they sit
+ * in this array says nothing. A pinned group column leads its own array
+ * instead, by the same call.
+ *
+ * @param order - Column ids in some order. Not modified.
+ * @param columnId - The column to put first.
+ * @returns A new order; `order`'s contents unchanged when the column is not
+ *   in it or is already first.
+ *
+ * @example
+ * leadColumn(["a", "b", "d"], "d") // ["d", "a", "b"]
+ */
+export function leadColumn(order: readonly string[], columnId: string): string[] {
+  const from = order.indexOf(columnId)
+  if (from <= 0) return [...order]
+  const next = [...order]
+  next.splice(from, 1)
+  next.unshift(columnId)
+  return next
+}
+
+/**
+ * The order columns render in when nothing has been reordered.
+ *
+ * TanStack renders `columnPinning.start`, then everything unpinned in
+ * declaration order, then `columnPinning.end` — so "natural order" is not
+ * declaration order the moment anything is pinned. A fallback that said
+ * otherwise would scramble every column on the very first drag, which is the
+ * bug this spelling exists to avoid.
+ *
+ * Computed from ids rather than read off the table because both callers need
+ * it before the table has been built: the derived column order is an INPUT to
+ * `useTable`, and the reorder handler must start from the order the user has,
+ * not from the one the grouping derived on top of it.
+ *
+ * @param columnIds - Every leaf id, in declaration order, hidden ones included.
+ * @param pinning - The pinning slice. Ids it names that are not leaves are
+ *   ignored, the way TanStack ignores them.
+ * @returns Every id in `columnIds`, pinned sections first and last.
+ *
+ * @example
+ * pinnedFirstOrder(["a", "b", "c"], { start: ["c"], end: [] }) // ["c", "a", "b"]
+ */
+export function pinnedFirstOrder(
+  columnIds: readonly string[],
+  pinning: { start: readonly string[]; end: readonly string[] },
+): string[] {
+  const known = new Set(columnIds)
+  const start = pinning.start.filter((id) => known.has(id))
+  const pinned = new Set(start)
+  // A column named on both sides is pinned to the start, which is how TanStack
+  // resolves it too: `getStartLeafColumns` reaches it first.
+  const end = pinning.end.filter((id) => known.has(id) && !pinned.has(id))
+  for (const id of end) pinned.add(id)
+  return [...start, ...columnIds.filter((id) => !pinned.has(id)), ...end]
+}

@@ -70,6 +70,14 @@ interface Fixture {
   name: string
   grouped: boolean
   pinning: { start: string[]; end: string[] }
+  /**
+   * Columns the ROWS are grouped by — which is a different thing from
+   * `grouped`, the column-header kind. A row grouping derives a column order
+   * on top of the user's: the column holding the group values is lifted to the
+   * front of its section, and is the one column with no place of its own to
+   * drag. Server mode, because that is the only mode that groups.
+   */
+  rowGrouping?: string[]
   /** Asserted once per fixture, so a fixture that quietly changes shape is caught. */
   baseline: string[]
 }
@@ -101,7 +109,46 @@ const FIXTURES: Fixture[] = [
     pinning: { start: [], end: [] },
     baseline: ["a", "b", "c", "d", "e", "f"],
   },
+  {
+    // The derived order the row grouping puts on top of the user's, which is
+    // exactly the kind of thing this property exists to catch: D is declared
+    // fourth and renders first.
+    name: "a table grouped by its fourth column",
+    grouped: false,
+    pinning: { start: [], end: [] },
+    rowGrouping: ["d"],
+    baseline: ["d", "a", "b", "c", "e", "f"],
+  },
+  {
+    // Two derivations at once: the group column leads the SCROLLING columns,
+    // and the pinned pair still owns the left edge.
+    name: "a grouped table with two columns pinned to the start",
+    grouped: false,
+    pinning: { start: ["e", "f"], end: [] },
+    rowGrouping: ["d"],
+    baseline: ["e", "f", "d", "a", "b", "c"],
+  },
+  {
+    // The group column is hoisted OUT of the Right group to lead the table, so
+    // the runs a drop may move within are not the ones the definitions declare.
+    name: "two column groups, grouped by one of the right-hand columns",
+    grouped: true,
+    pinning: { start: [], end: [] },
+    rowGrouping: ["e"],
+    baseline: ["e", "a", "b", "c", "d", "f"],
+  },
 ]
+
+/**
+ * The columns a fixture lets a user pick up.
+ *
+ * Every column but the one holding the group values: its place is derived from
+ * the grouping, so it has no drag handle at all and a `grip()` on it would
+ * throw rather than fail. It stays in the TARGET loops, where the promise is
+ * that no slot appears on it and nothing moves.
+ */
+const draggableIn = (fixture: Fixture): readonly string[] =>
+  LEAF_IDS.filter((id) => id !== fixture.rowGrouping?.[0])
 
 const SIDES = ["start", "end"] as const
 type Side = (typeof SIDES)[number]
@@ -111,7 +158,15 @@ function Table({ fixture, storage }: { fixture: Fixture; storage?: LayoutStorage
     id: "reorder-invariant",
     data: rows,
     columns: fixture.grouped ? groupedColumns : flatColumns,
-    initialLayout: { columnPinning: fixture.pinning },
+    initialLayout: {
+      columnPinning: fixture.pinning,
+      ...(fixture.rowGrouping ? { grouping: [...fixture.rowGrouping] } : {}),
+    },
+    // Grouping is server-side: a client table refuses one, and the fixture
+    // would then be an ordinary table wearing a grouped name.
+    ...(fixture.rowGrouping
+      ? { mode: "server" as const, rowCount: rows.length, getRowId: (row: Row) => row.a }
+      : {}),
     ...(storage ? { storage } : {}),
   })
   return <DataTable instance={instance} />
@@ -161,7 +216,11 @@ const headerCell = (columnId: string): HTMLElement => {
 }
 
 const panelRow = (columnId: string): HTMLElement => {
-  const row = document.querySelector<HTMLElement>(`li[data-column-id="${columnId}"]`)
+  // Scoped to the column list: the Row Groups zone below it keys its chips by
+  // the same attribute, and a grouped fixture has both on screen at once.
+  const row = document.querySelector<HTMLElement>(
+    `ul.dt-panel-list li[data-column-id="${columnId}"]`,
+  )
   if (!row) throw new Error(`no panel row for ${columnId}`)
   return row
 }
@@ -256,7 +315,7 @@ const openPanel = () => fireEvent.click(screen.getByRole("button", { name: "Colu
  * itself the signal that nothing did.
  */
 function resetToBaseline() {
-  const reset = within(screen.getByRole("dialog")).queryByRole("button", { name: "Reset" })
+  const reset = within(document.querySelector<HTMLElement>(".dt-panel")!).queryByRole("button", { name: "Reset" })
   if (reset) fireEvent.click(reset)
 }
 
@@ -276,12 +335,25 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     // The panel lists what the table renders; every case below reads the two
     // interchangeably, and a disagreement here would make all of them lie.
     expect(panelOrder()).toEqual(fixture.baseline)
+    // And the group column, where there is one, offers nothing to pick up —
+    // which is why the loops below leave it out of the dragged set.
+    for (const id of LEAF_IDS) {
+      const handle = panelRow(id).querySelector(".dt-drag-handle")
+      expect(handle === null).toBe(id === fixture.rowGrouping?.[0])
+    }
   })
 
   it.each(SURFACES)("dragging on $name", (surface) => {
     const violations: string[] = []
+    /*
+     * How many of these cases actually moved something. Asserted at the end
+     * because every check below is conditional on a slot appearing, so a
+     * surface that stopped offering slots at all would pass in silence — and
+     * that is exactly the shape a regression in the derived order would take.
+     */
+    let moves = 0
 
-    for (const draggedId of LEAF_IDS) {
+    for (const draggedId of draggableIn(fixture)) {
       for (const targetId of LEAF_IDS) {
         for (const side of SIDES) {
           const before = renderedOrder()
@@ -296,6 +368,7 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
 
           const after = renderedOrder()
           const where = caseName(draggedId, targetId, side)
+          if (after.join(" ") !== before.join(" ")) moves += 1
 
           if (slot === null) {
             if (after.join(" ") !== before.join(" ")) {
@@ -324,13 +397,14 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     }
 
     expect(violations).toEqual([])
+    expect(moves).toBeGreaterThan(0)
   })
 
   it("lands where it announced on the keyboard path", () => {
     const violations: string[] = []
     const total = LEAF_IDS.length
 
-    for (const draggedId of LEAF_IDS) {
+    for (const draggedId of draggableIn(fixture)) {
       for (let index = 0; index < total; index += 1) {
         const before = renderedOrder()
         const from = before.indexOf(draggedId)
@@ -420,5 +494,183 @@ describe("what a pinned move records", () => {
     // not silently undo the move the user just watched happen.
     const order = layout?.columnOrder ?? []
     expect(order.indexOf("f")).toBeLessThan(order.indexOf("e"))
+  })
+})
+
+/**
+ * The same promise, made by a third drop target.
+ *
+ * The Row Groups zone is not reordering columns — it is building a grouping —
+ * but the affordance is the same one: a chip is outlined where the dragged
+ * column will land. So it makes the same promise and can break it the same two
+ * ways, and it is checked the same way: every column dragged onto every chip,
+ * on both of its edges, with the landing read back off the grouping.
+ *
+ * The rendered order is read DURING the drag rather than before it, because
+ * the zone mints a ghost chip for a column that is not a level yet — the slot
+ * may be on a chip that did not exist a moment earlier, and that chip's place
+ * is exactly the promise being checked.
+ */
+describe("the drop keeps the slot's promise in the Row Groups zone", () => {
+  /** Two levels to start with, so a drop has somewhere to go on either side. */
+  const SEED = ["a", "b"] as const
+
+  function GroupedTable() {
+    const instance = useDataTable({
+      id: "reorder-invariant-zone",
+      data: rows,
+      columns: flatColumns,
+      mode: "server",
+      rowCount: rows.length,
+      getRowId: (row) => row.a,
+    })
+    return <DataTable instance={instance} virtualize={false} />
+  }
+
+  /** The chips as the zone is drawing them, ghost included. */
+  const chipOrder = (): string[] =>
+    [...document.querySelectorAll("li.dt-group-chip")].map(
+      (chip) => chip.getAttribute("data-column-id") ?? "",
+    )
+
+  const chipAt = (columnId: string): HTMLElement => {
+    const chip = document.querySelector<HTMLElement>(
+      `li.dt-group-chip[data-column-id="${columnId}"]`,
+    )
+    if (!chip) throw new Error(`no chip for ${columnId}`)
+    return chip
+  }
+
+  /**
+   * The element a drag of `columnId` starts from: its chip's grip while it is
+   * a level, its row's handle in the Columns list while it is not.
+   */
+  const source = (columnId: string): HTMLElement => {
+    const grip = document
+      .querySelector(`li.dt-group-chip[data-column-id="${columnId}"]`)
+      ?.querySelector<HTMLElement>(".dt-drag-handle")
+    return grip ?? panelHandle(columnId)
+  }
+
+  const zoneSurface = (): Surface => ({
+    name: "the Row Groups zone",
+    grip: source,
+    target: chipAt,
+    slot: () => slotAttribute("li.dt-group-chip.dt-drop-slot"),
+    axis: "clientY",
+  })
+
+  /** Put the seeded grouping back, by the controls a user would use. */
+  const reseed = () => {
+    const panel = document.querySelector<HTMLElement>(".dt-panel") as HTMLElement
+    const clear = within(panel).queryByRole("button", { name: "Clear grouping" })
+    if (clear) fireEvent.click(clear)
+    const list = document.querySelector<HTMLElement>("ul.dt-panel-list") as HTMLElement
+    for (const columnId of SEED) {
+      fireEvent.click(
+        within(list).getByRole("button", { name: `Group rows by ${label(columnId)}` }),
+      )
+    }
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    render(<GroupedTable />)
+    openPanel()
+    reseed()
+  })
+
+  it("renders the seed the cases below assume", () => {
+    expect(chipOrder()).toEqual([...SEED])
+  })
+
+  it("lands every column where the chip was outlined", () => {
+    const violations: string[] = []
+    const surface = zoneSurface()
+
+    for (const draggedId of LEAF_IDS) {
+      for (const targetId of SEED) {
+        for (const side of SIDES) {
+          const dataTransfer = makeDataTransfer()
+          fireEvent.dragStart(surface.grip(draggedId), { dataTransfer })
+          pointAt(surface, "dragOver", chipAt(targetId), side, dataTransfer)
+          // Read after the slot is drawn: a column arriving from the Columns
+          // list has a ghost chip by now, and that chip is part of the order.
+          const promisedOrder = chipOrder()
+          const slot = surface.slot()
+          pointAt(surface, "drop", chipAt(targetId), side, dataTransfer)
+          fireEvent.dragEnd(surface.grip(draggedId))
+
+          const after = chipOrder()
+          const where = `${label(draggedId)} onto ${label(targetId)}'s ${side}`
+
+          if (slot === null) {
+            if (after.join(" ") !== SEED.join(" ")) {
+              violations.push(`${where}: no slot, yet the grouping became ${after.join(" ")}`)
+            }
+          } else {
+            const promised = promisedOrder.indexOf(slot)
+            const landed = after.indexOf(draggedId)
+            if (landed !== promised) {
+              violations.push(
+                `${where}: the slot was at ${promised} (on ${label(slot)}), ` +
+                  `the column landed at ${landed} — ${after.join(" ")}`,
+              )
+            }
+          }
+
+          reseed()
+          if (chipOrder().join(" ") !== SEED.join(" ")) {
+            violations.push(`${where}: reseeding left ${chipOrder().join(" ")}`)
+          }
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
+  })
+
+  it("lands where it announced on the keyboard path", () => {
+    const violations: string[] = []
+
+    for (const draggedId of SEED) {
+      for (let index = 0; index < SEED.length; index += 1) {
+        const before = chipOrder()
+        const from = before.indexOf(draggedId)
+        const key = index > from ? "ArrowDown" : "ArrowUp"
+        const grip = () => source(draggedId)
+
+        fireEvent.keyDown(grip(), { key: " " })
+        for (let press = 0; press < Math.abs(index - from); press += 1) {
+          fireEvent.keyDown(grip(), { key })
+        }
+        const slot = slotAttribute("li.dt-group-chip.dt-drop-slot")
+        fireEvent.keyDown(grip(), { key: " " })
+
+        const after = chipOrder()
+        const where = `${label(draggedId)} towards level ${index + 1}`
+
+        if (slot === null) {
+          violations.push(`${where}: a held chip showed no slot at all`)
+        } else {
+          const promised = before.indexOf(slot)
+          const landed = after.indexOf(draggedId)
+          if (landed !== promised) {
+            violations.push(
+              `${where}: the slot was at ${promised}, the chip landed at ${landed}`,
+            )
+          }
+          const expected = `${label(draggedId)}: group level ${promised + 1} of ${SEED.length}`
+          const said = document.querySelector(".dt-rowgroups .dt-sr-only")?.textContent ?? ""
+          if (said !== expected) {
+            violations.push(`${where}: announced "${said}", expected "${expected}"`)
+          }
+        }
+
+        reseed()
+      }
+    }
+
+    expect(violations).toEqual([])
   })
 })

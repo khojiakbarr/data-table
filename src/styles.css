@@ -80,17 +80,22 @@
   --dt-font-size: 14px;
 
   /*
-   * The root does not scroll; `.dt-viewport` below does. Keeping the toolbar
-   * and the Columns panel out of the scrolling box is what stops the toolbar
-   * from covering the sticky header and the panel from scrolling out of view.
-   * The root does not clip either, so a panel taller than a short table can
-   * hang below it; the rounded corners are drawn by the toolbar and the
-   * viewport instead. `isolation` keeps a nested table's sticky header under
-   * this one's.
+   * A row of two: `.dt-main` — the table's own column, toolbar through footer
+   * — and `.dt-sidebar` beside it. Docking the side bar this way is what makes
+   * opening a panel TAKE width from the table instead of painting over it,
+   * which matters because this table scrolls horizontally: a floating panel
+   * covers columns the user cannot then scroll out from under it.
+   *
+   * The root does not scroll; `.dt-viewport` inside `.dt-main` does. Keeping
+   * the toolbar and the side bar out of the scrolling box is what stops the
+   * toolbar from covering the sticky header and the panel from scrolling out
+   * of view. The root does not clip either; the rounded corners are drawn by
+   * the toolbar, the viewport and the rail instead. `isolation` keeps a
+   * nested table's sticky header under this one's.
    */
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   isolation: isolate;
   border: 1px solid var(--dt-border);
   border-radius: var(--dt-radius);
@@ -101,16 +106,45 @@
 }
 
 /*
- * Lift the table above whatever follows it while its panel, its header menu or
- * a filter popover hangs open. All three render as a direct child of
- * `.dt-root` (see DataTable.tsx) and can extend past the table's own box — the
- * menu and the popover are `position: fixed` and clamped only to the viewport,
- * not to this table.
+ * Lift the table above whatever follows it while a FLOATING panel, its header
+ * menu or a filter popover hangs open. Each renders as a direct child of
+ * `.dt-root` and can extend past the table's own box — the menu and the
+ * popover are `position: fixed` and clamped only to the viewport, not to this
+ * table, and `.dt-panel-floating` is absolutely positioned with no clipping
+ * ancestor. Without the lift, a later sibling (a second table on the page)
+ * wins the tie by DOM order and paints over them.
+ *
+ * The DOCKED panel is deliberately not in this list. It is in flow inside
+ * `.dt-sidebar`, never leaves the card, and is a grandchild rather than a
+ * direct child — so it has nothing to be lifted out of the way of, and
+ * lifting the whole table for a piece of its own furniture would reorder this
+ * table against the page for as long as the bar stayed open.
  */
-.dt-root:has(> .dt-panel),
+.dt-root:has(> .dt-panel-floating),
 .dt-root:has(> .dt-menu),
 .dt-root:has(> .dt-filter-popover) {
   z-index: 1;
+}
+
+/*
+ * The table's own column. The side bar is its sibling, so this is the flex
+ * item that gives up the width a panel takes — which needs `min-width: 0`,
+ * because a flex item otherwise refuses to shrink below its content and the
+ * bar would push the table's last columns out of the card instead.
+ */
+.dt-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: inherit;
+}
+
+/* The rail owns the inline-end edge whenever there is a side bar, so this
+   column stops being rounded there and the two meet flush. */
+.dt-root:has(> .dt-sidebar) > .dt-main {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
 }
 
 .dt-viewport {
@@ -311,6 +345,18 @@
   color: var(--dt-accent-text);
 }
 
+/*
+ * The grouped mark, sharing the filtered mark's vocabulary and its colour —
+ * the same accent-as-text pairing, for the same 3:1 non-text reason (WCAG
+ * 1.4.11). Two marks can sit side by side: a column can be filtered and
+ * grouped at once, and filtering happens first.
+ */
+.dt-grouped {
+  flex: none;
+  display: inline-flex;
+  color: var(--dt-accent-text);
+}
+
 /* ---------- body ---------- */
 
 .dt-td {
@@ -411,6 +457,73 @@
 
 /* While dragging, hint the whole column. */
 .dt-resizing {
+  user-select: none;
+}
+
+/* ---------- the height grip ---------- *
+ * A handle along the bottom edge of the whole table, dragged (or stepped with
+ * the arrows) to change its height. Absolutely positioned rather than a flex
+ * child: `.dt-root` is a row of the table and the side bar, and a third child
+ * in that row would take WIDTH from them.
+ */
+
+.dt-grip {
+  position: absolute;
+  inset-inline: 0;
+  /* Straddles the border so the whole edge is grabbable from either side. */
+  bottom: -4px;
+  height: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: row-resize;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * The visible bar: a short pill centred on the edge.
+ *
+ * --dt-muted-fg at full opacity, and not --dt-resize-handle: this pill is the
+ * only thing that says the edge is draggable at all, so WCAG 1.4.11 wants 3:1
+ * against the surface behind it, and --dt-muted-fg is the token the palette
+ * already guarantees that for in both themes (themes.test.ts, "base palette").
+ * Dimming it with an opacity would push it straight back under that floor —
+ * the same trap noted on `.dt-drag-handle`. The hover and focus state moves to
+ * the accent the column handle uses, so the two read as one family.
+ */
+.dt-grip::after {
+  content: "";
+  width: 40px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--dt-muted-fg);
+  /* `transform` only — a width transition would relayout the table's bottom
+     edge on every frame of the hover. */
+  transition: transform 120ms ease;
+  transform: scaleX(0.6);
+}
+
+.dt-grip:hover::after,
+.dt-grip:focus-visible::after {
+  background: var(--dt-resize-handle-active);
+  transform: scaleX(1);
+}
+
+/*
+ * A shield over the window for the length of a drag: it keeps the
+ * `row-resize` cursor while the pointer is far from the 10px handle and stops
+ * the drag from selecting text across the page. `.dt-is-resizing` does the
+ * same job for a column, on the root — which cannot work here, because a
+ * height drag takes the pointer off the table entirely.
+ */
+.dt-grip-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  cursor: row-resize;
   user-select: none;
 }
 
@@ -605,13 +718,14 @@
   background: var(--dt-row-hover);
 }
 
+/* ---------- the side panel, floating or docked ---------- *
+ * Everything both presentations share. Which one is in play is stated by the
+ * `presentation` prop (TablePanel.tsx) and spelled on the element as
+ * `.dt-panel-floating` / `.dt-panel-docked`, never inferred from where the
+ * panel happens to be mounted.
+ */
+
 .dt-panel {
-  position: absolute;
-  inset-inline-end: 8px;
-  top: 40px;
-  z-index: 10;
-  width: 260px;
-  max-height: 340px;
   /*
    * The tab strip must not scroll away from under the pointer, so the panel is
    * a column and only its body scrolls.
@@ -620,10 +734,183 @@
   flex-direction: column;
   overflow: hidden;
   padding: 6px;
+  background: var(--dt-bg);
+}
+
+/* A popover over the table: its own card, its own shadow, out of flow. */
+.dt-panel-floating {
+  position: absolute;
+  inset-inline-end: 8px;
+  top: 40px;
+  z-index: 10;
+  width: 260px;
+  max-height: 340px;
   border: 1px solid var(--dt-border);
   border-radius: var(--dt-radius);
-  background: var(--dt-bg);
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+}
+
+/*
+ * Docked: furniture inside the side bar, not a card. No border of its own but
+ * the seam against the rail, no shadow, no radius — it is part of the table's
+ * box. `max-height: 100%` bounds it against a root that was given a height,
+ * where `.dt-panel-body` then scrolls; a root with no height of its own grows
+ * to the list instead, the same way `.dt-viewport` does until its rescue
+ * bound catches it.
+ */
+.dt-panel-docked {
+  flex: none;
+  width: 260px;
+  max-width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  border-inline-end: 1px solid var(--dt-border);
+  /* Transform and opacity only: a width animation here would relayout every
+     column of the table on every frame. */
+  animation: dt-panel-in 200ms ease-out;
+}
+
+@keyframes dt-panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
+/* The movement goes, the result stays. */
+@media (prefers-reduced-motion: reduce) {
+  .dt-panel-docked {
+    animation: none;
+  }
+}
+
+/* ---------- the rail ---------- */
+
+.dt-sidebar {
+  flex: none;
+  /*
+   * DOM order is rail first, then panel; `row-reverse` draws the rail on the
+   * outer edge anyway. The rail is the `tablist` and the panel its
+   * `tabpanel`, so the tabs have to come FIRST in the Tab order — reversing
+   * here is what lets the markup be in the order a keyboard and a screen
+   * reader need while the rail sits where a pointer expects it.
+   * `row-reverse` follows the writing direction, so in RTL the rail lands on
+   * the left, which is still the inline-end edge.
+   */
+  display: flex;
+  flex-direction: row-reverse;
+  min-width: 0;
+  border-inline-start: 1px solid var(--dt-border);
+}
+
+.dt-sidebar-rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 44px;
+  padding: 6px 2px;
+  background: var(--dt-header-bg);
+  border-start-end-radius: var(--dt-radius);
+  border-end-end-radius: var(--dt-radius);
+}
+
+.dt-sidebar-tab {
+  /*
+   * Rotated AS TEXT. `writing-mode` turns the label without breaking it up,
+   * so it stays one selectable run that a screen reader reads as a word and
+   * the browser's own find-in-page can match — which drawing one letter per
+   * line would destroy. `vertical-rl` reads top-to-bottom, the direction a
+   * right-hand rail is read in.
+   */
+  writing-mode: vertical-rl;
+  /* 40px of width and at least 72px of height: a comfortable pointer target
+     even though the text inside it is 12px. */
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--dt-muted-fg);
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  text-align: center;
+  cursor: pointer;
+}
+
+.dt-sidebar-tab:hover {
+  background: var(--dt-row-hover);
+  color: var(--dt-fg);
+}
+
+.dt-sidebar-tab[aria-selected="true"] {
+  /* Accent-as-text on --dt-header-bg, the same pairing `.dt-link` uses. */
+  background: var(--dt-bg);
+  color: var(--dt-accent-text);
+  box-shadow: inset 2px 0 0 0 var(--dt-accent);
+}
+
+.dt-sidebar-tab:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+}
+
+/*
+ * Narrow widths. 640px is where a 44px rail plus a 260px panel leaves the
+ * table under 340px — less than two average columns, so the bar would be
+ * eating the thing it exists to configure. Below it the rail is withdrawn
+ * while closed, the toolbar's Columns button is the only way in, and the
+ * panel goes back to OVERLAYING the table at full width, the way it did
+ * before it was docked; the rail comes back horizontally across the top of
+ * that overlay so the active tab still closes it.
+ *
+ * A viewport media query and not a container query, deliberately:
+ * `container-type: inline-size` on `.dt-root` would make it a containing
+ * block for `position: fixed` descendants, and the header menu and the filter
+ * popover are fixed and clamped to the viewport on purpose.
+ */
+@media (max-width: 640px) {
+  .dt-sidebar {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    flex-direction: column;
+    border-inline-start: 0;
+    border-radius: inherit;
+    background: var(--dt-bg);
+  }
+
+  .dt-sidebar:not([data-dt-open]) {
+    display: none;
+  }
+
+  .dt-sidebar-rail {
+    flex-direction: row;
+    width: auto;
+    border-radius: 0;
+    border-bottom: 1px solid var(--dt-border);
+  }
+
+  .dt-sidebar-tab {
+    writing-mode: horizontal-tb;
+    width: auto;
+    min-height: 0;
+    padding: 8px 12px;
+  }
+
+  .dt-sidebar-tab[aria-selected="true"] {
+    box-shadow: inset 0 -2px 0 0 var(--dt-accent);
+  }
+
+  .dt-panel-docked {
+    flex: 1 1 auto;
+    width: auto;
+    max-height: none;
+    border-inline-end: 0;
+  }
 }
 
 .dt-panel-head {
@@ -690,7 +977,8 @@
   font-size: 11px;
 }
 
-.dt-panel-item {
+.dt-panel-item,
+.dt-panel-group-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -706,7 +994,8 @@
   cursor: pointer;
 }
 
-.dt-panel-item:hover {
+.dt-panel-item:hover,
+.dt-panel-group-head:hover {
   background: var(--dt-row-hover);
 }
 
@@ -717,14 +1006,82 @@
   white-space: nowrap;
 }
 
-.dt-panel-list {
+.dt-panel-list,
+.dt-panel-sublist {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/*
+ * The indent IS the nesting: one step per level, applied by the nested list
+ * rather than computed per row, so a tree three groups deep needs no depth
+ * arithmetic in the component and no per-level class in here.
+ *
+ * Bordered on the inline start so the run of columns a group owns reads as
+ * one block even when the group's own row has scrolled out of the panel.
+ */
+.dt-panel-sublist {
+  padding-inline-start: 12px;
+  margin-inline-start: 9px;
+  border-inline-start: 1px solid var(--dt-border);
+}
+
 .dt-panel-item {
   position: relative;
+}
+
+/* A group names a run of columns; its own name is the heavier of the two. */
+.dt-panel-group-label {
+  font-weight: 600;
+}
+
+/*
+ * The disclosure control. Sized to the grip beside it so a group row and a
+ * column row start at the same place, and given the 3:1 non-text contrast
+ * (WCAG 1.4.11) its chevron needs as the only mark of an expanded group.
+ */
+.dt-group-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dt-muted-fg);
+  cursor: pointer;
+}
+
+.dt-group-toggle:hover {
+  color: var(--dt-fg);
+}
+
+.dt-group-toggle:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: 1px;
+}
+
+/*
+ * Turned, not redrawn: a transform, which is the one property that can move
+ * here without relaying the panel's list out under it on every frame.
+ */
+.dt-chevron {
+  transition: transform 150ms ease-out;
+}
+
+.dt-chevron-collapsed {
+  transform: rotate(-90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The arrow still points the other way; it just gets there at once. */
+  .dt-chevron {
+    transition: none;
+  }
 }
 
 /*
@@ -800,7 +1157,16 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dt-root * {
+  /*
+   * Pseudo-elements listed too: `.dt-root *` matches ELEMENTS, and the two
+   * resize affordances — the column handle's line and the height grip's pill —
+   * do all of their moving in an `::after`, so a selector without these left
+   * both of them animating for a user who asked for no animation. The result
+   * still lands; only the movement to it goes.
+   */
+  .dt-root *,
+  .dt-root *::before,
+  .dt-root *::after {
     transition-duration: 0.01ms !important;
   }
 }
@@ -907,6 +1273,66 @@
 .dt-tr-expanded .dt-td,
 .dt-striped .dt-tr.dt-tr-expanded .dt-td {
   background: var(--dt-row-hover);
+}
+
+/* ---------- grouped rows ---------- *
+ * A group header is an ordinary row with one cell filled in: same height, same
+ * cells, same pinned offsets, so the colgroup and every sticky column line up
+ * across it. Only its weight and its background say it is a heading.
+ */
+
+.dt-group-row .dt-td {
+  background: var(--dt-row-hover);
+  font-weight: 600;
+}
+
+/* Ties the striping rule's (0,4,0) — `.dt-striped .dt-tr[data-parity="odd"]
+   .dt-td` — with four simple selectors of its own, and wins the tie by coming
+   later in source order. The same tie-break `.dt-tr-expanded` uses above. */
+.dt-striped .dt-tr.dt-group-row .dt-td {
+  background: var(--dt-row-hover);
+}
+
+/*
+ * The group's value spills sideways rather than truncating.
+ *
+ * The group cell is the grouped COLUMN's slot, sized for that column's values
+ * — not for a chevron, a value and a count together — so `received (25 000)`
+ * in a 140px Status column would read as `rec… (25 000)`. Every other cell on
+ * a group row is empty, so there is nothing to spill onto: the text runs into
+ * the space beside it and stays legible. A pinned cell still covers it, since
+ * `.dt-pinned` is sticky at z-index 2 and this row paints a background on
+ * every cell.
+ */
+.dt-group-row .dt-group-cell,
+.dt-group-row .dt-group-cell .dt-lead {
+  overflow: visible;
+}
+
+/* The continuation header: the same row, quieter, because it repeats
+   something the previous page already said rather than announcing a new
+   group. It has no chevron — the group it names is open by definition. */
+.dt-group-continued .dt-td {
+  font-weight: 400;
+  color: var(--dt-muted-fg);
+}
+.dt-group-continued .dt-group-value {
+  font-weight: 400;
+}
+
+.dt-group-value {
+  flex: none;
+  overflow: visible;
+  text-overflow: clip;
+  font-weight: 600;
+}
+
+/* The size of the group, beside its value: present but subordinate to it. */
+.dt-group-count {
+  flex: none;
+  color: var(--dt-muted-fg);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 
 .dt-detail-row .dt-detail-cell {
@@ -1330,4 +1756,147 @@
   margin: 0;
   color: var(--dt-muted-fg);
   font-size: 12px;
+}
+
+/* ---------- the Row Groups zone ---------- */
+
+/*
+ * Under the column tree, and stuck to the bottom of the panel's scrolling box.
+ *
+ * Sticky rather than in flow: a table with forty columns puts the zone far
+ * below the fold, and a drop target that has to be scrolled to while a column
+ * is already in the hand is not a target at all. The background is opaque so
+ * the rows scrolling past underneath do not show through it.
+ */
+.dt-rowgroups {
+  position: sticky;
+  bottom: 0;
+  margin-top: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--dt-border);
+  background: var(--dt-bg);
+}
+
+.dt-rowgroups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * An empty zone says what it is for. Dashed, because the border is a promise
+ * about a place rather than a box around content — the same vocabulary the
+ * drop slot uses one rule down.
+ */
+.dt-rowgroups-empty {
+  padding: 10px 8px;
+  border: 1px dashed var(--dt-border);
+  border-radius: 6px;
+}
+
+.dt-rowgroups-placeholder {
+  color: var(--dt-muted-fg);
+  font-size: 12px;
+  text-align: center;
+}
+
+/*
+ * One level. `position: relative` is what lets `.dt-drop-slot::after` sit over
+ * it, exactly as it does on a column row.
+ */
+.dt-group-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--dt-border);
+  border-radius: 6px;
+  background: var(--dt-bg);
+  font-size: 13px;
+}
+
+/* The depth, as a numeral: the nesting read without counting chips. */
+.dt-group-chip-level {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: var(--dt-row-hover);
+  color: var(--dt-muted-fg);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The chip's name is also its drag handle, so it carries `.dt-drag-handle` for
+ * the grab cursor and the focus ring — and then has to undo the rest of it,
+ * which is sized and centred for a 16px grip icon rather than for a run of
+ * text. Restated here rather than loosened over there: the column list's grip
+ * is the shape that class exists for.
+ */
+.dt-group-chip-name {
+  flex: 1 1 auto;
+  justify-content: flex-start;
+  width: auto;
+  min-width: 0;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 40px of pointer target on a 10px glyph — the web minimum — without the box
+ * that size would otherwise draw beside a 13px chip.
+ */
+.dt-group-chip-remove,
+.dt-group-toggle-btn {
+  flex: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--dt-muted-fg);
+  cursor: pointer;
+}
+
+.dt-group-chip-remove::after,
+.dt-group-toggle-btn::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+
+.dt-group-chip-remove:hover,
+.dt-group-toggle-btn:hover {
+  background: var(--dt-row-hover);
+  color: var(--dt-fg);
+}
+
+/* Grouped, stated as a state and not only as a hover colour. */
+.dt-group-toggle-btn[aria-pressed="true"] {
+  color: var(--dt-accent-text);
+}
+
+/*
+ * The chip a column that is not grouped YET would become: outlined, unfilled,
+ * and carrying no controls, because there is nothing to remove or renest
+ * until the drop actually happens.
+ */
+.dt-group-chip-ghost {
+  border-style: dashed;
+  color: var(--dt-muted-fg);
 }

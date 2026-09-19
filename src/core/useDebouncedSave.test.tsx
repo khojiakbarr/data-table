@@ -19,6 +19,8 @@ const layoutAt = (width: number): TableLayout => ({
   columnPinning: { start: [], end: [] },
   columnSizing: { a: width },
   sorting: [],
+  grouping: [],
+  expanded: [],
   filters: [],
   search: "",
 })

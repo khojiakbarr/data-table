@@ -9,6 +9,8 @@ const layout: TableLayout = {
   columnPinning: { start: ["a"], end: ["c"] },
   columnSizing: { a: 120 },
   sorting: [{ id: "b", desc: true }],
+  grouping: [],
+  expanded: [],
   filters: [],
   search: "",
 }
@@ -145,6 +147,74 @@ describe("pruneLayout", () => {
     expect(pruned.sorting).toEqual([{ id: "a", desc: false }])
     expect(pruned.columnOrder).toEqual(["a", "b"])
     expect(pruned.columnPinning).toEqual({ start: [], end: [] })
+  })
+})
+
+describe("pruneLayout — grouping", () => {
+  it("keeps a grouping on columns the table still defines", () => {
+    const pruned = pruneLayout({ grouping: ["b", "a"], expanded: [["x"]] }, ["a", "b"])
+    expect(pruned.grouping).toEqual(["b", "a"])
+    expect(pruned.expanded).toEqual([["x"]])
+  })
+
+  it("drops a group on a column that no longer exists", () => {
+    // Left in, it would travel on every query with nothing on screen able to
+    // take it off — the stranded-filter case, one slice over.
+    expect(pruneLayout({ grouping: ["a", "ghost"] }, ["a"]).grouping).toEqual(["a"])
+  })
+
+  it("drops every open path when the grouping it describes was pruned", () => {
+    /*
+     * A path's keys are positional. With `a` gone, a saved `["A", "B"]` would
+     * come back meaning "the `b` group A" — reopening the wrong branch, which
+     * is worse than reopening none.
+     */
+    const pruned = pruneLayout({ grouping: ["a", "b"], expanded: [["A", "B"]] }, ["b"])
+    expect(pruned.grouping).toEqual(["b"])
+    expect(pruned.expanded).toEqual([])
+  })
+
+  it("drops a path deeper than the grouping, or one JSON could not carry", () => {
+    const pruned = pruneLayout(
+      { grouping: ["a"], expanded: [["x"], ["x", "y"], [null as unknown as string]] },
+      ["a"],
+    )
+    expect(pruned.expanded).toEqual([["x"]])
+  })
+
+  it("leaves both slices absent when storage never held a grouping", () => {
+    // `pruneLayout` is a whitelist: a slice it does not copy never comes back,
+    // and an absent grouping must not be rebuilt as an empty one that would
+    // then read as a change worth saving.
+    const pruned = pruneLayout({ columnOrder: ["a"] }, ["a"])
+    expect("grouping" in pruned).toBe(false)
+    expect("expanded" in pruned).toBe(false)
+  })
+
+  it("survives a non-array grouping from a hand-edited entry", () => {
+    expect(pruneLayout({ grouping: "a" as unknown as string[] }, ["a"]).grouping).toBeUndefined()
+  })
+})
+
+describe("the stored format version", () => {
+  it("does not move for an additive key", () => {
+    /*
+     * Grouping and its open paths are ADDITIVE: a version bump discards every
+     * stored layout — every user's column widths, order and pinning — to gain
+     * slices they have never set. A layout written before grouping existed
+     * still loads.
+     */
+    const before = {
+      columnOrder: ["a", "b", "c"],
+      columnVisibility: {},
+      columnPinning: { start: [], end: [] },
+      columnSizing: { a: 120 },
+      sorting: [],
+      filters: [],
+      search: "",
+    }
+    localStorage.setItem("data-table:layout:pre", JSON.stringify({ v: 1, layout: before }))
+    expect(localStorageLayout().load("pre")).toEqual(before)
   })
 })
 

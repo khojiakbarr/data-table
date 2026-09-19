@@ -60,6 +60,17 @@ interface ThemeControlsProps {
   /** What every control displays — `value`'s overrides over the base theme's own defaults. */
   resolved: ThemeTokenValues
   onChange: (next: ThemeTokenState) => void
+  /**
+   * The table's current height in pixels.
+   *
+   * Not a theme token: it is the library's own layout slice, read straight
+   * off `instance.tableHeight` so this field and the grip on the table's
+   * bottom edge show — and write — exactly one value.
+   */
+  tableHeight: number
+  /** The shortest the table may be, so the field cannot ask for less. */
+  minTableHeight: number
+  onTableHeightChange: (pixels: number) => void
   chrome: ChromeStrings
 }
 
@@ -80,12 +91,23 @@ interface ThemeControlsProps {
  * @param props.value - The base theme and the overrides, as one object.
  * @param props.resolved - The values to display, from `resolveThemeValues`.
  * @param props.onChange - Called with a new state object; the old one is never mutated.
+ * @param props.tableHeight - The table's height in pixels, from `instance.tableHeight`.
+ * @param props.minTableHeight - The shortest the table may be.
+ * @param props.onTableHeightChange - Writes a typed height back to the same layout slice the grip writes.
  * @param props.chrome - The page copy for the current language.
  *
  * @example
  * <ThemeControls value={theme} resolved={values} onChange={setTheme} chrome={CHROME[language]} />
  */
-export function ThemeControls({ value, resolved, onChange, chrome }: ThemeControlsProps) {
+export function ThemeControls({
+  value,
+  resolved,
+  onChange,
+  tableHeight,
+  minTableHeight,
+  onTableHeightChange,
+  chrome,
+}: ThemeControlsProps) {
   const setColor = (key: ThemeColorKey) => (event: ChangeEvent<HTMLInputElement>) =>
     onChange({ ...value, overrides: { ...value.overrides, [key]: event.target.value } })
   const setNumber = (key: ThemeSizeKey) => (event: ChangeEvent<HTMLInputElement>) =>
@@ -163,6 +185,27 @@ export function ThemeControls({ value, resolved, onChange, chrome }: ThemeContro
             />
           </label>
         ))}
+
+        {/*
+          A number field rather than a slider: the height is the one size here
+          with no useful upper bound to lay a track out over, and typing an
+          exact figure is the reason this control exists beside the grip.
+          Empty and malformed input are dropped rather than coerced — `Number("")`
+          is 0, which would collapse the table on the way to typing "600".
+        */}
+        <label className="pg-field">
+          <span>{chrome.theme.tableHeight}</span>
+          <input
+            type="number"
+            min={minTableHeight}
+            step={10}
+            value={tableHeight}
+            onChange={(event) => {
+              const next = Number(event.target.value)
+              if (event.target.value !== "" && Number.isFinite(next)) onTableHeightChange(next)
+            }}
+          />
+        </label>
       </fieldset>
 
       <button type="button" className="pg-reset" onClick={() => onChange(DEFAULT_THEME)}>

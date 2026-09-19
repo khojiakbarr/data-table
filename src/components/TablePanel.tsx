@@ -1,5 +1,6 @@
 import type { RowData } from "@tanstack/react-table"
 import { useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { classNames } from "../core/classNames"
 import type { DropSide } from "../core/reorder"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -9,14 +10,32 @@ import { FiltersTab } from "./FiltersTab"
 /**
  * The side panel behind the "Columns" button.
  *
- * It owns what both tabs share — the outside-click and Escape handling, the
- * tab strip, and the one scrolling box — and nothing else. Which tab is
- * showing is the caller's state, so a header-menu item or a host's own control
- * can open the panel straight onto one of them.
+ * It owns what both tabs share — the dismissal rules, the tab strip and the
+ * one scrolling box — and nothing else. Which tab is showing is the caller's
+ * state, so a header-menu item or a host's own control can open the panel
+ * straight onto one of them.
  */
 
 /** Which half of the panel is showing. */
 export type PanelTab = "columns" | "filters"
+
+/**
+ * How the panel is presented, which is also what decides how it dismisses.
+ *
+ * It is a declared prop and never inferred from where the panel happens to be
+ * mounted: the same markup in two places must not behave two ways.
+ *
+ * - `"floating"` — a popover over the table, with its own tab strip. It closes
+ *   on a pointer press outside itself and on Escape from anywhere, because a
+ *   popover that survives either is a trap. This is the default, and what
+ *   {@link ColumnPanel} has always rendered.
+ * - `"docked"` — furniture inside {@link TableSideBar}, in flow beside the
+ *   table rather than over it. The side bar's rail supplies the tabs, so the
+ *   panel renders none of its own; it does not close on an outside click (a
+ *   docked bar is not dismissed by using the table it sits next to), and
+ *   Escape closes it only while the focus is inside it.
+ */
+export type PanelPresentation = "floating" | "docked"
 
 const TABS: readonly PanelTab[] = ["columns", "filters"]
 
@@ -28,8 +47,15 @@ export interface TablePanelProps<TData extends RowData> {
   /** Which tab is showing. */
   tab: PanelTab
   onTabChange: (tab: PanelTab) => void
+  /**
+   * Popover or docked furniture, and with it the dismissal rules — see
+   * {@link PanelPresentation}. Default `"floating"`.
+   */
+  presentation?: PanelPresentation | undefined
   /** On the Filters tab, open this column's editor and focus it. */
   focusColumnId?: string | undefined
+  /** See `ColumnsTabProps.draggedColumnId`. */
+  draggedColumnId?: string | null | undefined
   /**
    * Identifies this particular focus request. A host that wants a repeat
    * request for the SAME `focusColumnId` to be honoured again — not just the
@@ -45,8 +71,8 @@ export interface TablePanelProps<TData extends RowData> {
  * The tabbed side panel.
  *
  * @param props - See {@link TablePanelProps}.
- * @returns The panel dialog: a tab strip that stays put, and the one scrolling
- *   box under it holding whichever tab is showing.
+ * @returns The panel: floating, a dialog with a tab strip that stays put above
+ *   its one scrolling box; docked, the tab panel the side bar's rail controls.
  *
  * @example
  * const [tab, setTab] = useState<PanelTab>("columns")
@@ -60,16 +86,21 @@ export function TablePanel<TData extends RowData>({
   onClose,
   tab,
   onTabChange,
+  presentation = "floating",
   focusColumnId,
   focusNonce,
+  draggedColumnId,
 }: TablePanelProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
-  const tabbed = instance.filtering.enabled
+  const docked = presentation === "docked"
+  const tabbed = instance.filtering.enabled && !docked
   // With filtering off there is no second tab, and no strip to choose it with.
-  const current: PanelTab = tabbed ? tab : "columns"
+  const current: PanelTab = instance.filtering.enabled ? tab : "columns"
 
-  // Close on outside click and on Escape, the two things a user will try.
+  // Close on outside click and on Escape, the two things a user will try of a
+  // popover. A docked panel answers to neither — see `PanelPresentation`.
   useEffect(() => {
+    if (docked) return
     const onPointerDown = (event: PointerEvent) => {
       if (!ref.current?.contains(event.target as Node)) onClose()
     }
@@ -82,7 +113,7 @@ export function TablePanel<TData extends RowData>({
       document.removeEventListener("pointerdown", onPointerDown)
       document.removeEventListener("keydown", onKeyDown)
     }
-  }, [onClose])
+  }, [docked, onClose])
 
   /*
    * Arrow keys move between tabs, which is what a screen-reader user expects
@@ -99,12 +130,39 @@ export function TablePanel<TData extends RowData>({
     ref.current?.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)?.focus()
   }
 
+  /*
+   * Docked, Escape is handled here rather than on `document`, which is exactly
+   * what makes it fire only while the focus is inside the panel: a React
+   * handler on this element sees a keydown only when it bubbles up from a
+   * descendant. A descendant that spends the key on something of its own —
+   * ColumnsTab cancelling a held column — stops it before it arrives.
+   */
+  const handlePanelKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape") return
+    event.stopPropagation()
+    onClose()
+  }
+
+  const bodyId = `${instance.id}-panel-${current}`
+
   return (
     <div
-      className="dt-panel"
+      className={classNames("dt-panel", docked ? "dt-panel-docked" : "dt-panel-floating")}
       ref={ref}
-      role="dialog"
-      aria-label={current === "columns" ? labels.columnsTitle : labels.filtersTab}
+      {...(docked
+        ? {
+            // The rail's tab is the accessible name and the control; naming
+            // the panel again here would have a screen reader read the tab's
+            // text twice on entering it.
+            role: "tabpanel",
+            id: bodyId,
+            "aria-labelledby": `${instance.id}-railtab-${current}`,
+            onKeyDown: handlePanelKeyDown,
+          }
+        : {
+            role: "dialog",
+            "aria-label": current === "columns" ? labels.columnsTitle : labels.filtersTab,
+          })}
     >
       {tabbed ? (
         <div className="dt-panel-tabs" role="tablist" onKeyDown={handleTabKeyDown}>
@@ -130,7 +188,7 @@ export function TablePanel<TData extends RowData>({
       {/* The one scrolling box: the strip above it stays put. */}
       <div
         className="dt-panel-body"
-        id={`${instance.id}-panel-${current}`}
+        {...(docked ? {} : { id: bodyId })}
         {...(tabbed
           ? { role: "tabpanel", "aria-labelledby": `${instance.id}-tab-${current}` }
           : {})}
@@ -143,7 +201,12 @@ export function TablePanel<TData extends RowData>({
             focusNonce={focusNonce}
           />
         ) : (
-          <ColumnsTab instance={instance} labels={labels} onReorder={onReorder} />
+          <ColumnsTab
+            instance={instance}
+            labels={labels}
+            onReorder={onReorder}
+            draggedColumnId={draggedColumnId}
+          />
         )}
       </div>
     </div>

@@ -62,7 +62,13 @@ function LonePanel({ focusColumnId }: { focusColumnId?: string }) {
 }
 
 const shown = () => screen.getAllByRole("row").filter((row) => row.classList.contains("dt-tr"))
-const panel = () => screen.getByRole("dialog")
+/*
+ * Matched by class, not by role: the shell docks the panel in its side bar,
+ * where it is the rail's `tabpanel`, while `LonePanel` below renders the same
+ * component floating, where it is a `dialog`. Both are the same panel and
+ * these cases are about what is inside it.
+ */
+const panel = (): HTMLElement => document.querySelector<HTMLElement>(".dt-panel")!
 const entries = () => within(panel()).getAllByRole("listitem").map((item) => item.textContent ?? "")
 
 /** Open the panel and switch to its Filters tab. */
@@ -95,13 +101,13 @@ describe("the side panel's tabs", () => {
     expect(within(panel()).getByLabelText("Name")).toBeInTheDocument()
   })
 
-  it("keeps the tab strip out of the scrolling box", async () => {
-    const user = userEvent.setup()
-    render(<Table />)
-    await user.click(screen.getByRole("button", { name: "Columns" }))
-
+  it("keeps the floating panel's tab strip out of its scrolling box", () => {
     // Only the body scrolls, so the tabs cannot scroll away from under the
-    // user's pointer.
+    // user's pointer. The strip belongs to the FLOATING presentation now —
+    // docked, the side bar's rail is the tablist and lives outside the panel
+    // altogether (SideBar.test.tsx asserts that).
+    render(<LonePanel />)
+
     const body = panel().querySelector(".dt-panel-body")!
     expect(body.contains(screen.getByRole("tab", { name: "Filters" }))).toBe(false)
   })

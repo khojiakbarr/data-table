@@ -12,6 +12,19 @@ const HEADERS: Record<Language, Record<keyof ServerReceipt, string>> = {
   uz: { id: "Id", code: "Kod", partner: "Kontragent", amount: "Summa", status: "Holat", date: "Sana", flagged: "Belgilangan" },
 }
 
+/**
+ * The two group headers the playground's columns nest under.
+ *
+ * Deliberately not over every column: half the set is grouped and half is
+ * not, which is the shape that shows both what a group does to the header and
+ * what the Columns panel makes of a tree that is only partly one.
+ */
+const GROUP_HEADERS: Record<Language, { document: string; payment: string }> = {
+  en: { document: "Document", payment: "Payment" },
+  ru: { document: "Документ", payment: "Оплата" },
+  uz: { document: "Hujjat", payment: "Toʻlov" },
+}
+
 const STATUS_LABELS: Record<Language, Record<string, string>> = {
   en: { open: "Open", in_process: "In process", received: "Received", closed: "Closed" },
   ru: { open: "Открыт", in_process: "В процессе", received: "Получен", closed: "Закрыт" },
@@ -56,6 +69,7 @@ const columnHelper = createColumnHelper<DataTableFeatures, ServerReceipt>()
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeatures, ServerReceipt, any>[] {
   const headers = HEADERS[language]
+  const groups = GROUP_HEADERS[language]
   const statusLabels = STATUS_LABELS[language]
   const [yes, no] = FLAG_LABELS[language]
   const locale = LOCALE_TAG[language]
@@ -63,35 +77,49 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
   const dateFormat = new Intl.DateTimeFormat(locale)
 
   return [
-    columnHelper.accessor("code", { header: headers.code, size: 130 }),
-    columnHelper.accessor("partner", {
-      header: headers.partner,
-      size: 260,
-      // Both blank shapes render as nothing on their own — React skips `null`
-      // and `""` alike — so the rows a `blank` filter selects would look like
-      // a broken cell rather than an empty column.
-      cell: (info) => {
-        const partner: string | null = info.getValue()
-        return partner === null || partner === "" ? BLANK_CELL : partner
-      },
+    columnHelper.group({
+      id: "document",
+      header: groups.document,
+      columns: columnHelper.columns([
+        columnHelper.accessor("code", { header: headers.code, size: 130 }),
+        columnHelper.accessor("partner", {
+          header: headers.partner,
+          size: 260,
+          // Both blank shapes render as nothing on their own — React skips
+          // `null` and `""` alike — so the rows a `blank` filter selects would
+          // look like a broken cell rather than an empty column.
+          cell: (info) => {
+            const partner: string | null = info.getValue()
+            return partner === null || partner === "" ? BLANK_CELL : partner
+          },
+        }),
+      ]),
     }),
-    columnHelper.accessor("amount", {
-      header: headers.amount,
-      size: 150,
-      cell: (info) => {
-        const amount: number | null = info.getValue()
-        return <span className="num">{amount === null ? BLANK_CELL : numberFormat.format(amount)}</span>
-      },
+    columnHelper.group({
+      id: "payment",
+      header: groups.payment,
+      columns: columnHelper.columns([
+        columnHelper.accessor("amount", {
+          header: headers.amount,
+          size: 150,
+          cell: (info) => {
+            const amount: number | null = info.getValue()
+            return <span className="num">{amount === null ? BLANK_CELL : numberFormat.format(amount)}</span>
+          },
+        }),
+        // In server mode there is nothing to facet from — one page is all the
+        // client holds — so the values list comes from `loadValues`
+        // (fakeServer's `fetchValues`), the same path a real server host takes.
+        columnHelper.accessor("status", {
+          header: headers.status,
+          size: 140,
+          meta: { filter: "list" },
+          cell: (info) => statusLabels[info.getValue()] ?? info.getValue(),
+        }),
+      ]),
     }),
-    // In server mode there is nothing to facet from — one page is all the
-    // client holds — so the values list comes from `loadValues` (fakeServer's
-    // `fetchValues`), the same path a real server host takes.
-    columnHelper.accessor("status", {
-      header: headers.status,
-      size: 140,
-      meta: { filter: "list" },
-      cell: (info) => statusLabels[info.getValue()] ?? info.getValue(),
-    }),
+    // Left outside both groups on purpose: the header then has a grouped half
+    // and a flat one, and the Columns panel a tree that is only partly nested.
     columnHelper.accessor("flagged", {
       header: headers.flagged,
       size: 110,

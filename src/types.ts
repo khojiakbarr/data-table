@@ -1,4 +1,4 @@
-import type { FilterCondition, FilterValueOption, FilterKind } from "./core/filters"
+import type { FilterCondition, FilterValue, FilterValueOption, FilterKind } from "./core/filters"
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -19,12 +19,40 @@ export interface TableLayout {
   columnPinning: ColumnPinningState
   columnSizing: ColumnSizingState
   sorting: SortingState
+  /**
+   * Column ids the rows are grouped by, outermost first. Empty means no
+   * grouping.
+   *
+   * It sits beside `sorting` because it is the same kind of thing: an
+   * arrangement of the whole result set that the user chose, that the query
+   * carries, and that they expect to find again on their next visit.
+   */
+  grouping: string[]
+  /**
+   * Which group rows are open, as key paths from the outermost level.
+   *
+   * Row expansion normally is NOT part of the layout — a detail panel is a
+   * transient reading position, and restoring it would be surprising. A group
+   * is different: with grouping computed server-side, which groups are open is
+   * part of the query, and a grouping restored with every branch shut is not
+   * the table the user left. It is saved with the `grouping` it describes and
+   * dropped with it.
+   */
+  expanded: FilterValue[][]
   /** One condition per filtered column, implicitly ANDed. */
   filters: FilterCondition[]
   /** Quick search, raw as the user typed it; `""` when off. */
   search: string
   /** Rows per page the user chose. Absent until they change it. */
   pageSize?: number
+  /**
+   * How tall the whole table is, in pixels, after the user dragged the grip.
+   *
+   * Absent until they do, which is what leaves the `height` prop in charge:
+   * the prop is the starting height, this overrides it, and `resetLayout`
+   * drops it so the prop is back.
+   */
+  height?: number
 }
 
 /**
@@ -82,12 +110,28 @@ export interface DataTableFeatureFlags {
   pinning?: boolean
   /** Hide columns. Default true. */
   hiding?: boolean
+  /**
+   * Drag the grip on the bottom edge to change the table's height. Default true.
+   *
+   * Turn it off in a host that owns the height itself — a table sized by a
+   * grid row or a pane splitter — where a grip would let the user set a height
+   * the surrounding layout immediately overrides.
+   */
+  heightGrip?: boolean
 }
 
 /** Text shown in the built-in shell, for translation. */
 export interface DataTableLabels {
   columnsButton: string
   columnsTitle: string
+  /**
+   * The docked side bar's rail, named for a screen reader.
+   *
+   * It is the `tablist`'s accessible name, not anything drawn on screen: the
+   * rail's own tabs carry their visible labels, and the group they form needs
+   * one of its own so "Columns, tab, 1 of 2" is announced against something.
+   */
+  sideBar: string
   showAll: string
   reset: string
   pinStart: string
@@ -108,6 +152,23 @@ export interface DataTableLabels {
   /** Where a held column now sits, announced politely as it moves. */
   reorderPosition: (column: string, position: number, total: number) => string
   resizeColumn: string
+  /**
+   * The height grip, named for a screen reader.
+   *
+   * The grip is a bare handle with nothing written on it, so this is the only
+   * name it has.
+   */
+  resizeTable: string
+  /**
+   * How the keyboard moves the grip, spoken on it.
+   *
+   * Same reasoning as {@link DataTableLabels.reorderHint}: dragging is the
+   * only obvious route, so a user who cannot drag has nowhere else to find
+   * the keys in time.
+   */
+  resizeTableHint: string
+  /** The table's height after a keyboard step, announced politely. */
+  tableHeight: (pixels: number) => string
   expandRow: string
   collapseRow: string
   columnActions: string
@@ -117,6 +178,19 @@ export interface DataTableLabels {
   /** Badge on an already-pinned column, as a state and not an action. */
   pinnedStartBadge: string
   pinnedEndBadge: string
+  /**
+   * A column group's checkbox in the Columns panel, named for a screen reader.
+   *
+   * The visible text beside it is the group's header alone, which a leaf
+   * column could carry just as well; this says which of the two is being
+   * ticked. The group's own name is kept at the front of the result so the
+   * accessible name still begins with the visible one (WCAG 2.5.3).
+   */
+  columnGroup: (group: string) => string
+  /** The collapse control, while the group is collapsed. */
+  expandGroup: string
+  /** The collapse control, while the group is expanded. */
+  collapseGroup: string
   /** Footer: total rows. */
   rows: string
   rowsPerPage: string
@@ -221,4 +295,47 @@ export interface DataTableLabels {
   noMatches: string
   /** The way out of the filtered-empty state. */
   clearFilters: string
+
+  /* Row grouping. */
+  /** Badge on a grouped column's header, as a state and not an action. */
+  groupedBadge: string
+  /**
+   * The count beside a group's value: `received (25 000)`.
+   *
+   * Nothing is spoken here — {@link DataTableLabels.groupRow} is what a screen
+   * reader gets — so this is the number and its brackets, in whatever form the
+   * language writes them.
+   */
+  groupCount: (count: number) => string
+  /**
+   * A group row named for a screen reader: its value and how many rows are in
+   * it. The count is spoken, so a language with plural agreement agrees it.
+   */
+  groupRow: (value: string, count: number) => string
+  /**
+   * The header above a page that starts INSIDE a group, whose own header was
+   * on the previous page. `path` is the group's key path, outermost first.
+   */
+  groupContinued: (path: string[]) => string
+  /** The way out of the grouped-empty state, beside `clearFilters`. */
+  clearGrouping: string
+
+  /* The Row Groups zone in the side panel. */
+  /** The zone's own heading. */
+  rowGroupsTitle: string
+  /** What an empty zone says it is for, so it is not an invisible target. */
+  rowGroupsHint: string
+  /**
+   * The per-column control that sends a column to the zone, and the one that
+   * takes it back. Both name the column: they are icon buttons, so the name is
+   * the only thing a screen reader has to tell one row's control from another's.
+   */
+  groupByColumn: (column: string) => string
+  ungroupColumn: (column: string) => string
+  /**
+   * A chip's place in the nesting, for a screen reader following a keyboard
+   * move — the grouping's own {@link DataTableLabels.reorderPosition}. Level 1
+   * is the outermost.
+   */
+  rowGroupLevel: (column: string, level: number, total: number) => string
 }

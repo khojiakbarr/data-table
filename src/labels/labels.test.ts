@@ -74,6 +74,16 @@ describe("function-shaped labels return sensible text", () => {
       expect(labels.filterTitle("Сумма")).toContain("Сумма")
     })
 
+    it(`${name}Labels.rowGroupLevel names the column, its level and the depth`, () => {
+      // The grouping's own `reorderPosition`: a keyboard move that says the
+      // level without saying out of how many leaves the listener with no idea
+      // how deep the nesting they are moving in goes.
+      const announced = labels.rowGroupLevel("Статус", 1, 3)
+      expect(announced).toContain("Статус")
+      expect(announced).toContain("1")
+      expect(announced).toContain("3")
+    })
+
     it(`${name}Labels.reorderPosition names the column and both numbers`, () => {
       // What a screen reader hears on every step of a keyboard reorder: the
       // column, where it is now, and out of how many. A translation that drops
@@ -148,6 +158,14 @@ describe("Uzbek orthography", () => {
     uzLabels.searchResults(undefined),
     uzLabels.filterTitle("Summa"),
     uzLabels.reorderPosition("Summa", 1, 5),
+    uzLabels.columnGroup("Hujjat"),
+    uzLabels.tableHeight(420),
+    uzLabels.groupCount(253),
+    uzLabels.groupRow("Qabul qilingan", 253),
+    uzLabels.groupContinued(["Qabul qilingan"]),
+    uzLabels.groupByColumn("Holat"),
+    uzLabels.ungroupColumn("Holat"),
+    uzLabels.rowGroupLevel("Holat", 1, 2),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -169,14 +187,22 @@ describe("Uzbek orthography", () => {
       .filter(([, value]) => typeof value === "function")
       .map(([key]) => key)
       .sort()
-    // A sixth function label added later would otherwise go unread: add it to
+    // A function label added later would otherwise go unread: add it to
     // FUNCTION_OUTPUTS and to this list together.
     expect(functionKeys).toEqual([
+      "columnGroup",
       "filterTitle",
+      "groupByColumn",
+      "groupContinued",
+      "groupCount",
+      "groupRow",
       "page",
       "range",
       "reorderPosition",
+      "rowGroupLevel",
       "searchResults",
+      "tableHeight",
+      "ungroupColumn",
     ])
   })
 })

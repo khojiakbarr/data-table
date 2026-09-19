@@ -39,6 +39,23 @@ interface HeaderCellProps<TData extends RowData> {
   labels: DataTableLabels
   /** Keep the header in view while the body scrolls. */
   sticky: boolean
+  /**
+   * Whether the rows are grouped by this column.
+   *
+   * A mark in the header rather than a control, like the filter and sort
+   * indicators beside it: the column's values have left the body and the user
+   * should be able to see which column they went to without opening a panel.
+   */
+  grouped?: boolean
+  /**
+   * Which column holds the group values, when the table is grouped.
+   *
+   * Needed for the drag, not for the paint: the group column leads its section
+   * because the grouping put it there, so it is the one column a drag must
+   * neither pick up nor drop onto. `dropRegionOf` is where that is decided,
+   * once, for both surfaces.
+   */
+  groupColumnId?: string | undefined
   /** Open the per-column action menu at a viewport position. */
   onOpenMenu: (at: { x: number; y: number }) => void
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
@@ -59,6 +76,8 @@ export function HeaderCell<TData extends RowData>({
   flags,
   labels,
   sticky,
+  grouped = false,
+  groupColumnId,
   onReorder,
   onOpenMenu,
   onAutosize,
@@ -85,7 +104,7 @@ export function HeaderCell<TData extends RowData>({
   const pinned = pinning.side
   const canSort = flags.sorting && !isGroup && column.getCanSort()
   const canResize = flags.resizing && column.getCanResize()
-  const canDrag = flags.reordering && !isGroup && !pinned
+  const canDrag = flags.reordering && !isGroup && !pinned && column.id !== groupColumnId
   const isResizing = column.getIsResizing()
   const sorted = column.getIsSorted()
 
@@ -120,7 +139,10 @@ export function HeaderCell<TData extends RowData>({
   const canDropHere = (): boolean => {
     if (!canDrag || drop.draggedId === null) return false
     const dragged = column.table.getColumn(drop.draggedId)
-    return dragged !== undefined && dropRegionOf(dragged) === dropRegionOf(column)
+    return (
+      dragged !== undefined &&
+      dropRegionOf(dragged, groupColumnId) === dropRegionOf(column, groupColumnId)
+    )
   }
 
   const handleDragOver = (event: DragEvent<HTMLTableCellElement>) => {
@@ -284,6 +306,17 @@ export function HeaderCell<TData extends RowData>({
             <FilterIcon />
           </span>
         ) : null}
+
+        {grouped ? (
+          <span
+            className="dt-grouped"
+            role="img"
+            aria-label={labels.groupedBadge}
+            title={labels.groupedBadge}
+          >
+            <GroupIcon />
+          </span>
+        ) : null}
       </div>
 
       {isGroup ? null : (
@@ -348,6 +381,26 @@ function SortIcon({ direction }: { direction: false | "asc" | "desc" }) {
     >
       {direction !== "desc" ? <path d="M3 5 L6 2 L9 5" /> : null}
       {direction !== "asc" ? <path d="M3 7 L6 10 L9 7" /> : null}
+    </svg>
+  )
+}
+
+/** Three stacked bars, indented: rows gathered under a heading. */
+function GroupIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
+      <path d="M1.5 2.5 h9" />
+      <path d="M4 6 h6.5" />
+      <path d="M4 9.5 h6.5" />
     </svg>
   )
 }

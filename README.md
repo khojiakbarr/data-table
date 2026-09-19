@@ -200,8 +200,8 @@ actually drives both the row and the token.
 
 Set `mode: "server"` and the table stops sorting and paging: `data` is one
 page, already sorted, and the table tells you what it wants through a
-`TableQuery` — sorting, filters, quick search, pagination, and (reserved for
-row grouping) `grouping`. With TanStack Query:
+`TableQuery` — sorting, filters, quick search, row grouping and pagination.
+With TanStack Query:
 
 ```tsx
 const EMPTY: Receipt[] = [] // stable identity, so an empty page isn't a new `data` array every render
@@ -275,6 +275,7 @@ you hand to your backend and translate into SQL without interpreting anything.
   ],
   "search": { "text": "KR-102", "fields": ["code", "partner", "status"] },
   "grouping": [],
+  "expanded": [],
   "pagination": { "pageIndex": 0, "pageSize": 50 }
 }
 ```
@@ -462,6 +463,158 @@ answer stays on screen, dimmed and `aria-busy`, and a rejected one keeps it and
 offers a retry; `signal` aborts a superseded request. Declaring `meta.values` on
 a client-mode column trades the free counts for fixed labels, which is a real
 trade.
+
+### Row grouping
+
+Grouping is **server-side**. The table holds one page of fifty rows out of a
+hundred thousand; grouping those fifty would present a partial answer as if it
+were the whole table — counts that are wrong, and wrong in a way the user
+cannot see. So the grouping travels on the query and your backend answers it.
+There is no client-mode fallback: `instance.grouping` refuses to set one, and
+says so in a development warning.
+
+```ts
+instance.grouping.add("status")        // group by status
+instance.grouping.add("partner")       // nest partner inside it
+instance.grouping.toggle(["received"]) // open a group, by its key path
+instance.grouping.clear()              // every column back exactly where it was
+```
+
+Two fields go out and one comes back:
+
+```json
+{
+  "grouping": ["status", "partner"],
+  "expanded": [["received"], ["received", "Toshkent Kimyo Zavodi"]]
+}
+```
+
+`grouping` is column ids, **outermost first** — its order is its nesting, so
+unlike `filters` it is not sorted. `expanded` is the exact key paths of the
+groups the user has opened, canonicalised so that opening A then B produces
+the same query as opening B then A.
+
+The answer is a page of the **flattened visible rows** — what the user would
+see with those groups open — where a row is either one of your records or a
+group header:
+
+```ts
+interface GroupRow {
+  kind: "group"
+  /** The key path identifying this group, outermost first. */
+  path: (string | number | boolean)[]
+  /** How many LEAF rows are under it, at every depth. */
+  count: number
+}
+```
+
+Return them interleaved in `data`, in visible order. The table recognises a
+group header by its `kind` and hands one to no callback of yours — not
+`getRowId`, `getRowHeight`, `getSubRows`, `canExpand`, a cell renderer or
+`renderDetail` — so your accessors never see a row they have no fields for.
+`kind: "group"` is therefore **reserved**: a record of your own carrying it
+would be drawn as a header.
+
+`rowCount` is the length of the whole flattened list, group headers included:
+they are rows the pager pages past, and a total of records alone would let it
+run off the end.
+
+**One more field on the answer: `startPath`.** With a group open and a page
+boundary falling inside it, a page comes back as records with no header above
+them — and a record carries no path, so nothing in the rows says which group
+they belong to. Report the open group the page's FIRST row sits inside (`[]`
+at the top level) and the table draws a "continued" header above them. Only
+the first row can ask: every later row's context is re-established by the
+header above it, which is why this is one field per page rather than a path
+per row.
+
+```ts
+useDataTable({ mode: "server", data: page.rows, rowCount: page.total, startPath: page.startPath, … })
+```
+
+**The SQL.** Group the level being listed, filtered by the open path, and
+count:
+
+```sql
+SELECT COALESCE(NULLIF(status::text, ''), '') AS key, COUNT(*) AS count
+FROM receipts
+WHERE <the filters and the search, exactly as above>
+GROUP BY 1
+ORDER BY (key = '') , key   -- blanks above every value, as everywhere else
+```
+
+`COALESCE(NULLIF(col::text, ''), '')` and not a bare `GROUP BY col`: **a blank
+key is one group, keyed by `""`**. A literal group-by gives two — one for
+`NULL`, one for `''` — and the contract does not survive that split, because
+`blank` matches both: a "(Blanks)" filter would report twenty thousand rows
+beside two headers dividing them, the filter and the counts disagreeing about
+the same word.
+
+**Order of operations, and it matters**: filter and search, then group, then
+sort within a level, then flatten against the open paths, then page. A backend
+that groups before it filters returns counts that do not match the rows under
+them.
+
+**Sorting a grouped table sorts within its level.** Group headers are ordered
+by their own key; the level whose column the sort names takes the sort's
+direction while every other level stays ascending; records are ordered inside
+the innermost group they belong to and never move between groups. Blanks rank
+above every value for group keys exactly as they do for records, so one rule
+covers both kinds of row.
+
+**The Row Groups zone** sits in the side bar's Columns tab, under the column
+tree. Drag a column into it — from its row in that tree, or straight off its
+header — and the table groups by it; drag a second one in and it nests inside
+the first. Each level is a chip, outermost at the top, removable by its own
+button and draggable to renest. While nothing is grouped the zone is a dashed
+area saying what it is for, rather than an invisible target. The drop
+affordance is the one the columns already use: the chip standing where the
+dragged column will land is outlined, and when the destination is past the last
+level a chip is drawn for the incoming column so there is something to outline.
+
+Nothing here needs a pointer. Every row in the Columns tab carries a group
+toggle — `Group rows by Status`, and `Remove Status from row groups` once it is
+one — and a chip is renested with the same keys the column list uses: Space to
+pick it up, the arrows to move it, Space to drop it, Escape to give up, with
+each step announced.
+
+**The zone only exists where grouping can work.** `instance.grouping.enabled`
+is false on a client table, so there is no zone on one: a drop that grouped
+fifty rows out of a hundred thousand would answer with counts for the page, and
+a target that took a drop and did nothing would be worse still.
+
+**In the table**, a grouped column leaves the body and its slot becomes the
+group column, holding the chevron, the value and the count — `received
+(25 000)` — with a mark in its header. It keeps its header, so sorting it
+still reorders that level. Nesting a second level hides that column's own
+slot; removing the grouping puts every column back exactly where it was,
+because the derived visibility never touches the layout the user arranged.
+
+**The group column has a floor under its width** while it is grouped, because
+its slot was sized for that column's values and not for a chevron, a value and
+a count side by side — a 90px `Status` would crowd all three. The floor starts
+at 200px and gains one indent step per extra level, since each level pushes the
+chevron further in. It is a floor and not a clamp: a width you set yourself, by
+the resize handle or by `columnSizing`, wins outright, and nothing is written
+into the saved layout, so taking the last chip out restores the column exactly.
+`groupColumnMinWidth(levels)` is exported for a shell that wants the same rule.
+Opening a group is a **refetch**, so the loading treatment is the one for a
+page that is already on screen: the rows stay and a progress bar shows.
+
+**Grouping and its open branches are part of the saved layout**, beside
+`sorting`. Every change to either resets the page, the way sorting does.
+
+**What is deliberately not here.** Aggregations (AG Grid's Values zone) are
+out of this version — a header carries its value and its count and nothing
+else. So is "expand everything": `expanded` is exact key paths, which is right
+for the semantics and fine at any depth, but opening every group of a
+high-cardinality column would put one path per group into a query that is
+compared by `JSON.stringify` on every render. If one is ever wanted, `expanded`
+gains a companion rather than growing. And there is no per-group lazy fetch:
+one flat page keeps one request and one answer, and composes with the paging
+and virtualisation that already exist. The cost is the refetch on expand; the
+shape leaves room for the lazy version later, because `expanded` already
+travels as key paths.
 
 ---
 
@@ -816,13 +969,50 @@ the footer it takes the full `DataTableLabels` rather than a `Partial`. It write
 straight to `instance.filtering.setSearch`, so the debounce, the result-count
 announcement and the page reset come with it.
 
+`<TableSideBar instance={instance} labels={…} tabs={["columns", "filters"]} open={open} tab={tab} onToggle={…} onTabChange={…} onClose={…} onReorder={…} />` —
+the docked side bar the built-in shell renders: a rail of vertical tabs pinned
+to the table's inline-end edge, visible whether or not a panel is open, and the
+panel one of them opens *beside* the table rather than over it. Opening it takes
+width from the table, which is the point — this table scrolls horizontally, and
+a floating panel covers columns the user cannot then scroll out from under it.
+Below 640px the rail is withdrawn, the toolbar's Columns button is the only way
+in, and the panel overlays the card at full width.
+
 `<TablePanel instance={instance} labels={…} tab={tab} onTabChange={setTab} onReorder={…} onClose={…} />` —
 the side panel with both tabs, for a shell that wants to choose which one opens;
-`<ColumnsTab>` and `<FiltersTab>` are its halves, and `<ColumnPanel>` is still
-exported and still takes exactly the four props it always did, opening on the
-Columns tab. The Filters tab lists every filterable column, **hidden ones
-included and marked** — a hidden column's filter goes on applying and its
-header is not there to say so.
+`<ColumnsTab>` and `<FiltersTab>` are its halves. The Filters tab lists every
+filterable column, **hidden ones included and marked** — a hidden column's
+filter goes on applying and its header is not there to say so.
+
+The Columns tab lists the column **tree**, not a flat run of leaves: a group,
+then its children indented beneath it, to whatever depth the columns nest.
+
+- A group carries its own checkbox. Ticking it shows every leaf under it,
+  unticking hides them all, and it is **indeterminate** when only some are
+  visible — clicking it then shows the rest rather than hiding what is left.
+- A group collapses, per group, expanded by default. Collapsed state is UI
+  state and not part of the saved layout, so `resetLayout` does not touch it.
+- **Every column keeps its row, hidden or not**, and a group keeps its row even
+  when every leaf under it is hidden. A row is how a hidden column is shown
+  again; a list of only the visible ones is a one-way door.
+- Dragging inside the tree still refuses to cross a group boundary, which is
+  `dropRegionOf`'s rule and not the tree's — a leaf that left its group would
+  tear the group's header apart.
+- A group split by pinning — TanStack draws its header twice, once over the
+  pinned part and once over the rest — is listed twice, the same way, and each
+  half answers for its own run.
+
+`presentation` decides how the panel behaves, and it is a prop rather than
+something inferred from where the panel is mounted:
+
+| `presentation` | Looks like | Dismisses on |
+| --- | --- | --- |
+| `"floating"` (default) | A popover over the table, with its own tab strip | An outside press, and `Escape` from anywhere |
+| `"docked"` | Furniture inside `<TableSideBar>`, in flow beside the table, no tab strip of its own — the rail is the `tablist` | The active rail tab, and `Escape` **only while focus is inside it**. Never an outside click. |
+
+`<ColumnPanel>` is still exported and still takes exactly the four props it
+always did, still floating, still opening on the Columns tab: the shell moved
+to a docked bar, the component did not change.
 
 ---
 
@@ -833,7 +1023,7 @@ header is not there to say so.
 | Option | Type | Default | |
 |---|---|---|---|
 | `id` | `string` | — | **Required.** Unique per application; the persistence key. |
-| `data` | `TData[]` | — | |
+| `data` | `(TData \| GroupRow)[]` | — | One page in server mode. A grouped page interleaves group headers; the table recognises them and hands one to no callback of yours. |
 | `columns` | `ColumnDef[]` | — | Standard TanStack column definitions. |
 | `storage` | `LayoutStorage` | none | Where layouts live. |
 | `initialLayout` | `Partial<TableLayout>` | `{}` | Applied on a user's first visit. |
@@ -848,13 +1038,16 @@ header is not there to say so.
 | `rowCount` | `number` | — | Total rows across all pages. Server mode only; undefined until known. |
 | `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
 | `filtering` | `boolean \| FilteringOptions` | on | `{ debounceMs?, persist?, searchFields?, loadValues? }`. `false` turns filtering off. |
-| `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. |
+| `startPath` | `FilterValue[]` | `[]` | The open group the page's first row sits inside. See [Row grouping](#row-grouping). |
+| `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. Never called for a group header, whose id is its key path joined. |
 | `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
 | `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
 | `heightVersion` | `string \| number` | — | Changes when `getRowHeight` starts answering differently, for a change too narrow for the table to sample. See [Large data](#large-data). |
 
-Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, rowHeight, getRowHeight, heightVersion }`.
+Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, grouping, tableHeight, rowHeight, getRowHeight, heightVersion }`.
+
+`grouping` is `{ enabled, columns, isGrouped, has, columnId, set, add, remove, clear, expanded, isExpanded, toggle, collapseAll, startPath }` — see [Row grouping](#row-grouping).
 
 ### `<DataTable />`
 
@@ -865,7 +1058,7 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
-| `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters button while `instance.filtering.isFiltered` | Supplying this replaces **both** defaults, including the filtered-empty exit — a host that wants its own art for "no data" but still wants a way out of a filtered-empty table should branch on `instance.filtering.isFiltered` itself. |
+| `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters and/or Clear grouping button while the table is filtered or grouped | Supplying this replaces **both** defaults, including the narrowed-empty exit — a host that wants its own art for "no data" but still wants a way out should branch on `instance.filtering.isFiltered` and `instance.grouping.isGrouped` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | |
 | `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |
@@ -883,10 +1076,18 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 
 - Headers carry `aria-sort`, and each sort control names its column, so a screen reader
   announces "Amount: sort ascending" rather than three identical buttons.
-- Sort controls, the resize handle, the per-column menu and the Columns panel are all
+- Sort controls, the resize handle, the per-column menu and the side bar are all
   reachable by keyboard with a visible focus ring. A focused resize handle resizes with
   ← / → (Shift for larger steps) and fits the column on Enter.
-- The Columns panel closes on `Escape` and on an outside click.
+- The side bar's rail is a vertical `tablist` with a name of its own, one roving tab stop,
+  and ↑ / ↓ / Home / End along it — which move between tabs without opening or closing the
+  panel. Each tab states `aria-selected` **and** `aria-expanded`, so pressing the tab that is
+  already showing is announced as collapsing it rather than as doing nothing. Its label is
+  turned by `writing-mode`, so it stays one run of real, selectable text.
+- The docked panel closes on `Escape` **only while focus is inside it**, and hands focus back
+  to its rail tab; it does not close on an outside click, because a bar docked beside the table
+  is furniture and using the table is not a request to dismiss it. A floating `<ColumnPanel>`
+  still closes on `Escape` and on an outside click.
 - The per-column menu opens from a button as well as from right-click, and is reachable
   by keyboard; it closes on `Escape`.
 - The quick-search box announces its result count politely and never takes focus.
@@ -898,7 +1099,7 @@ Returns `{ table, id, flags, bounds, resetLayout, isCustomised, expanded, mode, 
 - A filtered column is marked in its header with a labelled icon. The side panel's Filters tab
   lists hidden columns too, marked as hidden — a hidden column's filter goes on applying and has no
   header to say so.
-- The panel's two tabs are a `tablist` with arrow-key movement and a single roving tab stop.
+- A floating panel's own two tabs are a `tablist` with arrow-key movement and a single roving tab stop, the same as the rail's.
 - An empty table says whether it has no rows or no *matching* rows, and the second offers a way out.
 - Row toggles report `aria-expanded` and name themselves.
 - Reordering has a keyboard path: each row of the **Columns** panel carries a drag handle that

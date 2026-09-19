@@ -1,4 +1,5 @@
 import { pruneFilters, type FilterKind } from "./filters"
+import { pruneExpanded, pruneGrouping } from "./grouping"
 import type { LayoutStorage, TableLayout } from "../types"
 
 /**
@@ -156,6 +157,33 @@ export function pruneLayout(
     )
   }
 
+  /*
+   * Grouping, and the open branches of it.
+   *
+   * `pruneGrouping` drops a group on a column the table no longer defines —
+   * the same rule one slice over, and for the same reason: nothing on screen
+   * could take it off, and the query would go on asking a server to group by a
+   * column this table has no chip for.
+   *
+   * When that prune actually changes the grouping, the open paths are dropped
+   * WHOLESALE rather than trimmed. A path's keys are positional — index 0 is
+   * the outermost level's key — so removing a level silently re-reads every
+   * saved key as belonging to the level above it: a path saved as
+   * `["received", "Acme"]` under `["status", "partner"]` would come back
+   * meaning "the status group Acme" once `status` is gone. Reopening nothing
+   * is the honest outcome; reopening the wrong branches is not.
+   *
+   * Both are ADDITIVE keys: `FORMAT_VERSION` deliberately does not move for
+   * them, because a bump discards every stored layout — every user's column
+   * widths, order and pinning — to gain slices they have never set.
+   */
+  if (Array.isArray(stored.grouping)) {
+    const grouping = pruneGrouping(stored.grouping, knownColumnIds)
+    pruned.grouping = grouping
+    const kept = grouping.length === stored.grouping.length
+    pruned.expanded = kept ? pruneExpanded(stored.expanded, grouping.length) : []
+  }
+
   // Without this a deleted column's filter stays active forever with no UI able
   // to reach it: 40 rows out of 10 000 and no way to find out why.
   // `pruneFilters` itself re-checks `Array.isArray` — `stored.filters` is
@@ -169,6 +197,22 @@ export function pruneLayout(
 
   if (typeof stored.pageSize === "number" && Number.isFinite(stored.pageSize) && stored.pageSize > 0) {
     pruned.pageSize = stored.pageSize
+  }
+
+  /*
+   * The table height the grip left behind. Only sanity is checked here — a
+   * finite, positive number — and not the minimum, which depends on the
+   * table's row height and so is not knowable from a layout alone;
+   * `clampTableHeight` applies that where the height is used. An entry that
+   * fails this check is dropped rather than repaired, which puts the `height`
+   * prop back in charge instead of rendering `height: NaN` on the root.
+   *
+   * `height` is an ADDITIVE key: `FORMAT_VERSION` deliberately does not move
+   * for it, because a bump discards every stored layout — every user's column
+   * widths, order and pinning — to gain a slice they have never set.
+   */
+  if (typeof stored.height === "number" && Number.isFinite(stored.height) && stored.height > 0) {
+    pruned.height = stored.height
   }
 
   return pruned

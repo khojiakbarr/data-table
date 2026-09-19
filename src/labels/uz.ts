@@ -25,6 +25,7 @@ import type { DataTableLabels } from "../types"
 export const uzLabels: DataTableLabels = {
   columnsButton: "Ustunlar",
   columnsTitle: "Ustunlar",
+  sideBar: "Jadvalning yon paneli",
   showAll: "Hammasini koʻrsatish",
   reset: "Tiklash",
   pinStart: "Chapga mahkamlash",
@@ -40,6 +41,10 @@ export const uzLabels: DataTableLabels = {
     "Probel — olish, strelkalar — koʻchirish, probel — qoʻyish, Escape — bekor qilish",
   reorderPosition: (column, position, total) => `${column}: ${total} tadan ${position}-oʻrin`,
   resizeColumn: "ustun kengligini oʻzgartirish",
+  resizeTable: "Jadval balandligini oʻzgartirish",
+  resizeTableHint:
+    "Balandlikni oʻzgartirish uchun yuqoriga va pastga strelkalar, Shift bilan katta qadam",
+  tableHeight: (pixels) => `Jadval balandligi ${pixels} piksel`,
   expandRow: "Qatorni ochish",
   collapseRow: "Qatorni yopish",
   columnActions: "Ustun amallari",
@@ -48,6 +53,9 @@ export const uzLabels: DataTableLabels = {
   resetWidth: "Kenglikni tiklash",
   pinnedStartBadge: "Chapda",
   pinnedEndBadge: "Oʻngda",
+  columnGroup: (group) => `${group} ustunlar guruhi`,
+  expandGroup: "Guruhni yoyish",
+  collapseGroup: "Guruhni yigʻish",
   rows: "Qatorlar",
   rowsPerPage: "Sahifadagi qatorlar",
   range: (from, to, total) => `${from}–${to} / ${total ?? "…"}`,
@@ -115,4 +123,17 @@ export const uzLabels: DataTableLabels = {
   clearAllFilters: "Barcha filtrlarni tozalash",
   noMatches: "Filtrlarga mos qator topilmadi",
   clearFilters: "Filtrlarni tozalash",
+  groupedBadge: "Guruhlangan",
+  groupCount: (count) => `(${count})`,
+  // A numeral governs the bare singular in Uzbek: `5 ta qator`, never
+  // `qatorlar` — the same rule `searchResults` follows above.
+  groupRow: (value, count) => `${value}, ${count} ta qator`,
+  groupContinued: (path) => `${path.join(" › ")} (davomi)`,
+  clearGrouping: "Guruhlashni tozalash",
+  rowGroupsTitle: "Qatorlar guruhlanishi",
+  rowGroupsHint: "Qatorlarni ustun boʻyicha guruhlash uchun ustunni shu yerga torting",
+  groupByColumn: (column) => `Qatorlarni «${column}» ustuni boʻyicha guruhlash`,
+  ungroupColumn: (column) => `«${column}» ustunini guruhlashdan olib tashlash`,
+  rowGroupLevel: (column, level, total) =>
+    `${column}: guruhlash darajasi ${level} / ${total}`,
 }

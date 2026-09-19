@@ -1,5 +1,5 @@
 import { createColumnHelper } from "@tanstack/react-table"
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
@@ -210,5 +210,133 @@ describe("grouped headers", () => {
     const document = screen.getByRole("columnheader", { name: /^Document$/ })
     expect(document.className).toContain("dt-pinned-start-last")
     expect(document.style.insetInlineStart).toBe("100px")
+  })
+})
+
+/**
+ * A grouped table's group column, where the header tree is deep.
+ *
+ * Grouping lifts the column holding the group values to the front so the tree
+ * reads from the left edge. A leaf cannot lead a table from inside a column
+ * group: TanStack draws one header per RUN of adjacent leaves with the same
+ * parent, so the group it came from would be drawn twice, once at each end of
+ * the split. While the table is grouped the column is not part of that group
+ * anyway, so it leaves it — and gets the full-height header a column declared
+ * outside every group gets.
+ */
+describe("the group column and the header tree", () => {
+  beforeEach(() => localStorage.clear())
+
+  /** The same shape, in the only mode that can group: server. */
+  function RowGrouped({ grouping }: { grouping: string[] }) {
+    const instance = useDataTable({
+      id: "grouped-rows",
+      data: rows,
+      columns,
+      mode: "server",
+      rowCount: rows.length,
+      getRowId: (row) => row.code,
+      initialLayout: { grouping },
+    })
+    return (
+      <>
+        {/* The grouping is state, so taking it off has to be a real change and
+            not a fresh mount with a different `initialLayout`. */}
+        <button type="button" onClick={() => instance.grouping.clear()}>
+          ungroup
+        </button>
+        <DataTable instance={instance} />
+      </>
+    )
+  }
+
+  /**
+   * The order the cells are rendered in.
+   *
+   * Read off a body row rather than off the headers: a leaf that sits above
+   * its natural depth is drawn in an earlier header row, so the headers in
+   * document order are not left-to-right.
+   */
+  const leafOrder = (): string[] =>
+    [...(document.querySelector("tbody tr.dt-tr")?.querySelectorAll("td[data-column-id]") ?? [])]
+      .map((td) => td.getAttribute("data-column-id") ?? "")
+
+  it("leads the table from outside the group it was declared in", () => {
+    render(<RowGrouped grouping={["currency"]} />)
+
+    // Currency is declared last but one, two groups deep. Grouped, it is
+    // first, and everything else keeps the order it had.
+    expect(leafOrder()).toEqual(["currency", "code", "partner", "city", "amount", "status"])
+    // Full height, like Code: it stands under no group any more.
+    expect(screen.getByRole("columnheader", { name: /^Currency/ })).toHaveAttribute("rowspan", "3")
+  })
+
+  it("does not split the group it left in two", () => {
+    render(<RowGrouped grouping={["currency"]} />)
+
+    // The defect a derived order alone would produce: Money drawn once over
+    // the hoisted column at the left edge and once over what stayed behind.
+    for (const label of ["Totals", "Money", "Document"]) {
+      expect(screen.getAllByRole("columnheader", { name: new RegExp(`^${label}`) })).toHaveLength(1)
+    }
+    // And Money now spans only what is still under it.
+    expect(screen.getByRole("columnheader", { name: /^Money/ })).not.toHaveAttribute("colspan", "2")
+  })
+
+  it("puts it back inside its group when the grouping goes", () => {
+    render(<RowGrouped grouping={["currency"]} />)
+    expect(leafOrder()[0]).toBe("currency")
+
+    fireEvent.click(screen.getByRole("button", { name: "ungroup" }))
+    expect(leafOrder()).toEqual(["code", "partner", "city", "amount", "currency", "status"])
+    // Back at its natural depth, so no spanning at all.
+    expect(screen.getByRole("columnheader", { name: /^Currency/ })).not.toHaveAttribute("rowspan")
+    expect(screen.getByRole("columnheader", { name: /^Money/ })).toHaveAttribute("colspan", "2")
+  })
+})
+
+/**
+ * The one structural case the fixture above cannot show: a group whose only
+ * child is the one being hoisted. A header spanning nothing has nothing to
+ * span, so the group goes with it.
+ */
+describe("a group emptied by the hoist", () => {
+  beforeEach(() => localStorage.clear())
+
+  interface Small {
+    id: string
+    only: string
+    other: string
+  }
+
+  const smallHelper = createColumnHelper<DataTableFeatures, Small>()
+  const smallRows: Small[] = [{ id: "s1", only: "x", other: "y" }]
+  const smallColumns = [
+    smallHelper.group({
+      id: "solo",
+      header: "Solo",
+      columns: smallHelper.columns([smallHelper.accessor("only", { header: "Only", size: 100 })]),
+    }),
+    smallHelper.accessor("other", { header: "Other", size: 100 }),
+  ]
+
+  it("drops the group header along with its last child", () => {
+    function Table({ grouping }: { grouping: string[] }) {
+      const instance = useDataTable<Small>({
+        id: "solo-group",
+        data: smallRows,
+        columns: smallColumns,
+        mode: "server",
+        rowCount: 1,
+        getRowId: (row) => row.id,
+        initialLayout: { grouping },
+      })
+      return <DataTable instance={instance} />
+    }
+
+    render(<Table grouping={["only"]} />)
+    expect(screen.queryByRole("columnheader", { name: /^Solo/ })).toBeNull()
+    // One header row now, because nothing nests any more.
+    expect(screen.getByRole("columnheader", { name: /^Only/ })).not.toHaveAttribute("rowspan")
   })
 })

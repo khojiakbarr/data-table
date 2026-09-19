@@ -12,6 +12,8 @@ describe("buildQuery", () => {
       sorting: [{ id: "date", desc: true }],
       filters: [partner],
       search: { text: "KR-102", fields: ["code"] },
+      grouping: [],
+      expanded: [],
       pageIndex: 2,
       pageSize: 50,
     })
@@ -21,6 +23,7 @@ describe("buildQuery", () => {
       filters: [partner],
       search: { text: "KR-102", fields: ["code"] },
       grouping: [],
+      expanded: [],
       pagination: { pageIndex: 2, pageSize: 50 },
     })
   })
@@ -33,6 +36,8 @@ describe("buildQuery", () => {
       sorting: [],
       filters: [status, partner, amount],
       search: null,
+      grouping: [],
+      expanded: [],
       pageIndex: 0,
       pageSize: 50,
     })
@@ -44,11 +49,59 @@ describe("buildQuery", () => {
       sorting: [],
       filters: [],
       search: { text: "kr", fields: ["status", "code", "partner"] },
+      grouping: [],
+      expanded: [],
       pageIndex: 0,
       pageSize: 50,
     })
     expect(query.search).toEqual({ text: "kr", fields: ["code", "partner", "status"] })
-    expect(buildQuery({ sorting: [], filters: [], search: null, pageIndex: 0, pageSize: 50 }).search).toBeNull()
+    expect(buildQuery({ sorting: [], filters: [], search: null, grouping: [], expanded: [], pageIndex: 0, pageSize: 50 }).search).toBeNull()
+  })
+})
+
+describe("buildQuery — grouping", () => {
+  it("keeps the grouping's order, which is its nesting", () => {
+    // Unlike `filters`, which are sorted: a grouping's order IS its meaning —
+    // the outermost level first — so it travels exactly as the user set it.
+    const query = buildQuery({
+      sorting: [],
+      filters: [],
+      search: null,
+      grouping: ["status", "partner"],
+      expanded: [],
+      pageIndex: 0,
+      pageSize: 50,
+    })
+    expect(query.grouping).toEqual(["status", "partner"])
+  })
+
+  it("canonicalises the open paths, so the set decides the query and not the order", () => {
+    const inputs = { sorting: [], filters: [], search: null, grouping: ["status"], pageIndex: 0, pageSize: 50 }
+    const oneWay = buildQuery({ ...inputs, expanded: [["b"], ["a"]] })
+    const other = buildQuery({ ...inputs, expanded: [["a"], ["b"]] })
+    expect(queriesEqual(oneWay, other)).toBe(true)
+  })
+
+  it("publishes no open paths for an ungrouped table, whatever the slice still holds", () => {
+    const query = buildQuery({
+      sorting: [],
+      filters: [],
+      search: null,
+      grouping: [],
+      expanded: [["a"]],
+      pageIndex: 0,
+      pageSize: 50,
+    })
+    expect(query.expanded).toEqual([])
+  })
+
+  it("copies the grouping rather than aliasing the caller's array", () => {
+    const grouping = ["status"]
+    const query = buildQuery({
+      sorting: [], filters: [], search: null, grouping, expanded: [], pageIndex: 0, pageSize: 50,
+    })
+    grouping.push("partner")
+    expect(query.grouping).toEqual(["status"])
   })
 })
 
@@ -57,6 +110,8 @@ describe("queriesEqual", () => {
     sorting: [{ id: "date", desc: false }],
     filters: [],
     search: null,
+    grouping: [],
+    expanded: [],
     pageIndex: 0,
     pageSize: 50,
   })
@@ -66,6 +121,8 @@ describe("queriesEqual", () => {
       sorting: [{ id: "date", desc: false }],
       filters: [],
       search: null,
+      grouping: [],
+      expanded: [],
       pageIndex: 0,
       pageSize: 50,
     })
@@ -80,7 +137,7 @@ describe("queriesEqual", () => {
   })
 
   it("is true for a reordered-but-identical filters array", () => {
-    const inputs = { sorting: [], search: null, pageIndex: 0, pageSize: 50 }
+    const inputs = { sorting: [], search: null, grouping: [], expanded: [], pageIndex: 0, pageSize: 50 }
     const oneWay = buildQuery({ ...inputs, filters: [amount, partner, status] })
     const other = buildQuery({ ...inputs, filters: [status, amount, partner] })
     expect(queriesEqual(oneWay, other)).toBe(true)
@@ -88,7 +145,7 @@ describe("queriesEqual", () => {
 
   it("is true for a reordered-but-identical values list and search fields", () => {
     const reticked = listCondition({ kind: "list", field: "status", op: "in", values: ["in_process", "open"] })!
-    const inputs = { sorting: [], pageIndex: 0, pageSize: 50 }
+    const inputs = { sorting: [], grouping: [], expanded: [], pageIndex: 0, pageSize: 50 }
     const oneWay = buildQuery({ ...inputs, filters: [status], search: { text: "a", fields: ["b", "a"] } })
     const other = buildQuery({ ...inputs, filters: [reticked], search: { text: "a", fields: ["a", "b"] } })
     expect(queriesEqual(oneWay, other)).toBe(true)

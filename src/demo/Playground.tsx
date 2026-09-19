@@ -11,7 +11,7 @@ import { FeatureControls } from "./FeatureControls"
 import { LanguageSwitcher } from "./LanguageSwitcher"
 import { ThemeControls } from "./ThemeControls"
 import { buildReceiptColumns, ReceiptDetail } from "./receiptColumns"
-import { fetchValues, type ServerReceipt } from "./fakeServer"
+import { fetchValues, type ServerReceipt, type ServerRow } from "./fakeServer"
 import {
   DEFAULT_FEATURES,
   DEFAULT_THEME,
@@ -27,7 +27,15 @@ import { useReceiptsQuery } from "./useReceiptsQuery"
 
 const LABELS: Record<Language, DataTableLabels> = { en: defaultLabels, ru: ruLabels, uz: uzLabels }
 const storage = localStorageLayout()
-const EMPTY: ServerReceipt[] = []
+/**
+ * The `height` prop the table starts at.
+ *
+ * Only the starting point: the grip on the bottom edge and the Sizing group's
+ * height field both write an override into the saved layout, which is what the
+ * table then renders at until "Reset" clears it.
+ */
+const START_HEIGHT = 620
+const EMPTY: ServerRow[] = []
 
 /**
  * The library's playground: one server-backed table, a language switcher, and
@@ -59,7 +67,7 @@ export function Playground() {
   const baseMode = useBaseThemeMode(theme.theme)
   const themeValues = resolveThemeValues(theme, baseMode)
 
-  const table = useDataTable({
+  const table = useDataTable<ServerReceipt>({
     id: "playground",
     columns,
     data: page?.rows ?? EMPTY,
@@ -67,6 +75,9 @@ export function Playground() {
     // `rowCount` stays unset — not `undefined` — until the first page
     // resolves, which is what `exactOptionalPropertyTypes` requires here.
     ...(page ? { rowCount: page.total } : {}),
+    // Which open group the page's first row sits inside, so the table can draw
+    // a "continued" header when a page boundary falls inside a group.
+    ...(page ? { startPath: page.startPath } : {}),
     getRowId: (row) => row.id,
     onQueryChange: setQuery,
     storage,
@@ -92,7 +103,23 @@ export function Playground() {
         <p className="pg-lede">{chrome.lede}</p>
         <LanguageSwitcher value={language} onChange={setLanguage} chrome={chrome} />
         <FeatureControls value={features} onChange={setFeatures} chrome={chrome} />
-        <ThemeControls value={theme} resolved={themeValues} onChange={setTheme} chrome={chrome} />
+        <ThemeControls
+          value={theme}
+          resolved={themeValues}
+          onChange={setTheme}
+          /*
+           * The field and the table's own grip are one control in two places:
+           * both read `instance.tableHeight` and both write through its
+           * setter, so neither can show a height the other has moved past.
+           * Until the first change there is no override, and the field shows
+           * the `height` prop below — the value actually on screen.
+           */
+          tableHeight={table.tableHeight.value ?? START_HEIGHT}
+          minTableHeight={table.tableHeight.min}
+          onTableHeightChange={table.tableHeight.set}
+          chrome={chrome}
+        />
+
         <button
           type="button"
           className="pg-reset"
@@ -115,7 +142,7 @@ export function Playground() {
         <DataTable
           instance={table}
           className={THEME_CLASS}
-          height={620}
+          height={START_HEIGHT}
           striped={features.striped}
           toolbar={features.toolbar}
           footer={features.footer}

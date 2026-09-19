@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest"
-import { dropAtIndex, dropSlotId, moveColumn, reachableRange } from "./reorder"
+import {
+  dropAtIndex,
+  dropSlotId,
+  leadColumn,
+  moveColumn,
+  pinnedFirstOrder,
+  reachableRange,
+} from "./reorder"
 
 /**
  * Reordering is the feature that looks simplest and breaks most quietly.
@@ -166,5 +173,46 @@ describe("reachableRange", () => {
 
   it("spans the whole list when every position is in one region", () => {
     expect(reachableRange(["x", "x", "x"], 1)).toEqual({ first: 0, last: 2 })
+  })
+})
+
+describe("leadColumn", () => {
+  it("brings a column to the front", () => {
+    expect(leadColumn(["a", "b", "c", "d"], "c")).toEqual(["c", "a", "b", "d"])
+  })
+
+  it("leaves an order whose column is already first alone", () => {
+    expect(leadColumn(["a", "b"], "a")).toEqual(["a", "b"])
+  })
+
+  it("leaves an order that does not hold the column alone", () => {
+    expect(leadColumn(["a", "b"], "zz")).toEqual(["a", "b"])
+  })
+
+  it("does not modify the order it was given", () => {
+    const order = ["a", "b", "c"]
+    leadColumn(order, "c")
+    expect(order).toEqual(["a", "b", "c"])
+  })
+})
+
+describe("pinnedFirstOrder", () => {
+  const ids = ["a", "b", "c", "d"]
+
+  it("is declaration order when nothing is pinned", () => {
+    expect(pinnedFirstOrder(ids, { start: [], end: [] })).toEqual(ids)
+  })
+
+  it("puts each pinned section at its own end, in the pinning array's order", () => {
+    expect(pinnedFirstOrder(ids, { start: ["d", "b"], end: ["a"] })).toEqual(["d", "b", "c", "a"])
+  })
+
+  it("ignores ids that are not columns of this table", () => {
+    expect(pinnedFirstOrder(ids, { start: ["gone"], end: [] })).toEqual(ids)
+  })
+
+  it("renders a column named on both sides once, at the start", () => {
+    // What TanStack does with it too: `getStartLeafColumns` reaches it first.
+    expect(pinnedFirstOrder(ids, { start: ["b"], end: ["b"] })).toEqual(["b", "a", "c", "d"])
   })
 })

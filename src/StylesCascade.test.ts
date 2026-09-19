@@ -46,9 +46,35 @@ describe("stacking context", () => {
     return root
   }
 
-  it("lifts .dt-root while its Columns panel is open", () => {
-    const root = renderRoot("dt-panel")
+  it("lifts .dt-root while a FLOATING Columns panel is open", () => {
+    // `.dt-panel-floating` is `position: absolute` with no clipping ancestor,
+    // so it routinely hangs below a short table — the case the lift was
+    // written for, and the one `ColumnPanel` still renders.
+    const root = renderRoot("dt-panel dt-panel-floating")
     expect(getComputedStyle(root).zIndex).toBe("1")
+    root.remove()
+  })
+
+  it("leaves .dt-root alone while the DOCKED panel is open", () => {
+    /*
+     * The docked panel is in flow inside `.dt-sidebar` and never leaves the
+     * card, so there is nothing to lift it over — and lifting the whole table
+     * against the rest of the page for a piece of its own furniture would be
+     * a side effect nobody asked for. It is also a grandchild rather than a
+     * direct child, so both halves of the retargeted rule are exercised here:
+     * neither the class nor the `>` combinator matches.
+     */
+    const root = document.createElement("div")
+    root.className = "dt-root"
+    const sidebar = document.createElement("div")
+    sidebar.className = "dt-sidebar"
+    const panel = document.createElement("div")
+    panel.className = "dt-panel dt-panel-docked"
+    sidebar.appendChild(panel)
+    root.appendChild(sidebar)
+    document.body.appendChild(root)
+
+    expect(getComputedStyle(root).zIndex).toBe("auto")
     root.remove()
   })
 
@@ -278,5 +304,127 @@ describe(".dt-menu sizing", () => {
     expect(getComputedStyle(menu).maxWidth).toBe(`${window.innerWidth - 16}px`)
 
     menu.remove()
+  })
+})
+
+/**
+ * The narrow-width fallback, asserted structurally rather than by cascade.
+ *
+ * jsdom does not evaluate `@media` at all when resolving styles (verified: a
+ * `@media (min-width: 100px)` block that plainly matches `window.innerWidth`
+ * of 1024 still does not reach `getComputedStyle`), so there is no way to ask
+ * it what the sheet computes to at 500px. What CAN be checked, and is what
+ * would actually regress, is that the rule exists, at the documented
+ * breakpoint, and says the three things the fallback is made of: the closed
+ * bar is withdrawn, the open one overlays the card, and the rotated labels
+ * turn back the right way up.
+ */
+describe("the side bar's narrow-width fallback", () => {
+  /** The `@media (max-width: 640px)` block, as the browser parsed it. */
+  const narrowRule = (): CSSMediaRule => {
+    const styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+    document.head.appendChild(styleEl)
+    const rules = [...(styleEl.sheet?.cssRules ?? [])]
+    const media = rules.filter(
+      (rule): rule is CSSMediaRule =>
+        rule.constructor.name === "CSSMediaRule" &&
+        (rule as CSSMediaRule).conditionText.includes("max-width"),
+    )
+    styleEl.remove()
+    expect(media, "no max-width media block in the stylesheet").toHaveLength(1)
+    return media[0] as CSSMediaRule
+  }
+
+  /** That block's declarations for one selector, as a single string. */
+  const declarationsFor = (selector: string): string => {
+    const match = [...narrowRule().cssRules].find(
+      (rule) => rule.constructor.name === "CSSStyleRule" && (rule as CSSStyleRule).selectorText === selector,
+    )
+    expect(match, `no rule for ${selector} inside the narrow-width block`).toBeDefined()
+    return (match as CSSStyleRule).style.cssText
+  }
+
+  it("takes effect at the documented breakpoint", () => {
+    expect(narrowRule().conditionText).toBe("(max-width: 640px)")
+  })
+
+  it("withdraws the rail while the bar is closed, so the toolbar button is the way in", () => {
+    expect(declarationsFor(".dt-sidebar:not([data-dt-open])")).toContain("display: none")
+  })
+
+  it("overlays the card at full width instead of docking", () => {
+    const sidebar = declarationsFor(".dt-sidebar")
+    expect(sidebar).toContain("position: absolute")
+    // `inset: 0` is the full width and height of the card; a shorthand jsdom
+    // may expand, so both spellings are accepted.
+    expect(/inset: 0|left: 0/.test(sidebar)).toBe(true)
+    expect(declarationsFor(".dt-panel-docked")).toContain("width: auto")
+  })
+
+  it("turns the rotated tab labels back to horizontal", () => {
+    // The rail is laid across the top of the overlay there, so a label left in
+    // `vertical-rl` would read down the page inside a horizontal strip.
+    expect(declarationsFor(".dt-sidebar-tab")).toContain("writing-mode: horizontal-tb")
+  })
+})
+
+/**
+ * Docking's one load-bearing claim: opening a panel NARROWS the table instead
+ * of covering it. jsdom does no layout, so it cannot be shown by measuring —
+ * but every declaration the claim rests on resolves through the cascade, and
+ * each of them is one an innocent-looking edit could undo.
+ */
+describe("the docked side bar takes width rather than covering", () => {
+  let styleEl: HTMLStyleElement
+
+  beforeEach(() => {
+    styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+    document.head.appendChild(styleEl)
+  })
+
+  afterEach(() => styleEl.remove())
+
+  /** The shell's layout: `.dt-root > .dt-main + .dt-sidebar > .dt-panel`. */
+  const renderShell = (): { root: HTMLElement; main: HTMLElement; panel: HTMLElement } => {
+    const root = document.createElement("div")
+    root.className = "dt-root"
+    const main = document.createElement("div")
+    main.className = "dt-main"
+    const sidebar = document.createElement("div")
+    sidebar.className = "dt-sidebar"
+    const panel = document.createElement("div")
+    panel.className = "dt-panel dt-panel-docked"
+    sidebar.appendChild(panel)
+    root.append(main, sidebar)
+    document.body.appendChild(root)
+    return { root, main, panel }
+  }
+
+  it("lays the root out as a row of the table's column and the bar", () => {
+    const { root } = renderShell()
+    expect(getComputedStyle(root).display).toBe("flex")
+    // `column` here would stack the bar under the table instead of beside it.
+    expect(getComputedStyle(root).flexDirection).toBe("row")
+    root.remove()
+  })
+
+  it("lets the table's column give the width up", () => {
+    const { root, main } = renderShell()
+    /*
+     * A flex item's automatic minimum size is its content, so without this the
+     * table would refuse to shrink and the bar would push its last columns out
+     * of the card — which looks exactly like the covering this replaced.
+     */
+    expect(getComputedStyle(main).minWidth).toBe("0px")
+    root.remove()
+  })
+
+  it("keeps the docked panel in flow, where it can take that width", () => {
+    const { root, panel } = renderShell()
+    // Absolute or fixed would put it back on top of the table.
+    expect(getComputedStyle(panel).position).toBe("static")
+    root.remove()
   })
 })

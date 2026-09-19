@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react"
 import type { Updater } from "@tanstack/react-table"
 import { pruneFilters, type FilterKind } from "./filters"
+import { pruneExpanded, pruneGrouping } from "./grouping"
 import { pruneLayout } from "./persistence"
 import { useDebouncedSave } from "./useDebouncedSave"
 import type { LayoutStorage, TableLayout } from "../types"
@@ -12,6 +13,8 @@ export const EMPTY_LAYOUT: TableLayout = {
   columnPinning: { start: [], end: [] },
   columnSizing: {},
   sorting: [],
+  grouping: [],
+  expanded: [],
   filters: [],
   // Also what an absent global filter means to TanStack, so the off state is
   // unambiguous.
@@ -53,7 +56,17 @@ const ARRANGEMENT_SLICES = Object.keys({
   columnPinning: true,
   columnSizing: true,
   sorting: true,
+  /*
+   * Grouping is an arrangement, and so is which of its branches are open —
+   * see {@link TableLayout.expanded} for why expansion is the one kind of row
+   * expansion that persists. Both therefore light up the Columns tab's Reset
+   * link and both are dropped by `resetLayout`, which is what "removing the
+   * last chip puts every column back exactly where it was" needs.
+   */
+  grouping: true,
+  expanded: true,
   pageSize: true,
+  height: true,
 } satisfies Record<ArrangementSlice, true>) as ArrangementSlice[]
 
 /** The layout plus what the table knows about where it came from. */
@@ -364,6 +377,14 @@ function seedLayout(
   const seeded = { ...EMPTY_LAYOUT, ...initialLayout }
   seeded.filters = filteringEnabled ? pruneFilters(seeded.filters, columnIds, filterKinds) : []
   if (!filteringEnabled || typeof seeded.search !== "string") seeded.search = ""
+  /*
+   * A declared grouping gets the same treatment a stored one does: a group on
+   * a column this table does not define would otherwise travel on every query
+   * with no chip on screen able to take it off, and an open path deeper than
+   * the grouping names a level that does not exist.
+   */
+  seeded.grouping = pruneGrouping(seeded.grouping, columnIds)
+  seeded.expanded = pruneExpanded(seeded.expanded, seeded.grouping.length)
   return seeded
 }
 

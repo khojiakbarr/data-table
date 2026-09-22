@@ -1,7 +1,14 @@
 import type { RowData } from "@tanstack/react-table"
-import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import {
+  useCallback,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react"
 import { classNames, insertAt } from "../core/classNames"
-import { buildColumnTree, siblingOrderOf } from "../core/columnTree"
+import { buildColumnTree, siblingOrderOf, type ColumnTreeNode } from "../core/columnTree"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import type { CellEditHandler } from "../core/cellEditing"
 import { useCellEditing } from "../core/useCellEditing"
@@ -279,6 +286,70 @@ export interface DataTableProps<TData extends RowData> {
   onCellEdit?: CellEditHandler<TData> | undefined
 }
 
+/** Elements a real Tab press stops on — the header's own Tab order below is built from these. */
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]'
+
+/**
+ * Whether `element` is actually reachable by Tab: focusable at all, and not
+ * pulled out of the sequence with `tabindex="-1"`.
+ */
+function isTabbable(element: Element): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false
+  const explicit = element.getAttribute("tabindex")
+  return explicit === null || Number(explicit) >= 0
+}
+
+/** Every element under `root` a real Tab press would stop on, in DOM order. */
+function tabbableWithin(root: ParentNode): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(isTabbable)
+}
+
+/**
+ * The header's own focusable controls, in the order the columns are actually
+ * drawn — a preorder walk of {@link ColumnTreeNode}, itself built from that
+ * same rendered order (see `columnTree.ts`).
+ *
+ * A native `<table>` cannot put the controls in this order on its own: a
+ * column outside any group spans every header row with `rowSpan` so one cell
+ * can label it once, and a spanning cell has to live in the EARLIEST row it
+ * covers — a browser has nowhere else to put it. That drags such a column's
+ * controls ahead of a grouped column's in the DOM, and so in the default Tab
+ * order, no matter which one is actually drawn further left (Defect C). This
+ * is the corrected order; {@link DataTable}'s own `onKeyDown` is what steers
+ * Tab into it.
+ *
+ * Matched to the tree by `data-column-id` and consumed one run at a time,
+ * rather than assumed to already be in DOM order: a group split by a pinning
+ * boundary (`columnTree.ts`) draws the same id twice, once per run, and each
+ * run needs its own cell — the next one still waiting under that id, which is
+ * why a match is shifted off the list rather than just read.
+ */
+function headerFocusOrder<TData extends RowData>(
+  head: HTMLElement,
+  nodes: readonly ColumnTreeNode<TData>[],
+): HTMLElement[] {
+  const cellsById = new Map<string, HTMLElement[]>()
+  for (const cell of head.querySelectorAll<HTMLElement>("th[data-column-id]")) {
+    const id = cell.getAttribute("data-column-id")
+    if (id === null) continue
+    const run = cellsById.get(id)
+    if (run) run.push(cell)
+    else cellsById.set(id, [cell])
+  }
+
+  const order: HTMLElement[] = []
+  const visit = (level: readonly ColumnTreeNode<TData>[]): void => {
+    for (const node of level) {
+      const cell = cellsById.get(node.column.id)?.shift()
+      if (cell) order.push(...tabbableWithin(cell))
+      if (node.kind === "group") visit(node.children)
+    }
+  }
+  visit(nodes)
+  return order
+}
+
 /**
  * The batteries-included table.
  *
@@ -407,6 +478,51 @@ export function DataTable<TData extends RowData>({
    * drag.
    */
   const headerTree = buildColumnTree(leafColumns)
+  /**
+   * Steers Tab/Shift+Tab among the header's own controls into
+   * {@link headerFocusOrder} instead of the DOM order a mixed
+   * grouped/ungrouped `<table>` produces (Defect C).
+   *
+   * Never a positive `tabindex`: those are a well-known trap because they are
+   * global, not scoped to a widget — they would reorder the whole document
+   * around this one table's header. This intercepts the keypress instead. At
+   * either end of the header's own order it hands off to whatever the
+   * document's real focus order has right after — or before — the header,
+   * found the same way a browser would if the header were already in the
+   * right order, so leaving it behaves exactly like leaving any other widget.
+   */
+  const handleHeaderTabKey = (event: ReactKeyboardEvent<HTMLTableSectionElement>): void => {
+    if (event.key !== "Tab") return
+    const head = headRef.current
+    const active = document.activeElement
+    if (head === null || !(active instanceof HTMLElement) || !head.contains(active)) return
+
+    const order = headerFocusOrder(head, headerTree)
+    const at = order.indexOf(active)
+    if (at === -1) return
+
+    const forward = !event.shiftKey
+    const withinHeader = order[at + (forward ? 1 : -1)]
+    if (withinHeader) {
+      event.preventDefault()
+      withinHeader.focus()
+      return
+    }
+
+    // Off either end of the header's own order: the header's controls run
+    // out, not the document's, so the next stop is whatever the document's
+    // real Tab order puts right after (or before) wherever this end's
+    // control actually sits in the DOM.
+    const boundary = order[forward ? order.length - 1 : 0]
+    if (!boundary) return
+    const documentOrder = tabbableWithin(document)
+    const boundaryAt = documentOrder.indexOf(boundary)
+    const next = boundaryAt === -1 ? undefined : documentOrder[boundaryAt + (forward ? 1 : -1)]
+    if (next) {
+      event.preventDefault()
+      next.focus()
+    }
+  }
   /*
    * A drag moves a column among its SIBLINGS and nowhere else, so that is the
    * order each slot is resolved against: a leaf steps past the leaves beside
@@ -692,7 +808,7 @@ export function DataTable<TData extends RowData>({
               )}
             </colgroup>
 
-            <thead ref={headRef}>
+            <thead ref={headRef} onKeyDown={handleHeaderTabKey}>
               {Array.from({ length: headerRowCount }, (_, depth) => {
                 const [start, center, end] = headerSections.map((section) =>
                   (section[depth]?.headers ?? [])

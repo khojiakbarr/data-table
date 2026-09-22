@@ -120,6 +120,44 @@ describe("grouped headers", () => {
     expect(within(group).queryByRole("button", { name: /sort/i })).toBeNull()
   })
 
+  /**
+   * Defect C: `Code` and `Status` sit outside any group and are drawn with
+   * `rowSpan` down through every header row, which — on a native `<table>` —
+   * has to live in row 0, ahead of the grouped leaves' own row-1 cells in the
+   * DOM. Left uncorrected, Tab would reach Code and Status before Partner,
+   * City, Amount and Currency even though they are drawn well to those two
+   * columns' left and right respectively.
+   */
+  it("keeps Tab in the same left-to-right order the columns are drawn in", async () => {
+    const user = userEvent.setup()
+    render(<Grouped />)
+    const leafOrder = ["code", "partner", "city", "amount", "currency", "status"]
+
+    const columnOfFocus = (): string | null =>
+      (document.activeElement as HTMLElement | null)
+        ?.closest("[data-column-id]")
+        ?.getAttribute("data-column-id") ?? null
+
+    within(screen.getByRole("columnheader", { name: /^Code/ }))
+      .getAllByRole("button")[0]
+      ?.focus()
+
+    const seen: string[] = []
+    const push = (id: string | null) => {
+      if (id !== null && leafOrder.includes(id) && seen[seen.length - 1] !== id) seen.push(id)
+    }
+    push(columnOfFocus())
+
+    // Generous: each leaf offers sort, column-actions and resize controls,
+    // and each of the three group cells its own resize control too.
+    for (let step = 0; step < 40 && seen.length < leafOrder.length; step += 1) {
+      await user.tab()
+      push(columnOfFocus())
+    }
+
+    expect(seen).toEqual(leafOrder)
+  })
+
   it("declares column widths in the order the cells are rendered", () => {
     const { container } = render(<Grouped />)
     const widths = [...container.querySelectorAll("colgroup col:not(.dt-col-filler)")].map(

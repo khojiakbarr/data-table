@@ -44,6 +44,8 @@ interface HarnessProps {
   data?: (Row | GroupRow)[]
   server?: boolean
   rowNumbers?: boolean
+  /** `features.pinning`, for the one case that turns the host's own off. */
+  pinning?: boolean
   rowCount?: number | undefined
   pagination?: boolean | { pageSize: number }
   initialLayout?: Partial<TableLayout>
@@ -58,6 +60,7 @@ function Harness({
   data = rows(3),
   server = false,
   rowNumbers = true,
+  pinning = true,
   rowCount,
   pagination,
   initialLayout,
@@ -68,7 +71,7 @@ function Harness({
     id,
     columns,
     data,
-    features: { rowNumbers },
+    features: { rowNumbers, pinning },
     getRowId: (row) => row.id,
     ...(server ? { mode: "server" as const } : {}),
     ...(rowCount === undefined ? {} : { rowCount }),
@@ -360,6 +363,15 @@ describe("the column is chrome, not data", () => {
     // It stays pinned however hard a host pushes: the pinning it renders from
     // is derived, and `layout.columnPinning` is never written.
     expect(latest?.table.state.columnPinning?.start?.[0]).toBe(ROW_NUMBER_COLUMN_ID)
+  })
+
+  it("stays frozen at the start even where the host turned pinning off", () => {
+    // `features: { pinning: false }` is about what the USER may freeze. The
+    // number column is not the user's to place at all, so the flag that
+    // withdraws the control must not also withdraw the column's own footing.
+    render(<Harness pinning={false} />)
+    expect(renderedOrder()[0]).toBe(ROW_NUMBER_COLUMN_ID)
+    expect(latest?.table.getColumn(ROW_NUMBER_COLUMN_ID)?.getIsPinned()).toBe("start")
   })
 
   it("shows the user's own pinned columns their correct sticky offsets", () => {

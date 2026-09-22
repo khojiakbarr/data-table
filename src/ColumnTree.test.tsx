@@ -326,6 +326,33 @@ describe("a group split by pinning", () => {
     expect(shownColumns()).not.toContain("City")
     expect(shownColumns()).toContain("Partner")
   })
+
+  /**
+   * The case above still has "Code" sitting between the two runs in the flat
+   * leaf order, which is what closes the group even without knowing about
+   * pinning at all. Pin Code out of the way too and Document's pinned leaf
+   * (Partner) becomes the flat list's immediate predecessor of its own
+   * unpinned sibling (City) — nothing between them any more, so a tree
+   * builder that only reads the ancestor chain has no signal left to split
+   * on, and would wrongly draw one panel row for two header cells.
+   */
+  it("still splits when nothing but the pinning boundary sits between the runs", async () => {
+    const user = await openPanel()
+    await user.click(screen.getByRole("button", { name: /code: column actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: /pin to start/i }))
+    await user.click(screen.getByRole("button", { name: /partner: column actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: /pin to start/i }))
+
+    const headerRuns = screen.getAllByRole("columnheader", { name: /^Document/ })
+    const panelBoxes = within(panel()).getAllByRole("checkbox", { name: "Document column group" })
+    expect(panelBoxes).toHaveLength(headerRuns.length)
+    expect(panelBoxes).toHaveLength(2)
+
+    // Each run still answers only for its own leaf.
+    await user.click(panelBoxes[0] as HTMLElement)
+    expect(shownColumns()).not.toContain("Partner")
+    expect(shownColumns()).toContain("City")
+  })
 })
 
 describe("dragging inside the tree", () => {

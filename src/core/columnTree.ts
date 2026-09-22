@@ -16,8 +16,15 @@ import type { DataTableFeatures } from "../useDataTable"
  * the header. TanStack splits a group whose leaves are no longer adjacent —
  * pin one leaf of a group and its header is drawn twice, once over the pinned
  * part and once over the rest (see `GroupedHeaders.test.tsx`). Grouping
- * consecutive runs reproduces exactly that, so the panel and the header always
- * agree about how many groups there are and where they start.
+ * consecutive runs reproduces exactly that, EXCEPT that "consecutive" is not
+ * just adjacent in the array: the header renders one section (start-pinned,
+ * centre, end-pinned) at a time, so a group whose leaves fall in two sections
+ * is drawn twice even when nothing else sits between them in the flat leaf
+ * order — the boundary itself has no entry of its own to make it visible.
+ * `buildColumnTree` reads each leaf's OWN pin state for exactly that reason,
+ * closing every open group on a section change even where the ancestor
+ * chains still match, which is what keeps the panel and the header agreeing
+ * about how many groups there are and where they start.
  */
 
 type AnyColumn<TData extends RowData> = Column<DataTableFeatures, TData, unknown>
@@ -69,6 +76,12 @@ function ancestorsOf<TData extends RowData>(column: AnyColumn<TData>): AnyColumn
   return chain
 }
 
+/** Which section — start-pinned, centre, or end-pinned — draws this leaf. */
+function pinSectionOf<TData extends RowData>(column: AnyColumn<TData>): "start" | "center" | "end" {
+  const pinned = column.getIsPinned()
+  return pinned === "start" || pinned === "end" ? pinned : "center"
+}
+
 /**
  * Rebuild the column tree from the order the table renders in.
  *
@@ -91,8 +104,21 @@ export function buildColumnTree<TData extends RowData>(
   const roots: ColumnTreeNode<TData>[] = []
   /** The groups currently open, outermost first. */
   const open: ColumnTreeGroup<TData>[] = []
+  /** The previous leaf's own section, to notice a boundary the leaves alone do not show. */
+  let previousSection: "start" | "center" | "end" | null = null
 
   leaves.forEach((column, index) => {
+    const section = pinSectionOf(column)
+    /*
+     * Force every open group shut on a section change, even where the
+     * ancestor chain below would otherwise still match: start, centre and
+     * end are rendered as separate header rows, so a group whose leaves
+     * straddle that boundary is drawn twice there regardless of whether
+     * anything else sits between them in this flat list (Defect E).
+     */
+    if (previousSection !== null && section !== previousSection) open.length = 0
+    previousSection = section
+
     const path = ancestorsOf(column)
 
     // How much of the open chain this leaf still belongs to. Compared by

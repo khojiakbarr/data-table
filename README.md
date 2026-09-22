@@ -1,6 +1,12 @@
+<!--
+  The image URLs below are absolute on purpose. This README is also the
+  package page on npmjs.com, which does not resolve repository-relative paths
+  the way GitHub does — a relative `src` renders as a broken image there while
+  looking perfectly fine in the repo, so the breakage is invisible from here.
+-->
 <div align="center">
 
-<img src="public/assets/logo.svg" width="84" alt="">
+<img src="https://raw.githubusercontent.com/khojiakbarr/data-table/main/public/assets/logo.svg" width="84" alt="">
 
 # @khojiakbarr/data-table
 
@@ -17,8 +23,8 @@ and reordering · virtualised rows · per-user persisted layout · a token-drive
 ### [→ Open the live playground](https://khojiakbarr.github.io/data-table/)
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero.png">
-  <img src="docs/media/hero-light.png" width="880"
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/khojiakbarr/data-table/main/docs/media/hero.png">
+  <img src="https://raw.githubusercontent.com/khojiakbarr/data-table/main/docs/media/hero-light.png" width="880"
        alt="A receipts table with two levels of column headers — Document over Code and Partner, Payment over Amount and Status — numbered rows, a status bar reading 100 000 rows total, and pagination.">
 </picture>
 
@@ -535,7 +541,7 @@ keyboard — and the rows group by it. The grouping is computed by your server, 
 browser: grouping the fifty rows a pager handed you and presenting the answer as if it
 were the whole table is not merely incomplete, it is wrong in a way the user cannot see.
 
-<img src="docs/media/grouping.png" width="880"
+<img src="https://raw.githubusercontent.com/khojiakbarr/data-table/main/docs/media/grouping.png" width="880"
      alt="The same table grouped by Status. A group header reads Closed with a count of 25 000, the grouped column leads the table, and the side panel shows the column tree with a Status chip in the Row groups zone.">
 
 

@@ -182,4 +182,13 @@ export const ruLabels: DataTableLabels = {
   groupByColumn: (column) => `Группировать строки по столбцу «${column}»`,
   ungroupColumn: (column) => `Убрать «${column}» из группировки строк`,
   rowGroupLevel: (column, level, total) => `${column}: уровень группировки ${level} из ${total}`,
+  // Number-first, like `groupRow` above: "Всего 100 000 строк" lets `plural`
+  // agree the noun with the number that governs it, the way "Всего строк:
+  // 100 000" (the noun first, invariant) never could.
+  statusBarRows: (count, raw) => `Всего ${count} ${plural(raw ?? 0, "строка", "строки", "строк")}`,
+  statusBarFiltered: (count, raw, total) =>
+    total === undefined
+      ? `Отфильтровано: ${count} ${plural(raw ?? 0, "строка", "строки", "строк")}`
+      : `Отфильтровано: ${count} ${plural(raw ?? 0, "строка", "строки", "строк")} из ${total}`,
+  statusBarGroupedBy: (columns) => `Группировка: ${columns.join(", ")}`,
 }

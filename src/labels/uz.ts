@@ -173,4 +173,10 @@ export const uzLabels: DataTableLabels = {
   ungroupColumn: (column) => `«${column}» ustunini guruhlashdan olib tashlash`,
   rowGroupLevel: (column, level, total) =>
     `${column}: guruhlash darajasi ${level} / ${total}`,
+  // A numeral governs the bare singular in Uzbek — the same rule
+  // `searchResults` follows above — so `raw` is read by no branch here.
+  statusBarRows: (count) => `Jami ${count} ta qator`,
+  statusBarFiltered: (count, _raw, total) =>
+    total === undefined ? `Filtrlangan: ${count} ta qator` : `Filtrlangan: ${count} / ${total} ta qator`,
+  statusBarGroupedBy: (columns) => `Guruhlangan: ${columns.join(", ")}`,
 }

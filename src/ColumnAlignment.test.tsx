@@ -77,7 +77,17 @@ const columns = [
 
 let latest: DataTableInstance<Row> | null = null
 
-function Table() {
+interface TableProps {
+  /**
+   * Renders a totals row alongside the body — the newest thing sharing this
+   * invariant. `amount` is the only column given a total on purpose: the rest
+   * of the row's cells exist purely for alignment, which is exactly what
+   * `expectAligned` below checks for every one of them.
+   */
+  totals?: boolean
+}
+
+function Table({ totals = false }: TableProps = {}) {
   const instance = useDataTable({
     id: "alignment",
     data: rows,
@@ -85,7 +95,7 @@ function Table() {
     initialLayout: { columnPinning: { start: ["code"], end: ["status"] } },
   })
   latest = instance
-  return <DataTable instance={instance} />
+  return <DataTable instance={instance} {...(totals ? { totals: { amount: "100" } } : {})} />
 }
 
 /*
@@ -97,6 +107,10 @@ const colsOf = (container: HTMLElement) => [
 ]
 const cellsOf = (container: HTMLElement) => [
   ...container.querySelectorAll<HTMLElement>("tbody tr td:not(.dt-td-filler)"),
+]
+/** The totals row's own cells, when `<Table totals />` rendered one. */
+const footerCellsOf = (container: HTMLElement) => [
+  ...container.querySelectorAll<HTMLElement>("tfoot td:not(.dt-td-filler)"),
 ]
 
 /** Column widths as declared, and the cells they are supposed to size. */
@@ -110,6 +124,13 @@ function readAlignment(container: HTMLElement) {
 /**
  * The invariant itself: one `<col>` per cell, the same column in each
  * position, and every `<col>` carrying that column's own width.
+ *
+ * When a totals row is on screen, it is held to exactly the same invariant —
+ * one `<tfoot>` cell per `<col>`, in the same order — because a missing or
+ * displaced cell there is the identical defect one row lower, and the whole
+ * point of `<TotalsFooter>` reusing `renderedLeafColumns`/`fillerIndex` rather
+ * than a copy of its own is that it cannot drift from what this function
+ * already checks for the body.
  */
 function expectAligned(container: HTMLElement) {
   const cols = colsOf(container)
@@ -123,6 +144,14 @@ function expectAligned(container: HTMLElement) {
   expect(cols.map((col) => col.style.width)).toEqual(
     colIds.map((id) => `${table.getColumn(id!)!.getSize()}px`),
   )
+
+  const footerCells = footerCellsOf(container)
+  if (footerCells.length === 0) return
+  expect(
+    footerCells,
+    `${footerCells.length} <tfoot> cells for ${cols.length} <col>`,
+  ).toHaveLength(cols.length)
+  expect(footerCells.map((cell) => cell.dataset.columnId)).toEqual(colIds)
 }
 
 const openMenu = async (user: ReturnType<typeof userEvent.setup>, name: RegExp) => {
@@ -182,6 +211,25 @@ describe("colgroup stays aligned with the rendered cells", () => {
     expectAligned(container)
   })
 
+  it("keeps the totals row aligned with a total under both a pinned and a scrolling column", async () => {
+    const user = userEvent.setup()
+    const { container } = render(<Table totals />)
+    expectAligned(container)
+
+    await openMenu(user, /qty: column actions/i)
+    await user.click(screen.getByRole("menuitem", { name: /pin to start/i }))
+    await openMenu(user, /amount: column actions/i)
+    await user.click(screen.getByRole("menuitem", { name: /pin to end/i }))
+
+    // Code is already pinned to the start and Status to the end (see `Table`);
+    // Qty now joins Code at the start, Amount joins Status at the end, and
+    // City/Currency/the "document" group stay in the scrolling middle. Every
+    // one of those still gets exactly one `<tfoot>` cell, in the same order
+    // the header draws its columns — `expectAligned` checks the row, not just
+    // the one column `Table` gave a total.
+    expectAligned(container)
+  })
+
   it("after hiding a column", async () => {
     const user = userEvent.setup()
     const { container } = render(<Table />)
@@ -228,9 +276,9 @@ describe("colgroup stays aligned with the rendered cells", () => {
     ])
   })
 
-  it("through a long sequence of rearrangements", async () => {
+  it("through a long sequence of rearrangements, totals row included", async () => {
     const user = userEvent.setup()
-    const { container } = render(<Table />)
+    const { container } = render(<Table totals />)
 
     const steps: [RegExp, RegExp][] = [
       [/qty: column actions/i, /pin to start/i],

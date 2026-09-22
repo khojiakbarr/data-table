@@ -210,7 +210,8 @@
   border-start-end-radius: 0;
 }
 
-.dt-viewport:has(~ .dt-footer) {
+.dt-viewport:has(~ .dt-footer),
+.dt-viewport:has(~ .dt-status-bar) {
   border-end-start-radius: 0;
   border-end-end-radius: 0;
 }
@@ -1550,6 +1551,39 @@
   border-radius: var(--dt-radius);
   background: var(--dt-bg);
   box-shadow: 0 12px 34px rgb(0 0 0 / 0.18);
+}
+
+/*
+ * ---------- status bar ----------
+ * Between `.dt-viewport` and `.dt-footer` in the DOM, so it reads as a band
+ * of its own above the pagination panel — the same relative position AG
+ * Grid's status bar takes. `--dt-footer-bg`/`--dt-footer-fg` rather than a
+ * pair of its own: it is the same kind of surface as the footer (a muted
+ * band under the table stating facts about the rows), the WCAG AA floor for
+ * that pair is already asserted in `themes.test.ts`, and a new token here
+ * would be one more thing for both shadcn presets to map for no visual gain.
+ */
+.dt-status-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  flex: none;
+  padding: 6px 10px;
+  border-top: 1px solid var(--dt-border);
+  background: var(--dt-footer-bg);
+  font-size: 13px;
+  color: var(--dt-footer-fg);
+  border-radius: inherit;
+  /* Always follows `.dt-viewport`, so its leading corners are never the
+     table's own; its trailing ones are too, whenever a footer follows. */
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.dt-status-bar:has(~ .dt-footer) {
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
 }
 
 /* ---------- footer ---------- */

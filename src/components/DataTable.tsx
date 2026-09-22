@@ -30,6 +30,7 @@ import { canFilterColumn } from "./FilterEditor"
 import { FilterPopover } from "./FilterPopover"
 import { HeaderCell } from "./HeaderCell"
 import { HeightGrip } from "./HeightGrip"
+import { StatusBar } from "./StatusBar"
 import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
 import { SkeletonRows, TableStatus } from "./TableStatus"
@@ -148,6 +149,10 @@ export const defaultLabels: DataTableLabels = {
   groupByColumn: (column) => `Group rows by ${column}`,
   ungroupColumn: (column) => `Remove ${column} from row groups`,
   rowGroupLevel: (column, level, total) => `${column}: group level ${level} of ${total}`,
+  statusBarRows: (count) => `${count} rows total`,
+  statusBarFiltered: (count, _raw, total) =>
+    total === undefined ? `Filtered: ${count} rows` : `Filtered: ${count} of ${total} rows`,
+  statusBarGroupedBy: (columns) => `Grouped by: ${columns.join(", ")}`,
 }
 
 /**
@@ -982,6 +987,15 @@ export function DataTable<TData extends RowData>({
             </div>
           ) : null}
         </div>
+
+        {/*
+          Anything but a bare `false` renders the band — see
+          `DataTableFeatureFlags.statusBar`. Between the viewport and the
+          footer, which is where AG Grid's own status bar sits relative to
+          its pagination panel, and what lets `<TablePagination>` treat this
+          as the surface that now owns the row count.
+        */}
+        {flags.statusBar !== false ? <StatusBar instance={instance} labels={labels} /> : null}
 
         {footer ? <TablePagination instance={instance} labels={labels} /> : null}
       </div>

@@ -1,5 +1,6 @@
 import type { RowData } from "@tanstack/react-table"
 import { useEffect, useState, type KeyboardEvent } from "react"
+import { formatCount } from "../core/formatCount"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 
@@ -16,11 +17,23 @@ interface TablePaginationProps<TData extends RowData> {
  * `getPageCount()` / `getRowCount()`: in server mode those report -1 and the
  * current page's length while the total is still unknown. Exported for
  * shells of their own.
+ *
+ * **The row count moves out when the status bar is on.** `instance.flags.statusBar`
+ * is the one signal both surfaces read — a shell reusing this component gets
+ * the hand-off for free the moment it turns that flag on, with no prop of its
+ * own to keep in sync. With it off (the default) this renders exactly as it
+ * always has: total, page size, range, page controls.
  */
 export function TablePagination<TData extends RowData>({ instance, labels }: TablePaginationProps<TData>) {
   const { enabled, pageIndex, pageSize, pageSizeOptions, pageCount, rowCount, setPageIndex, setPageSize } =
     instance.pagination
   if (!enabled) return null
+
+  // Anything but a bare `false` means the status bar renders — see
+  // `DataTableFeatureFlags.statusBar` — and it is what now states the total,
+  // so repeating it here would be the very duplication the status bar exists
+  // to remove.
+  const showRowCount = instance.flags.statusBar === false
 
   const from = rowCount === 0 ? 0 : pageIndex * pageSize + 1
   const to = rowCount === undefined ? (pageIndex + 1) * pageSize : Math.min(rowCount, (pageIndex + 1) * pageSize)
@@ -32,9 +45,11 @@ export function TablePagination<TData extends RowData>({ instance, labels }: Tab
 
   return (
     <div className="dt-footer">
-      <span className="dt-footer-rows">
-        {labels.rows}: {formatCount(rowCount)}
-      </span>
+      {showRowCount ? (
+        <span className="dt-footer-rows">
+          {labels.rows}: {formatCount(rowCount)}
+        </span>
+      ) : null}
       <span className="dt-spacer" />
       <label className="dt-footer-size">
         {labels.rowsPerPage}
@@ -110,10 +125,4 @@ function PageInput({
       onKeyDown={onKeyDown}
     />
   )
-}
-
-/** "1 000" with a narrow no-break space (U+202F); "…" while unknown. */
-function formatCount(count: number | undefined): string {
-  if (count === undefined) return "…"
-  return count.toLocaleString("en-US").replace(/,/g, "\u202f")
 }

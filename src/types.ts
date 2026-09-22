@@ -98,6 +98,29 @@ export interface DataTableColumnMeta {
    * meta: { editable: (row: Receipt) => row.status !== "closed" }
    */
   editable?: EditableDeclaration | undefined
+  /**
+   * How this column's raw value reads as a group header, once the table is
+   * grouped by it.
+   *
+   * Absent means the group row shows the server's own value verbatim —
+   * correct for a column that is already human text, wrong for the coded
+   * enum a status or a category column usually is. The column's own CELL
+   * renderer is never consulted for this: a cell renderer returns a
+   * `ReactNode`, and a group's value also has to stand as the row's
+   * accessible name, so the two must not be free to diverge the way a
+   * renderer and its own `aria-label` sometimes do. This returns a plain
+   * `string` instead, used for both.
+   *
+   * Called with `""` for a blank group — the grouping contract already
+   * collapses a missing value and an empty one into that one key — so a
+   * column whose blank means something in particular ("Unassigned") can
+   * still say so. Leave it undefined and a blank group falls back to the
+   * table's own "(Blanks)" label.
+   *
+   * @example
+   * meta: { groupLabel: (value) => statusLabels[String(value)] ?? String(value) }
+   */
+  groupLabel?: ((value: FilterValue) => string) | undefined
 }
 
 /**

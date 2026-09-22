@@ -305,6 +305,31 @@ describe("committing an edit", () => {
     expect(cellAt(0, "code")).toHaveTextContent("KR-0")
   })
 
+  it("gives the focus back to the cell when Escape cancels the edit", async () => {
+    // Without this the editor's own field is gone and the focus drops onto
+    // `<body>`, restarting the next Tab at the top of the document.
+    const user = userEvent.setup()
+    render(<Harness onCellEdit={vi.fn()} />)
+
+    const field = await openEditor(0, "code")
+    await user.type(field, "{Escape}")
+
+    await waitFor(() => expect(cellAt(0, "code")).toHaveFocus())
+  })
+
+  it("gives the focus back to the cell once Enter commits it", async () => {
+    const user = userEvent.setup()
+    const onCellEdit = vi.fn<(edit: CellEdit<Row>) => void>()
+    render(<Harness onCellEdit={onCellEdit} />)
+
+    const field = await openEditor(0, "code")
+    await user.clear(field)
+    await user.type(field, "KR-999{Enter}")
+
+    expect(onCellEdit).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(cellAt(0, "code")).toHaveFocus())
+  })
+
   it("never sends a commit that changed nothing", async () => {
     const user = userEvent.setup()
     const onCellEdit = vi.fn()
@@ -396,6 +421,27 @@ describe("optimism and failure", () => {
     const alert = screen.getByRole("alert")
     expect(alert).toHaveTextContent("Could not save Amount")
     expect(alert).toHaveTextContent("An amount cannot be negative")
+  })
+
+  it("gives the focus back to the cell on a commit the host rejects", async () => {
+    // The editor closes the moment Enter is pressed — settle() runs
+    // synchronously, before the host's promise settles — so the focus
+    // returns to the cell right away and the later revert must not steal it.
+    const user = userEvent.setup()
+    const inFlight = deferred()
+    render(<Harness onCellEdit={() => inFlight.promise} />)
+
+    const field = await openEditor(0, "amount")
+    await user.clear(field)
+    await user.type(field, "-5{Enter}")
+    await waitFor(() => expect(cellAt(0, "amount")).toHaveFocus())
+
+    await act(async () => {
+      inFlight.reject(new Error("An amount cannot be negative"))
+      await inFlight.promise.catch(() => undefined)
+    })
+
+    expect(cellAt(0, "amount")).toHaveFocus()
   })
 
   it("keeps the failure on screen until it is dismissed — no timer", async () => {

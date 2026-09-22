@@ -123,16 +123,29 @@ export interface CellEditing<TData extends RowData> {
   /** The menu's state, or null while it is closed. */
   menu: OpenCellMenu | null
   /**
-   * The cell that should be able to hold focus: the one a menu is open on, or
-   * the one the last menu was open on.
+   * The cell that should be able to hold focus: the one a menu or an editor is
+   * open on, or the one the last of either was open on.
    *
-   * It outlives the menu on purpose. A body cell is not focusable by default,
-   * and the focus is handed back as the menu UNMOUNTS — by which commit a cell
-   * that was only focusable "while the menu is open" would already have lost
-   * its `tabIndex` and refused the focus, dropping it on `<body>`. Only ever
-   * one cell carries it, so the table gains no focusable cell it did not need.
+   * It outlives both on purpose. A body cell is not focusable by default, and
+   * the focus is handed back as the menu or the editor UNMOUNTS — by which
+   * commit a cell that was only focusable "while open" would already have
+   * lost its `tabIndex` and refused the focus, dropping it on `<body>`. Only
+   * ever one cell carries it, so the table gains no focusable cell it did not
+   * need. `openEditorAt` keeps this in step with the editor, including across
+   * a Tab hop to a different cell.
    */
   focusCell: CellRef | null
+  /**
+   * Give the hook the DOM node for the cell {@link focusCell} names, so a
+   * closing editor can be handed the focus back once its own field is gone
+   * (WCAG 2.4.3) — the same rule `useMenuSurface` applies when its menu
+   * unmounts.
+   *
+   * `<BodyRow>` passes this as the `ref` on the one cell whose `tabIndex` it
+   * sets to `-1` — the same cell `focusCell` names — and nothing on every
+   * other cell, so only that one node is ever tracked.
+   */
+  registerFocusCell: (node: HTMLElement | null) => void
   /** The menu's Edit item was chosen. */
   openEditor: () => void
   closeMenu: () => void
@@ -194,6 +207,19 @@ export function useCellEditing<TData extends RowData>({
   const [editor, setEditor] = useState<OpenCellEditor<TData> | null>(null)
   const [edits, setEdits] = useState<ReadonlyMap<string, EditRecord>>(() => new Map())
   const [notice, setNotice] = useState<EditNotice | null>(null)
+
+  /**
+   * The DOM node for whichever cell {@link focusCell} currently names, kept by
+   * `<BodyRow>` through {@link registerFocusCell}.
+   *
+   * A ref rather than state: nothing here needs to re-render when a click
+   * moves the anchor from one cell to another, only to read the current node
+   * at the moment an editor closes.
+   */
+  const anchorRef = useRef<HTMLElement | null>(null)
+  const registerFocusCell = useCallback((node: HTMLElement | null) => {
+    anchorRef.current = node
+  }, [])
 
   /*
    * Latest-ref for everything that changes identity every render. `labels` is
@@ -338,6 +364,14 @@ export function useCellEditing<TData extends RowData>({
       name: columnLabel(cell.columnId, column?.columnDef.header),
       choices: column?.columnDef.meta?.values,
     })
+    /*
+     * Keeps `focusCell` — and so the anchor `registerFocusCell` tracks — on
+     * the cell the editor is ACTUALLY open on. Without this a Tab hop (see
+     * `settle` below) would leave both naming the cell the menu was first
+     * opened on, and a later Escape would hand the focus back to the wrong
+     * cell.
+     */
+    setFocusCell(cell)
     return true
   }, [editabilityOf, overrideOf])
 
@@ -456,6 +490,38 @@ export function useCellEditing<TData extends RowData>({
     setNotice({ tone: "info", text: latest.current.labels.editCancelled(open?.name ?? cell.columnId) })
   }, [])
 
+  /*
+   * Hand the focus back to the cell an editor just closed on: `settle`
+   * closing it outright (Escape, Enter with nothing left to Tab into), a
+   * commit the host later rejects (already closed by the time `commit` calls
+   * `settle`, so the revert itself needs no separate handling here), and
+   * `abandon`. Watched on `editor` rather than called from each closer
+   * directly so there is exactly one place this can happen from, and so it
+   * runs after the closing cell's own re-render — with the editor's field
+   * already gone and `tabIndex={-1}` already back on the `<td>` — rather than
+   * racing that commit.
+   *
+   * Skipped on the transition INTO an open editor, and on every render where
+   * one was already closed: `wasEditingRef` marks the ONE render where it
+   * just went from open to closed.
+   */
+  const wasEditingRef = useRef(false)
+  useEffect(() => {
+    const wasOpen = wasEditingRef.current
+    wasEditingRef.current = editor !== null
+    if (editor !== null || !wasOpen) return
+    const anchor = anchorRef.current
+    /*
+     * Not connected when the editor closed because its ROW left a
+     * virtualised body (`abandon`) or was refetched away: there is no longer
+     * a cell here to give the focus to, and focusing a detached node does
+     * nothing — so the focus is left wherever the browser already put it
+     * (ordinarily `<body>`, the same place it would have landed without this
+     * effect) rather than this hook guessing at a replacement.
+     */
+    if (anchor !== null && anchor.isConnected) anchor.focus()
+  }, [editor])
+
   const onEditorKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== "Tab" || event.nativeEvent.isComposing) return
     const field = event.target
@@ -532,6 +598,7 @@ export function useCellEditing<TData extends RowData>({
     onCellContextMenu,
     menu,
     focusCell,
+    registerFocusCell,
     openEditor,
     closeMenu,
     editor,

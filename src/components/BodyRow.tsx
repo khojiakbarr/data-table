@@ -140,6 +140,14 @@ export function BodyRow<TData extends RowData>({
          * programmatic focus target says so without joining the Tab order.
          */
         tabIndex={isSameCell(editing?.focusCell, self) ? -1 : undefined}
+        /*
+         * Handed to `useCellEditing` only for the one cell `focusCell` names,
+         * so it has the DOM node to focus once a closing editor's own field is
+         * gone (WCAG 2.4.3, the same rule `useMenuSurface` applies for the
+         * menu). `openEditorAt` keeps `focusCell` in step with the editor
+         * across a Tab hop, so this ref follows it there too.
+         */
+        ref={isSameCell(editing?.focusCell, self) ? editing?.registerFocusCell : undefined}
         data-dt-pending={override?.pending === true ? "" : undefined}
         /*
          * Tab out of an open editor commits it and moves on to the next

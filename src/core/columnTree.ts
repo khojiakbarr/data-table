@@ -29,19 +29,19 @@ import type { DataTableFeatures } from "../useDataTable"
 
 type AnyColumn<TData extends RowData> = Column<DataTableFeatures, TData, unknown>
 
-/** One leaf column, at its place in the tree. */
+/**
+ * One leaf column, at its place in the tree.
+ *
+ * No flat position is carried. There used to be an `index` here, described
+ * first as the order reordering works in and then, once that was corrected,
+ * as the flat leaf position — and by then nothing read it: a drag is a move
+ * among siblings, so both the panel and the header resolve one against
+ * {@link siblingOrderOf}. A caller that genuinely wants the flat position can
+ * take it from the array `buildColumnTree` was given.
+ */
 export interface ColumnTreeLeaf<TData extends RowData> {
   kind: "leaf"
   column: AnyColumn<TData>
-  /**
-   * Where this leaf sits in the flat order the tree was built from.
-   *
-   * NOT the order reordering works in, whatever this comment used to say: a
-   * drag is a move among siblings, so both surfaces resolve one against
-   * {@link siblingOrderOf}. This is the flat leaf position, for a caller that
-   * wants to line a row up against the `<colgroup>` or the rendered cells.
-   */
-  index: number
 }
 
 /** One group header, with whatever stands under it. */
@@ -153,7 +153,7 @@ export function buildColumnTree<TData extends RowData>(
       open.push(node)
     }
 
-    const leaf: ColumnTreeLeaf<TData> = { kind: "leaf", column, index }
+    const leaf: ColumnTreeLeaf<TData> = { kind: "leaf", column }
     ;(open[open.length - 1]?.children ?? roots).push(leaf)
   })
 

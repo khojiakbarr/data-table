@@ -50,6 +50,40 @@ releases are summarised in one line rather than reconstructed.
 
 ### Added
 
+- **`muiTokens(theme)` — a Material UI bridge**, exported from the package
+  root. It maps a MUI theme's palette, typography and radius onto the
+  `--dt-*` tokens and returns them as a style object to spread onto the
+  table: `<DataTable instance={table} style={muiTokens(theme)} />`. The
+  shadcn presets are stylesheets that point the tokens at the host's own
+  custom properties, and a MUI **v5** application publishes none — there is
+  nothing for a stylesheet to read — so this one reads the theme instead,
+  which also covers v6's CSS-variables mode, where `theme.palette` holds the
+  `var(--mui-…)` references. The library does not depend on MUI and does not
+  import it, not even as a type: the parameter is typed structurally against
+  the fields actually read, so a v5 theme, a v6 theme and a hand-written
+  object all compile and no host needs MUI installed to typecheck. Scope is
+  colour, type and radius — density and borders stay the table's own, which
+  is what was asked for.
+  - **The theme's `palette.mode` decides the table's mode**, deliberately: an
+    inline style beats every stylesheet rule, so these tokens override the
+    built-in `prefers-color-scheme` block *and* the `theme` prop. For that to
+    be a rule rather than an accident, the function emits **every** token the
+    base sheet swaps between its light and dark blocks — a partial map would
+    leave a light MUI theme with dark borders on a machine set to dark — and
+    every fallback comes in a light and a dark form, so a theme stating
+    nothing but `mode: "dark"` still gets a dark table.
+  - The two action tints are rebuilt rather than copied. MUI states
+    `action.hover` and `action.selected` as translucent colours, and a cell
+    here paints an opaque `--dt-bg` under a `position: sticky` pinned column,
+    so a see-through hover would show the columns scrolling beneath it. The
+    opacities are recomposited against the surface with `color-mix()` — MUI's
+    own recipe, with an opaque result.
+- **`style` on `<DataTable>`**, alongside the `className` it already had. It
+  is where `muiTokens`' tokens go, since the base sheet declares every
+  `--dt-*` on `.dt-root` itself and an override has to land on that same
+  element. The table's own two inline values still win over it: the `height`
+  the prop or the resize grip decided, and `--dt-row-height`, which has to
+  stay equal to the virtualiser's row estimate.
 - **A Row Groups zone in the side bar's Columns tab**, under the column tree —
   the control the grouping was built for. Dragging a column into it groups by
   that column; dragging a second nests it inside the first. Each level is a

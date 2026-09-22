@@ -195,6 +195,21 @@ export interface DataTableProps<TData extends RowData> {
   /** Forces a theme instead of following the OS setting. */
   theme?: "light" | "dark"
   className?: string
+  /**
+   * Inline styles for the root element.
+   *
+   * This is where a design-system bridge goes — `style={muiTokens(theme)}`
+   * spreads the `--dt-*` tokens straight onto the element that declares them.
+   * An inline style beats every stylesheet rule, so tokens passed this way
+   * also override the built-in dark-mode block and the `theme` prop above;
+   * `muiTokens` documents what that means.
+   *
+   * The table's own two inline values win over anything here: `height`, which
+   * the `height` prop and the resize grip own, and `--dt-row-height`, which
+   * has to match the virtualiser's row estimate exactly (set it through
+   * `rowHeight` / `getRowHeight` instead).
+   */
+  style?: CSSProperties | undefined
   onRowClick?: (row: TData) => void
   /** Show the pagination footer when paging is on. Default true. */
   footer?: boolean
@@ -257,6 +272,7 @@ export function DataTable<TData extends RowData>({
   labels: labelOverrides,
   theme,
   className,
+  style,
   onRowClick,
   footer = true,
   virtualize = true,
@@ -455,8 +471,14 @@ export function DataTable<TData extends RowData>({
    * virtualiser's estimate has to match it exactly — an unmeasured data row
    * whose real height differs by a pixel drags the scrollbar off by a pixel
    * per row. Publishing the instance's value here keeps the two in step.
+   *
+   * The host's `style` is spread FIRST, so both of this table's own values
+   * survive it: a `height` the prop or the grip decided, and the row height
+   * the virtualiser is estimating with. Everything else a host passes —
+   * `muiTokens`' tokens included — lands untouched.
    */
   const rootStyle = {
+    ...style,
     ...(resolvedHeight === undefined ? undefined : { height: resolvedHeight }),
     "--dt-row-height": `${instance.rowHeight}px`,
   } as CSSProperties

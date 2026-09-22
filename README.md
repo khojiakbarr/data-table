@@ -788,7 +788,8 @@ darkened (light mode) or lightened (dark mode) variant of it instead of the same
 
 </details>
 
-Dark mode follows `prefers-color-scheme`. Pass `theme="light"` or `theme="dark"` to pin it.
+Dark mode follows `prefers-color-scheme`. Pass `theme="light"` or `theme="dark"` to pin it —
+or hand the table a design system's own mode, as [Material UI](#material-ui) below does.
 
 ### shadcn/ui
 
@@ -837,6 +838,98 @@ token like `--chart-2` is not guaranteed to clear the stricter 4.5:1 text needs 
 `theme="light"` or `theme="dark"` opts that table out of the preset and back
 onto the built-in palette, so the prop still means what it says while other
 tables on the page keep following shadcn.
+
+### Material UI
+
+MUI gets a function rather than a stylesheet:
+
+```tsx
+import { useTheme } from "@mui/material"
+import { muiTokens } from "@khojiakbarr/data-table"
+
+const theme = useTheme()
+return <DataTable instance={table} style={muiTokens(theme)} />
+```
+
+A stylesheet preset works by pointing `--dt-*` at the host's own custom
+properties, and **a MUI v5 application publishes none** — there is nothing for
+a stylesheet to read, so the shadcn approach cannot be repeated here. v6 in
+CSS-variables mode does publish `--mui-*`, but its `theme.palette` still holds
+those `var(--mui-…)` references, so reading the theme object covers both
+versions with one code path. The library does not depend on MUI and does not
+import it, not even as a type: the parameter is typed structurally against the
+fields actually read, each optional, so a v5 theme, a v6 theme and a
+hand-written object all compile and no host needs MUI installed to typecheck.
+
+| Token | From | |
+|---|---|---|
+| `--dt-bg` | `palette.background.paper` | the table is a raised surface on the page |
+| `--dt-header-bg` | `palette.background.default` | …but only when the host set it apart from `paper`; see below |
+| `--dt-fg` `--dt-muted-fg` | `palette.text.primary` / `.secondary` | |
+| `--dt-header-fg` | `palette.text.secondary` | a header label is quieter body text, not a heading |
+| `--dt-border` `--dt-resize-handle` | `palette.divider` | |
+| `--dt-accent` | `palette.primary.main` | |
+| `--dt-accent-fg` | `palette.primary.contrastText` | what that field is for — text printed *on* the accent |
+| `--dt-accent-text` | `palette.primary.main` | unchanged: `primary.main` is already what MUI prints as text on a surface (`Link`, a text `Button`) |
+| `--dt-row-hover` | `palette.action.hoverOpacity` | recomposited — see below |
+| `--dt-row-stripe` | a quarter of that hover | a permanent tint has to stay quieter than a transient one |
+| `--dt-detail-bg` | `palette.action.selectedOpacity` | a panel you opened is a region, not a hover |
+| `--dt-radius` | `shape.borderRadius` | unitless numbers mean pixels |
+| `--dt-font` `--dt-font-size` | `typography.fontFamily` / `.fontSize` | |
+
+Three of those need a word.
+
+**The header.** MUI's own stock palettes state `background.paper` and
+`background.default` identically — `#fff` and `#fff` in v5 light, `#121212`
+twice in v5 dark — so copying `default` would give the header the body's exact
+colour. When the host *has* set the two apart, as an admin template with a
+tinted page background has, their `default` is used. When it has not, the
+header is tinted off the surface instead. Either way it still reads as a
+header.
+
+**The action tints.** MUI states `action.hover` and `action.selected` as
+translucent colours meant to be laid over whatever is beneath them, and this
+table cannot take them that way: a cell paints an opaque `--dt-bg`, and a
+pinned cell is `position: sticky`, so a see-through hover would show the
+columns scrolling underneath it. The *opacities* are read instead and
+recomposited against `--dt-bg` with `color-mix()`, which is the same recipe
+MUI uses (`alpha(common.black | common.white, …)`) with an opaque result.
+
+**Not covered.** Density and shape: row height, header height, indent,
+borders, elevation. The table keeps its own proportions and takes your
+palette, typography and radius — `muiTokens` is a colour bridge, not a MUI X
+Data Grid impersonation. Set the sizes the usual way, on `.dt-root`.
+
+#### Dark mode
+
+**The MUI theme's `palette.mode` wins, and it is meant to.** An inline style
+beats every stylesheet rule, so these tokens override both the built-in
+`prefers-color-scheme` block and the `theme` prop — pass the table your MUI
+theme and its mode is your application's, not the operating system's and not
+the prop's. Drive it from MUI's own `ThemeProvider` and drop the `theme` prop;
+leaving it on is not an error, it simply has nothing left to decide.
+
+That is only safe because `muiTokens` emits **every** token the base sheet
+swaps between its light and dark blocks. A partial map would leave a light MUI
+theme with dark borders on a machine set to dark; a test asserts the two sets
+still match. For the same reason the fallbacks come in pairs: a theme that
+states nothing but `palette: { mode: "dark" }` gets the built-in *dark*
+palette, and `muiTokens({})` reproduces the built-in light one exactly.
+
+#### Contrast
+
+The palette is yours, so its contrast is yours: a `primary.main` that fails
+4.5:1 as text on `background.paper` fails here too, because the table prints it
+as text in the same places MUI does. What `muiTokens` guarantees is that it
+introduces no failure of its own — every token is either copied from the theme
+unchanged or derived by a rule that cannot move a pair's contrast further than
+the tint strength MUI itself stated. Two cases worth knowing:
+
+- A hand-written theme that sets `primary.main` and omits
+  `primary.contrastText` gets the built-in `--dt-accent-fg`, which was tuned
+  against the built-in accent. Set both, or let `createTheme` compute it.
+- Override anything afterwards by putting it later in the same object:
+  `style={{ ...muiTokens(theme), "--dt-accent-text": "#1565c0" }}`.
 
 ---
 
@@ -1060,7 +1153,9 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
 | `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters and/or Clear grouping button while the table is filtered or grouped | Supplying this replaces **both** defaults, including the narrowed-empty exit — a host that wants its own art for "no data" but still wants a way out should branch on `instance.filtering.isFiltered` and `instance.grouping.isGrouped` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
-| `theme` | `"light" \| "dark"` | system | |
+| `theme` | `"light" \| "dark"` | system | Ignored for any token a `style` of your own sets — see [Material UI](#material-ui). |
+| `className` | `string` | — | Added to `.dt-root`. |
+| `style` | `CSSProperties` | — | Inline styles on `.dt-root`, which is where `muiTokens(theme)` goes. The table's own `height` and `--dt-row-height` still win over it. |
 | `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |
 | `stickyHeader` | `boolean` | `true` | Keep the header in view while the body scrolls. |
 | `onRowClick` | `(row: TData) => void` | — | |

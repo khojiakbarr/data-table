@@ -10,6 +10,14 @@ export type { DataTableProps } from "./components/DataTable"
 export { ruLabels } from "./labels/ru"
 export { uzLabels } from "./labels/uz"
 
+/*
+ * Design-system bridges. The shadcn presets are stylesheets under
+ * `@khojiakbarr/data-table/themes/*.css`; MUI needs a function instead,
+ * because a MUI v5 host publishes no CSS variables for a stylesheet to read.
+ */
+export { muiTokens } from "./themes/mui"
+export type { MuiThemeInput, TokenStyle } from "./themes/mui"
+
 /* The behaviour, for a shell of your own. */
 export { useDataTable } from "./useDataTable"
 export type {

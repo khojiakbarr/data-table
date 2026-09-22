@@ -38,28 +38,21 @@ jobs:
           cache: true
           require-lockfile: true
 
-      # `pnpm/setup` installs the RUNTIME, not npm: the first run of this
-      # workflow got Node v24.21.0 with npm 10.9.8 on PATH, because the npm a
-      # runtime ships with lags its Node. Trusted publishing needs 11.5.1+, so
-      # install it explicitly rather than inheriting whatever came along.
-      - name: Install an npm that can do trusted publishing
-        run: npm install -g npm@^11.5.1
-
-      # Kept even though the step above should make it impossible: an older npm
-      # does not fail loudly — it ignores the OIDC environment, falls back to
-      # looking for a token, finds none, and reports ENEEDAUTH, which sends
-      # whoever reads it hunting for a missing secret that was never the point.
-      # This is what turned that into one readable line on the first attempt.
-      - name: Check the toolchain can do trusted publishing
+      # The npm that runs the publish is PINNED, and invoked through npx so no
+      # PATH ordering decides it. Two attempts were lost to that: `pnpm/setup`
+      # installs the runtime, not npm, so the runner had Node v24.21.0 with npm
+      # 10.9.8; and `npm install -g npm@^11.5.1` then succeeded without
+      # changing what `npm` resolved to. Trusted publishing needs 11.5.1+, and
+      # an older npm does not fail loudly — it ignores the OIDC environment,
+      # looks for a token, finds none, and reports ENEEDAUTH, which sends
+      # whoever reads it hunting for a secret that was never the point.
+      #
+      # The version range below is the requirement, stated once. If npx cannot
+      # satisfy it the step fails saying so, which is the whole guard.
+      - name: Record the toolchain
         run: |
-          set -euo pipefail
-          npm_version="$(npm --version)"
-          node_version="$(node --version)"
-          echo "npm $npm_version, node $node_version"
-          if ! printf '11.5.1\n%s\n' "$npm_version" | sort -V -C; then
-            echo "::error::npm $npm_version is older than 11.5.1, which trusted publishing requires."
-            exit 1
-          fi
+          echo "node $(node --version)"
+          echo "npm (pinned) $(npx --yes npm@^11.5.1 --version)"
 
       # The tag is the version people will install. If it disagrees with
       # package.json, one of the two is a lie, and the registry keeps whichever
@@ -96,4 +89,4 @@ jobs:
       # `prepublishOnly` would rebuild and retest everything a third time, and
       # both have already run above against this exact tree.
       - name: Publish
-        run: npm publish --ignore-scripts
+        run: npx --yes npm@^11.5.1 publish --ignore-scripts

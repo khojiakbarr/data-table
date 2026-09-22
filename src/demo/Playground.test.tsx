@@ -33,6 +33,21 @@ import { THEME_CLASS } from "./playgroundState"
  */
 const SERVER_TIMEOUT = 15_000
 
+/**
+ * Waits until no cell is mid-write.
+ *
+ * An edit renders optimistically, so the new value is on screen long before
+ * the fake server has taken it — asserting on the DOM alone can therefore pass
+ * while the write is still in flight, and the write then lands during whatever
+ * runs next. `data-dt-pending` is the cell's own marker for that window.
+ */
+async function settled(): Promise<void> {
+  await waitFor(
+    () => expect(document.querySelector("[data-dt-pending]")).toBeNull(),
+    { timeout: SERVER_TIMEOUT },
+  )
+}
+
 /** Waits for the first page of rows to land, which is when the skeleton gives way. */
 async function waitForRows(): Promise<void> {
   await screen.findByText("KR-10000", {}, { timeout: SERVER_TIMEOUT })
@@ -408,6 +423,11 @@ describe("editing a cell in the playground", () => {
    * waiting for a row that had been renamed.
    */
   afterEach(async () => {
+    // Settle first. The restore writes with no delay, so a write still in
+    // flight from the test would land AFTER it and put the edited value back
+    // — which is exactly how this suite failed on a slow runner while passing
+    // locally: the store, not the DOM, carried the damage into the next test.
+    await settled()
     await saveReceipt({ id: "rc-0", columnId: "code", value: "KR-10000" }, { delayMs: 0 })
   })
 
@@ -428,10 +448,8 @@ describe("editing a cell in the playground", () => {
     // Optimistic first, then the refetch the page runs after a successful
     // write — the value that finally renders is the fake server's own.
     expect(screen.getByText("KR-EDITED")).toBeInTheDocument()
-    await waitFor(
-      () => expect(screen.queryByText("KR-10000")).toBeNull(),
-      { timeout: SERVER_TIMEOUT },
-    )
+    await settled()
+    expect(screen.queryByText("KR-10000")).toBeNull()
     expect(screen.getByText("KR-EDITED")).toBeInTheDocument()
   })
 

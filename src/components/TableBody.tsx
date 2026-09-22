@@ -59,7 +59,8 @@ export function TableBody<TData extends RowData>({
   onRowClick,
   editing,
 }: TableBodyProps<TData>) {
-  const { rowHeight, getRowHeight, heightVersion, expanded, pagination, grouping } = instance
+  const { rowHeight, getRowHeight, heightVersion, expanded, pagination, grouping, selection } =
+    instance
   const hasDetail = renderDetail !== undefined
 
   /*
@@ -160,22 +161,36 @@ export function TableBody<TData extends RowData>({
         })
       : undefined
 
+  /*
+   * The chrome columns' own cells on the "continued" header below, in the
+   * order they are rendered in — see `columnPinning` in `useDataTable`, which
+   * is where that order is decided. Derived from the flags rather than from
+   * the row's cells, because this row has none: it is drawn by the client and
+   * corresponds to no row of the table model at all.
+   */
+  const leadingChromeCells = [
+    ...(instance.flags.selection ? ["dt-selection-cell"] : []),
+    ...(instance.flags.rowNumbers ? ["dt-row-number"] : []),
+  ]
+
   return (
     <tbody>
       {continuation ? (
         <tr className="dt-tr dt-group-row dt-group-continued" role="presentation">
           {/*
-            The one row that takes NO number. It is drawn by the client from
-            `startPath`, not returned by the server, so counting it would put
-            every row after a page boundary one out. The cell is kept — the
-            number column's gutter runs the whole height of the body — and
-            left empty.
+            The one row that takes NO number, and no checkbox either. It is
+            drawn by the client from `startPath`, not returned by the server,
+            so counting it would put every row after a page boundary one out —
+            and it is a restatement of a header rather than a group of its own,
+            so there is even less to tick here than on a real group row. Both
+            cells are kept and left empty: each chrome column's gutter runs the
+            whole height of the body, and a missing cell would shift this row's
+            content one place left of every other row's.
           */}
-          {instance.flags.rowNumbers ? <td className="dt-td dt-row-number" /> : null}
-          <td
-            className="dt-td dt-group-cell"
-            colSpan={instance.flags.rowNumbers ? columnCount - 1 : columnCount}
-          >
+          {leadingChromeCells.map((chromeClass) => (
+            <td key={chromeClass} className={`dt-td ${chromeClass}`} />
+          ))}
+          <td className="dt-td dt-group-cell" colSpan={columnCount - leadingChromeCells.length}>
             <div className="dt-lead">
               <span className="dt-group-value">{labels.groupContinued(continuation)}</span>
             </div>
@@ -250,6 +265,7 @@ export function TableBody<TData extends RowData>({
             groupDepth={grouping.columns.length}
             onRowClick={onRowClick}
             editing={editing}
+            selection={selection.enabled ? selection : undefined}
           />
         )
       })}

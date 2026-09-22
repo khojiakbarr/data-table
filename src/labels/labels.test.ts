@@ -123,6 +123,25 @@ describe("function-shaped labels return sensible text", () => {
       expect(withTotal).toContain("1 000")
     })
 
+    it(`${name}Labels.selectRow names the row it selects`, () => {
+      // Every checkbox in the column is otherwise identical, so the number is
+      // the only thing telling one row's box from another's.
+      expect(labels.selectRow(3)).toContain("3")
+    })
+
+    it(`${name}Labels.selectAllRows states the count, and leaves it out when unknown`, () => {
+      // The header checkbox takes everything the query matches, so its name
+      // has to say how many that is.
+      expect(labels.selectAllRows("100 000", 100_000)).toContain("100 000")
+      // And while a server has not answered there is no number to say. Naming
+      // the control after a wrong one is the failure this branch exists for,
+      // so neither "undefined" nor a stray digit may appear.
+      const unknown = labels.selectAllRows(undefined, undefined)
+      expect(unknown).not.toContain("undefined")
+      expect(unknown).not.toMatch(/\d/)
+      expect(unknown.trim()).not.toBe("")
+    })
+
     it(`${name}Labels.statusBarGroupedBy names every grouped column, in order`, () => {
       const said = labels.statusBarGroupedBy(["Holat", "Hamkor"])
       expect(said).toContain("Holat")
@@ -185,6 +204,14 @@ describe("Russian plural agreement in the status bar", () => {
     expect(ruLabels.statusBarFiltered("11", 11, "1 000")).toBe("Отфильтровано: 11 строк из 1 000")
   })
 
+  it("agrees the header checkbox's name with the rows it would select", () => {
+    // Accusative, which is the case "выбрать" governs: строку / строки / строк.
+    expect(ruLabels.selectAllRows("1", 1)).toBe("Выбрать все 1 строку")
+    expect(ruLabels.selectAllRows("3", 3)).toBe("Выбрать все 3 строки")
+    expect(ruLabels.selectAllRows("11", 11)).toBe("Выбрать все 11 строк")
+    expect(ruLabels.selectAllRows("100 000", 100_000)).toBe("Выбрать все 100 000 строк")
+  })
+
   it("falls back to the many-form while the raw count is still unknown", () => {
     // The visible count reads "…"; the word it sits beside still has to pick
     // some form, and "many" (0's own form) is the closest honest default.
@@ -238,6 +265,9 @@ describe("Uzbek orthography", () => {
     uzLabels.statusBarFiltered("253", 253, undefined),
     uzLabels.statusBarFiltered("253", 253, "1 000"),
     uzLabels.statusBarGroupedBy(["Holat", "Hamkor"]),
+    uzLabels.selectRow(3),
+    uzLabels.selectAllRows("1 000", 1000),
+    uzLabels.selectAllRows(undefined, undefined),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -276,6 +306,8 @@ describe("Uzbek orthography", () => {
       "reorderPosition",
       "rowGroupLevel",
       "searchResults",
+      "selectAllRows",
+      "selectRow",
       "statusBarFiltered",
       "statusBarGroupedBy",
       "statusBarRows",

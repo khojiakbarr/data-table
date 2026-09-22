@@ -14,9 +14,13 @@ import { columnLabel } from "../core/columnLabel"
 import { dropRegionOf, isMovableRegion } from "../core/dropRegion"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
 import { isRowNumberColumn } from "../core/rowNumbers"
+import { isSelectionColumn } from "../core/selection"
+import type { SelectionApi } from "../core/useSelection"
 import { dropSideAt, type DropSide } from "../core/reorder"
 import type { DropSlot } from "../core/useDropSlot"
 import { clampColumnWidth } from "../core/sizing"
+import { formatCount } from "../core/formatCount"
+import { SelectionCheckbox } from "./SelectionCheckbox"
 
 /**
  * One header cell: the sort control, the drag target for reordering, and the
@@ -70,6 +74,15 @@ interface HeaderCellProps<TData extends RowData> {
   drop: DropSlot
   /** Fit a leaf column to its content. A group's handle fits each of its leaves. */
   onAutosize: (columnId: string) => void
+  /**
+   * The selection, for the one header that draws a checkbox.
+   *
+   * Optional so a shell that does not select rows — or one built before this
+   * feature existed — goes on mounting this component unchanged. Without it
+   * the selection column, if some other shell has one, draws an empty header
+   * rather than a control that cannot work.
+   */
+  selection?: SelectionApi | undefined
 }
 
 export function HeaderCell<TData extends RowData>({
@@ -83,6 +96,7 @@ export function HeaderCell<TData extends RowData>({
   onOpenMenu,
   onAutosize,
   drop,
+  selection,
 }: HeaderCellProps<TData>) {
   const { column } = header
   const isDragging = drop.draggedId === column.id
@@ -113,6 +127,32 @@ export function HeaderCell<TData extends RowData>({
    * that is empty to look at.
    */
   const isRowNumber = isRowNumberColumn(column.id)
+
+  /**
+   * The selection column's header: the all-matching checkbox, and nothing
+   * else.
+   *
+   * No kebab and no resize handle, for the row-number column's reasons plus
+   * one: this column's width is fixed at a checkbox, so a handle would offer
+   * to pad it. The checkbox itself IS the header's accessible name, so unlike
+   * the row-number column there is no sr-only span — a screen reader reaching
+   * the cell finds a named control rather than a label and a control saying
+   * the same thing twice.
+   */
+  const isSelection = isSelectionColumn(column.id)
+  /*
+   * What the header checkbox says it will take: the rows the QUERY matches,
+   * not the rows on screen. Pre-formatted the way every other count this
+   * table speaks is, and `undefined` — not "…" — while a server has not
+   * answered, because the label's job in that window is to leave the number
+   * out rather than to print a placeholder into a spoken sentence.
+   */
+  const selectAllName = labels.selectAllRows(
+    selection === undefined || selection.rowsMatching === undefined
+      ? undefined
+      : formatCount(selection.rowsMatching),
+    selection?.rowsMatching,
+  )
 
   const pinning = headerPinning(header)
   const pinned = pinning.side
@@ -270,7 +310,11 @@ export function HeaderCell<TData extends RowData>({
    * announced when a screen reader reaches it rather than only when it
    * reaches one of its controls.
    */
-  const columnName = isRowNumber ? labels.rowNumber : columnLabel(column.id, column.columnDef.header)
+  const columnName = isRowNumber
+    ? labels.rowNumber
+    : isSelection
+      ? selectAllName
+      : columnLabel(column.id, column.columnDef.header)
 
   return (
     <th
@@ -292,7 +336,7 @@ export function HeaderCell<TData extends RowData>({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onContextMenu={
-        isGroup || isRowNumber
+        isGroup || isRowNumber || isSelection
           ? undefined
           : (event) => {
               event.preventDefault()
@@ -301,8 +345,24 @@ export function HeaderCell<TData extends RowData>({
       }
     >
       {/* The tooltip lives on the label area so the buttons keep their own. */}
-      <div className="dt-th-inner" title={canDrag ? labels.dragHint : undefined}>
+      <div
+        className={classNames("dt-th-inner", isSelection && "dt-selection-cell")}
+        title={canDrag ? labels.dragHint : undefined}
+      >
         {isRowNumber ? <span className="dt-sr-only">{columnName}</span> : null}
+        {/*
+          The all-matching checkbox. Drawn only where a selection was actually
+          handed over: a selection column with no API behind it is a control
+          that cannot work, and an empty header is the honest rendering of it.
+        */}
+        {isSelection && selection !== undefined ? (
+          <SelectionCheckbox
+            checked={selection.headerChecked}
+            indeterminate={selection.headerIndeterminate}
+            label={selectAllName}
+            onChange={selection.toggleAll}
+          />
+        ) : null}
         {canSort ? (
           <button
             type="button"
@@ -348,7 +408,7 @@ export function HeaderCell<TData extends RowData>({
         ) : null}
       </div>
 
-      {isGroup || isRowNumber ? null : (
+      {isGroup || isRowNumber || isSelection ? null : (
         <button
           type="button"
           className="dt-kebab"

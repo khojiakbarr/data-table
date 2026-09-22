@@ -200,6 +200,39 @@ export interface DataTableFeatureFlags {
    */
   rowNumbers?: boolean
   /**
+   * A leading column of checkboxes, and the selection behind it. **Default
+   * false**, for the reason {@link DataTableFeatureFlags.rowNumbers} is —
+   * this adds a column rather than turning an interaction off — and for one
+   * more of its own: a table that started selecting rows on a minor upgrade
+   * would put a bulk action in front of users the host never meant to offer
+   * one to.
+   *
+   * **The header checkbox means everything the current query matches**, not
+   * the fifty rows on screen. A user approving 25 000 receipts must not have
+   * to page through 500 screens, so the selection is a statement about the
+   * query — "everything it matches, except these" — rather than a list of
+   * ids. `onSelectionChange` publishes that statement, the query it is
+   * relative to, and the count.
+   *
+   * **A change to the filters, the search or the grouping clears it.** Not a
+   * change to the sorting or the page: neither changes which rows match, only
+   * their order and which slice is on screen.
+   *
+   * **`getRowId` is effectively required.** Without it rows are keyed by
+   * position and a selection follows the slot rather than the record; the
+   * table says so once in development.
+   *
+   * Group rows are not selectable in this version — a group stands for
+   * children the browser does not hold, so a tick on one could not honestly
+   * mean anything yet — and their checkbox cell is empty.
+   *
+   * The column is chrome, not data: pinned to the start ahead of the
+   * row-number column, not unpinnable, not sortable, filterable, groupable,
+   * editable, hideable, reorderable or resizable, and absent from the Columns
+   * panel. Nothing about a selection is ever written to `storage`.
+   */
+  selection?: boolean
+  /**
    * A band under the table stating what the result set contains. **Default
    * false**, for the same reason {@link DataTableFeatureFlags.rowNumbers} is:
    * every other flag turns OFF a rearrangement the table has always offered,
@@ -304,6 +337,27 @@ export interface DataTableLabels extends CellEditingLabels {
    * (the resize handle) is named after.
    */
   rowNumber: string
+  /**
+   * A row's own checkbox in the selection column, named for a screen reader.
+   *
+   * The cell holds nothing but the box, so this is the only name it has, and
+   * it has to say WHICH row — otherwise every row in the column is announced
+   * identically. The row's 1-based place in the whole result set is what
+   * identifies it, the same number {@link DataTableLabels.rowNumber}'s column
+   * prints and the same one the expand toggle is named with.
+   */
+  selectRow: (row: number) => string
+  /**
+   * The selection column's header checkbox, which takes **everything the
+   * query matches** rather than the rows on screen.
+   *
+   * `count` is those rows, pre-formatted the way every other count this table
+   * speaks is — or **undefined while a server has not answered**, which is a
+   * state this label has to have words for: the alternative is naming the
+   * control after a number that is wrong. `raw` is the number behind it, for
+   * a language that agrees a noun with the count it governs (Russian).
+   */
+  selectAllRows: (count: string | undefined, raw: number | undefined) => string
   expandRow: string
   collapseRow: string
   columnActions: string

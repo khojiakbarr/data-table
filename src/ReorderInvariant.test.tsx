@@ -3,6 +3,7 @@ import { cleanup, createEvent, fireEvent, render, screen, within } from "@testin
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
 import { ROW_NUMBER_COLUMN_ID } from "./core/rowNumbers"
+import { SELECTION_COLUMN_ID } from "./core/selection"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
 import type { LayoutStorage, TableLayout } from "./types"
 
@@ -121,6 +122,16 @@ interface Fixture {
    * standing in front of everything, changes none of the promises below.
    */
   rowNumbers?: boolean
+  /**
+   * Whether the leading selection column is on.
+   *
+   * The same kind of derivation as `rowNumbers`, and a fourth one when both
+   * are: it stands in front of even that. Worth its own fixtures rather than
+   * only riding along with them, because it is the case where TWO columns the
+   * user cannot touch lead the start section — so an off-by-one in any index
+   * counted over the rendered order shows up here and nowhere else.
+   */
+  selection?: boolean
   /** Asserted once per fixture, so a fixture that quietly changes shape is caught. */
   baseline: string[]
 }
@@ -207,6 +218,26 @@ const FIXTURES: Fixture[] = [
     pinning: { start: [], end: [] },
     rowGrouping: ["e"],
     rowNumbers: true,
+    baseline: ["e", "a", "b", "c", "d", "f"],
+  },
+  {
+    // The selection column in front of a pinned pair, for the row-number
+    // column's reason one place further left.
+    name: "a table with row selection and two columns pinned to the start",
+    shape: "flat",
+    pinning: { start: ["e", "f"], end: [] },
+    selection: true,
+    baseline: ["e", "f", "a", "b", "c", "d"],
+  },
+  {
+    // Both chrome columns and a row grouping: three derivations stacked in
+    // front of the user's own order, which is the deepest the table goes.
+    name: "a table with row selection and row numbers, grouped by a right-hand column",
+    shape: "grouped",
+    pinning: { start: [], end: [] },
+    rowGrouping: ["e"],
+    rowNumbers: true,
+    selection: true,
     baseline: ["e", "a", "b", "c", "d", "f"],
   },
   {
@@ -307,6 +338,28 @@ const splitGroups = (fixture: Fixture): string[] => {
 const draggableIn = (fixture: Fixture): readonly string[] =>
   LEAF_IDS.filter((id) => id !== fixture.rowGrouping?.[0])
 
+/**
+ * The columns the TABLE puts in front of the host's own, in render order, each
+ * with the fixture flag that turns it on.
+ *
+ * One list rather than two named checks, because every promise below treats
+ * them identically: neither is one of the fixtures' declared leaves, neither
+ * appears in `baseline` or in `renderedOrder`, neither has a row in the
+ * Columns panel, and each is alone in its own drop region. A third such column
+ * joins this array and inherits every case in the file.
+ */
+const CHROME_COLUMNS = [
+  { id: SELECTION_COLUMN_ID, on: (fixture: Fixture): boolean => fixture.selection === true },
+  { id: ROW_NUMBER_COLUMN_ID, on: (fixture: Fixture): boolean => fixture.rowNumbers === true },
+] as const
+
+/** Whether an id names one of those columns rather than one of the host's. */
+const isChromeColumn = (id: string): boolean => CHROME_COLUMNS.some((chrome) => chrome.id === id)
+
+/** The chrome columns one fixture actually renders, in render order. */
+const chromeIn = (fixture: Fixture): string[] =>
+  CHROME_COLUMNS.filter((chrome) => chrome.on(fixture)).map((chrome) => chrome.id)
+
 const SIDES = ["start", "end"] as const
 type Side = (typeof SIDES)[number]
 
@@ -319,7 +372,14 @@ function Table({ fixture, storage }: { fixture: Fixture; storage?: LayoutStorage
       columnPinning: fixture.pinning,
       ...(fixture.rowGrouping ? { grouping: [...fixture.rowGrouping] } : {}),
     },
-    ...(fixture.rowNumbers ? { features: { rowNumbers: true } } : {}),
+    ...(fixture.rowNumbers || fixture.selection
+      ? {
+          features: {
+            ...(fixture.rowNumbers ? { rowNumbers: true } : {}),
+            ...(fixture.selection ? { selection: true } : {}),
+          },
+        }
+      : {}),
     // Grouping is server-side: a client table refuses one, and the fixture
     // would then be an ordinary table wearing a grouped name.
     ...(fixture.rowGrouping
@@ -610,16 +670,24 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
         .filter((id) => id !== fixture.rowGrouping?.[0] && !splitGroups(fixture).includes(id))
         .sort(),
     )
-    // The row-number column is there or it is not, and when it is it is in
+    // Each chrome column is there or it is not, and when it is it is in
     // neither list: no header to grab, and no row in the panel at all — so
     // there is nothing in the panel to grip it by either.
-    const numberHeader = document.querySelector(`th[data-column-id="${ROW_NUMBER_COLUMN_ID}"]`)
-    expect(numberHeader !== null).toBe(fixture.rowNumbers === true)
-    expect(numberHeader?.getAttribute("draggable") ?? "false").toBe("false")
-    expect(
-      document.querySelector(`ul.dt-panel-list [data-column-id="${ROW_NUMBER_COLUMN_ID}"]`),
-    ).toBeNull()
-    expect(panelDraggable()).not.toContain(ROW_NUMBER_COLUMN_ID)
+    for (const chrome of CHROME_COLUMNS) {
+      const header = document.querySelector(`th[data-column-id="${chrome.id}"]`)
+      expect(header !== null, `${chrome.id} header`).toBe(chrome.on(fixture))
+      expect(header?.getAttribute("draggable") ?? "false").toBe("false")
+      expect(
+        document.querySelector(`ul.dt-panel-list [data-column-id="${chrome.id}"]`),
+      ).toBeNull()
+      expect(panelDraggable()).not.toContain(chrome.id)
+    }
+    // And they lead the table in the order the library declares, ahead of
+    // every leaf the fixture itself declared.
+    const leading = [...document.querySelectorAll("colgroup col[data-column-id]")]
+      .map((col) => col.getAttribute("data-column-id") ?? "")
+      .filter(isChromeColumn)
+    expect(leading).toEqual(chromeIn(fixture))
   })
 
 
@@ -747,17 +815,18 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
 })
 
 /**
- * The half of the promise the loops above cannot reach: the row-number column
- * as a TARGET.
+ * The half of the promise the loops above cannot reach: a chrome column as a
+ * TARGET.
  *
- * Those loops only ever point at the fixtures' own columns, so a drop onto
- * the numbers themselves is never attempted there — and it is the one place
- * this column could break the property, because it sits in the start section
- * beside columns a user really can rearrange. Its region is solitary, so the
- * answer must be the second form of the promise: no slot, and nothing moves.
+ * Those loops only ever point at the fixtures' own columns, so a drop onto the
+ * selection boxes or the numbers themselves is never attempted there — and it
+ * is the one place these columns could break the property, because they sit in
+ * the start section beside columns a user really can rearrange. Each is alone
+ * in its region, so the answer must be the second form of the promise: no
+ * slot, and nothing moves.
  */
-describe.each(FIXTURES.filter((fixture) => fixture.rowNumbers))(
-  "the row-number column takes no drop in $name",
+describe.each(FIXTURES.filter((fixture) => chromeIn(fixture).length > 0))(
+  "a chrome column takes no drop in $name",
   (fixture) => {
     beforeEach(() => {
       localStorage.clear()
@@ -769,25 +838,27 @@ describe.each(FIXTURES.filter((fixture) => fixture.rowNumbers))(
       const violations: string[] = []
       const surface = SURFACES[0] as Surface
 
-      for (const draggedId of draggableIn(fixture)) {
-        for (const side of SIDES) {
-          const before = renderedOrder()
-          const dataTransfer = makeDataTransfer()
-          const target = headerCell(ROW_NUMBER_COLUMN_ID)
+      for (const chromeId of chromeIn(fixture)) {
+        for (const draggedId of draggableIn(fixture)) {
+          for (const side of SIDES) {
+            const before = renderedOrder()
+            const dataTransfer = makeDataTransfer()
+            const target = headerCell(chromeId)
 
-          fireEvent.dragStart(surface.grip(draggedId), { dataTransfer })
-          pointAt(surface, "dragOver", target, side, dataTransfer)
-          const slot = surface.slot()
-          pointAt(surface, "drop", target, side, dataTransfer)
-          fireEvent.dragEnd(surface.grip(draggedId))
+            fireEvent.dragStart(surface.grip(draggedId), { dataTransfer })
+            pointAt(surface, "dragOver", target, side, dataTransfer)
+            const slot = surface.slot()
+            pointAt(surface, "drop", target, side, dataTransfer)
+            fireEvent.dragEnd(surface.grip(draggedId))
 
-          const after = renderedOrder()
-          const where = `${label(draggedId)} onto the row numbers' ${side}`
-          if (slot !== null) violations.push(`${where}: a slot appeared, on ${label(slot)}`)
-          if (after.join(" ") !== before.join(" ")) {
-            violations.push(`${where}: the order became ${after.join(" ")}`)
+            const after = renderedOrder()
+            const where = `${label(draggedId)} onto ${chromeId}'s ${side}`
+            if (slot !== null) violations.push(`${where}: a slot appeared, on ${label(slot)}`)
+            if (after.join(" ") !== before.join(" ")) {
+              violations.push(`${where}: the order became ${after.join(" ")}`)
+            }
+            resetToBaseline()
           }
-          resetToBaseline()
         }
       }
 
@@ -831,15 +902,15 @@ describe.each(
     /**
      * The header's top row: the groups, and any leaf that belongs to none.
      *
-     * The row-number column is left out. It stands at the top level like any
-     * ungrouped leaf, but it is not a sibling anything can move among — it is
-     * alone in its drop region — so counting it here would shift every
-     * promised index by one for a column that never takes part.
+     * The chrome columns are left out. Each stands at the top level like any
+     * ungrouped leaf, but neither is a sibling anything can move among — each
+     * is alone in its drop region — so counting them here would shift every
+     * promised index by one, or by two, for columns that never take part.
      */
     const topLevelOrder = (): string[] =>
       [...document.querySelectorAll("thead tr:first-child th[data-column-id]")]
         .map((th) => th.getAttribute("data-column-id") ?? "")
-        .filter((id) => id !== ROW_NUMBER_COLUMN_ID)
+        .filter((id) => !isChromeColumn(id))
 
     /**
      * Which leaves each top-level header stands over, read the way a user
@@ -856,9 +927,9 @@ describe.each(
         const id = th.getAttribute("data-column-id")
         if (id === null) continue
         // Skipped WITHOUT advancing, exactly as the filler is: `renderedOrder`
-        // reads the fixtures' own leaves, and the row-number column is not
-        // one of them, so it occupies no place in the list being sliced.
-        if (id === ROW_NUMBER_COLUMN_ID) continue
+        // reads the fixtures' own leaves, and a chrome column is not one of
+        // them, so it occupies no place in the list being sliced.
+        if (isChromeColumn(id)) continue
         const span = Number(th.getAttribute("colspan") ?? "1")
         under.set(id, leaves.slice(at, at + span))
         at += span

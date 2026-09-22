@@ -183,6 +183,39 @@ export type { GroupRow } from "./core/grouping"
  */
 export { ROW_NUMBER_COLUMN_ID, isRowNumberColumn, rowNumberAt } from "./core/rowNumbers"
 
+/*
+ * Row selection. The model and its four reducers are exported because a host
+ * has to translate `all-matching` into its own `WHERE` clause, and a shell of
+ * its own has to answer the same two questions the built-in body does: which
+ * cell is the checkbox's, and whether this row is in the selection.
+ * `useSelection` is the hook behind `instance.selection`, including the
+ * query-change reset that makes the whole thing safe.
+ */
+export {
+  ALL_MATCHING_SELECTION,
+  EMPTY_SELECTION,
+  SELECTION_COLUMN_ID,
+  SELECTION_COLUMN_WIDTH,
+  isRowSelected,
+  isSelectionColumn,
+  isSelectionEmpty,
+  selectionColumnDef,
+  selectionCount,
+  selectionScopeOf,
+  withRow,
+} from "./core/selection"
+export type { SelectionModel } from "./core/selection"
+export { useSelection } from "./core/useSelection"
+export type {
+  SelectionApi,
+  SelectionChange,
+  SelectionSummary,
+  UseSelectionOptions,
+} from "./core/useSelection"
+export { SelectionCheckbox } from "./components/SelectionCheckbox"
+export type { SelectionCheckboxProps } from "./components/SelectionCheckbox"
+export { useIndeterminate } from "./core/useIndeterminate"
+
 export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"
 export { collectColumnFacts, collectFilterKinds, resolveFilterKind } from "./core/filterKinds"

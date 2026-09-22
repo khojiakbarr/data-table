@@ -4,6 +4,7 @@ import { isSameCell } from "../core/cellEditing"
 import { groupValueLabel, type GroupRow } from "../core/grouping"
 import { pinnedStyle } from "../core/pinning"
 import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
+import { isSelectionColumn } from "../core/selection"
 import type { CellEditing } from "../core/useCellEditing"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -108,9 +109,41 @@ export function GroupBodyRow<TData extends RowData>({
   const number = rowNumberAt(position, rowIndexOffset)
   const visible = row.getVisibleCells()
   /* The group's chevron and value belong beside the first real column; see BodyRow. */
-  const leadIndex = visible.findIndex((cell) => !isRowNumberColumn(cell.column.id))
+  const leadIndex = visible.findIndex(
+    (cell) => !isRowNumberColumn(cell.column.id) && !isSelectionColumn(cell.column.id),
+  )
 
   const cells = visible.map((cell, index) => {
+    if (isSelectionColumn(cell.column.id)) {
+      /*
+       * The one row with no checkbox, and the cell is kept and left empty.
+       *
+       * A group row is not a record: it stands for children the browser does
+       * not hold, and in server mode most of them have never been sent. A tick
+       * on it could only mean "every row under this group", which is a third
+       * selection mode — neither the ids the user picked nor everything the
+       * query matches — and one no backend could translate without a path
+       * predicate the wire does not carry. Refusing is the honest version;
+       * offering a box that selected only the loaded children would be a bulk
+       * action over a window.
+       *
+       * The cell itself stays, because the selection column's gutter runs the
+       * whole height of the body and a missing cell would shift every column
+       * of this row one place left.
+       */
+      return (
+        <td
+          key={cell.id}
+          className={classNames(
+            "dt-td",
+            "dt-selection-cell",
+            cell.column.getIsPinned() && "dt-pinned",
+          )}
+          style={pinnedStyle(cell.column)}
+          data-column-id={cell.column.id}
+        />
+      )
+    }
     if (isRowNumberColumn(cell.column.id)) {
       return (
         <td

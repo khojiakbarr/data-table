@@ -37,6 +37,8 @@ import {
   rowNumberColumnDef,
   rowNumberColumnWidth,
 } from "./core/rowNumbers"
+import { SELECTION_COLUMN_ID, selectionColumnDef } from "./core/selection"
+import { useSelection, type SelectionChange } from "./core/useSelection"
 import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
 import {
@@ -350,6 +352,23 @@ export interface UseDataTableOptions<TData extends RowData> {
    * would reject that.
    */
   onQueryChange?: ((query: TableQuery) => void) | undefined
+  /**
+   * Called whenever the row selection changes — including when the table
+   * clears it because the query moved under it.
+   *
+   * It carries the model, the {@link TableQuery} the selection is relative to,
+   * and how many rows that is. The query is not optional: `all-matching` names
+   * no row on its own, and a host handed it without the filters it was drawn
+   * against has nothing to turn into a `WHERE` clause. See the README's
+   * Row selection section for that translation.
+   *
+   * Not called on mount — nothing is selected there, and `onQueryChange` has
+   * already announced the query.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`, like the
+   * hook's other forwarded callbacks.
+   */
+  onSelectionChange?: ((selection: SelectionChange) => void) | undefined
   /** Pixel height of a data row. Default 40; also sets `--dt-row-height`. */
   rowHeight?: number
   /**
@@ -425,6 +444,7 @@ export function useDataTable<TData extends RowData>({
   getRowId,
   startPath,
   onQueryChange,
+  onSelectionChange,
   rowHeight = 40,
   getRowHeight,
   heightVersion,
@@ -444,6 +464,10 @@ export function useDataTable<TData extends RowData>({
        * a breaking change dressed as a small one. See the flag's own JSDoc.
        */
       rowNumbers: features?.rowNumbers ?? false,
+      // False for the same reason `rowNumbers` is, and with one more of its
+      // own: a table that started selecting rows on a minor upgrade would put
+      // a bulk action in front of users the host never meant to offer one to.
+      selection: features?.selection ?? false,
       // False for the same reason `rowNumbers` is — see that flag's JSDoc and
       // `DataTableFeatureFlags.statusBar`'s own. `??` only steps in for a
       // missing (`undefined`/`null`) flag; a host's own `true`, `false` or a
@@ -842,15 +866,34 @@ export function useDataTable<TData extends RowData>({
   )
 
   /*
-   * The row-number column leads EVERYTHING, the group column included, which
-   * is why it is prepended after the hoist rather than inside it: the hoist
-   * decides where the host's own columns stand, and this column stands before
-   * all of them.
+   * The selection column, which takes no width argument: a checkbox is the
+   * widest thing in it and does not grow with the row count.
+   */
+  const selectionDef = useMemo(
+    () => (flags.selection ? selectionColumnDef<TData>() : null),
+    [flags.selection],
+  )
+
+  /*
+   * The chrome columns lead EVERYTHING, the group column included, which is
+   * why they are prepended after the hoist rather than inside it: the hoist
+   * decides where the host's own columns stand, and these stand before all of
+   * them.
+   *
+   * Selection first, then row numbers — the order the spec asks for. This
+   * array is where the two are named in that order, but it is NOT where the
+   * order is enforced: both columns are pinned to the start, and TanStack
+   * renders that section from `columnPinning.start` rather than from the
+   * definitions or the flat order. `columnPinning` below is where "selection,
+   * then row numbers, then the group column" actually happens, and the two
+   * spellings are kept in step by hand because there is no third place that
+   * could derive one from the other.
    */
   const tableColumns = useMemo(() => {
     const declared = groupColumnId === undefined ? columns : hoistGroupColumn(columns, groupColumnId)
-    return rowNumberDef === null ? declared : [rowNumberDef, ...declared]
-  }, [columns, groupColumnId, rowNumberDef])
+    const chrome = [selectionDef, rowNumberDef].filter((def) => def !== null)
+    return chrome.length === 0 ? declared : [...chrome, ...declared]
+  }, [columns, groupColumnId, rowNumberDef, selectionDef])
 
   /*
    * Order as the table renders it: the user's own, with the group column
@@ -912,22 +955,29 @@ export function useDataTable<TData extends RowData>({
       }
       return layout.columnPinning
     })()
-    if (!flags.rowNumbers) return grouped
     /*
-     * And the row-number column leads the start section, which — since
-     * TanStack renders that section in `columnPinning.start` order and puts
-     * it before everything else — is how "it leads the table, before the
-     * group column" is actually enforced. Derived, never written into
-     * `layout.columnPinning`, for the same reason the lift above is not:
-     * turning `rowNumbers` off again has to leave the user's own pinning
-     * exactly as it was, and the only way that is true by construction is if
-     * nothing was written to begin with.
+     * And the chrome columns lead the start section, which — since TanStack
+     * renders that section in `columnPinning.start` order and puts it before
+     * everything else — is where "selection, then row numbers, then the group
+     * column" is actually ENFORCED. The definitions name them in that order
+     * too (see `tableColumns`), but a pinned section does not read the
+     * definitions or the flat order, so this array is the one that decides.
      *
-     * Not `columnOrder`: the column is pinned, and a pinned section is
+     * Derived, never written into `layout.columnPinning`, for the same reason
+     * the group lift above is not: turning either flag off again has to leave
+     * the user's own pinning exactly as it was, and the only way that is true
+     * by construction is if nothing was written to begin with.
+     *
+     * Not `columnOrder`: the columns are pinned, and a pinned section is
      * rendered from these arrays rather than from the flat order.
      */
-    return { ...grouped, start: [ROW_NUMBER_COLUMN_ID, ...grouped.start] }
-  }, [groupColumnId, layout.columnPinning, flags.rowNumbers])
+    const lead = [
+      ...(flags.selection ? [SELECTION_COLUMN_ID] : []),
+      ...(flags.rowNumbers ? [ROW_NUMBER_COLUMN_ID] : []),
+    ]
+    if (lead.length === 0) return grouped
+    return { ...grouped, start: [...lead, ...grouped.start] }
+  }, [groupColumnId, layout.columnPinning, flags.rowNumbers, flags.selection])
 
   /*
    * Widths as the table renders them: the user's own, with a floor under the
@@ -1609,14 +1659,22 @@ export function useDataTable<TData extends RowData>({
   )
 
   /*
+   * How many rows the QUERY matches, across every page.
+   *
+   * In server mode it is `rowCount` and the table never sees the other pages;
+   * in client mode `data` is the whole set and the post-filter, pre-pagination
+   * row model is the same quantity measured where the client keeps it. It is
+   * what the `all-matching` selection counts against — see `selectionCount`,
+   * which answers `undefined` rather than a guess while this is undefined.
+   */
+  const matchingRowCount = isServer ? rowCount : table.getPrePaginatedRowModel().rows.length
+
+  /*
    * In client mode the total is whatever survived filtering, which only the
    * table knows; in server mode it is `rowCount` and the table never sees the
    * other pages. Undefined when nothing is being paged.
    */
-  const clientRowCount =
-    paginationOptions !== null && !isServer
-      ? table.getPrePaginatedRowModel().rows.length
-      : undefined
+  const clientRowCount = paginationOptions !== null && !isServer ? matchingRowCount : undefined
 
   /*
    * Publish the count the table just produced, then correct the one case the
@@ -1669,6 +1727,29 @@ export function useDataTable<TData extends RowData>({
     pageIndex: pageState.pageIndex,
     pageSize: pageState.pageSize,
     onQueryChange,
+  })
+
+  /*
+   * The selection, and the rule that keeps it safe.
+   *
+   * It is given the QUERY rather than the mutators, because a change to the
+   * filters, the search or the grouping has to clear it and there are more
+   * ways to change a query than there are mutators — see `useSelection`, which
+   * explains why that reset lives there rather than beside the `resetPage()`
+   * calls above.
+   *
+   * It is deliberately NOT a layout slice, so nothing about it is passed to
+   * `useArrangement` and nothing about it reaches `storage`. A selection
+   * restored from last week, against a query that has since changed, is the
+   * query-change failure wearing a hat.
+   */
+  const selection = useSelection({
+    id,
+    enabled: flags.selection,
+    query,
+    rowCount: matchingRowCount,
+    hasRowId: getRowId !== undefined,
+    onSelectionChange,
   })
 
   const setCondition = useCallback(
@@ -1892,6 +1973,7 @@ export function useDataTable<TData extends RowData>({
     pagination: paginationApi,
     filtering: filteringApi,
     grouping: groupingApi,
+    selection,
     tableHeight,
     rowHeight,
     getRowHeight,

@@ -4,11 +4,14 @@ import { isSameCell } from "../core/cellEditing"
 import { classNames, insertAt } from "../core/classNames"
 import { pinnedStyle } from "../core/pinning"
 import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
+import { isSelectionColumn } from "../core/selection"
 import type { CellEditing } from "../core/useCellEditing"
+import type { SelectionApi } from "../core/useSelection"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { CellEditor } from "./CellEditor"
 import { DepthSpacer, ExpandToggle } from "./ExpandToggle"
+import { SelectionCheckbox } from "./SelectionCheckbox"
 
 interface BodyRowProps<TData extends RowData> {
   row: Row<DataTableFeatures, TData>
@@ -46,6 +49,12 @@ interface BodyRowProps<TData extends RowData> {
    * only forwards them has no business destructuring them.
    */
   editing?: CellEditing<TData> | undefined
+  /**
+   * The selection, for the one cell that draws a checkbox. Optional for the
+   * reason `HeaderCell`'s own is: a shell that does not select rows mounts
+   * this component unchanged.
+   */
+  selection?: SelectionApi | undefined
 }
 
 /**
@@ -78,6 +87,7 @@ export function BodyRow<TData extends RowData>({
   groupDepth = 0,
   onRowClick,
   editing,
+  selection,
 }: BodyRowProps<TData>) {
   const cells = row.getVisibleCells()
   const expandable = row.subRows.length > 0 || hasDetail
@@ -94,9 +104,38 @@ export function BodyRow<TData extends RowData>({
    * belongs beside the row's first real value rather than beside its
    * position. Everything that used to ask `index === 0` asks this instead.
    */
-  const leadIndex = cells.findIndex((cell) => !isRowNumberColumn(cell.column.id))
+  const leadIndex = cells.findIndex(
+    (cell) => !isRowNumberColumn(cell.column.id) && !isSelectionColumn(cell.column.id),
+  )
 
   const rendered = cells.map((cell, index) => {
+    if (isSelectionColumn(cell.column.id)) {
+      return (
+        <td
+          key={cell.id}
+          className={classNames(
+            "dt-td",
+            "dt-selection-cell",
+            cell.column.getIsPinned() && "dt-pinned",
+          )}
+          style={pinnedStyle(cell.column)}
+          data-column-id={cell.column.id}
+          /*
+           * No cell menu, for the row-number column's reason: the column is
+           * chrome and carries none of the host's data, so an Edit item here
+           * would exist only to say no.
+           */
+        >
+          {selection === undefined ? null : (
+            <SelectionCheckbox
+              checked={selection.isRowSelected(row.id)}
+              label={labels.selectRow(number)}
+              onChange={(selected) => selection.toggleRow(row.id, selected)}
+            />
+          )}
+        </td>
+      )
+    }
     if (isRowNumberColumn(cell.column.id)) {
       return (
         <td

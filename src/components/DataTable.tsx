@@ -12,6 +12,7 @@ import { buildColumnTree, siblingOrderOf, type ColumnTreeNode } from "../core/co
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
 import type { CellEditHandler } from "../core/cellEditing"
 import { useCellEditing } from "../core/useCellEditing"
+import type { SelectionSummary } from "../core/useSelection"
 import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
@@ -67,6 +68,10 @@ export const defaultLabels: DataTableLabels = {
   tableHeight: (pixels) => `Table height ${pixels} pixels`,
   tableBody: "Table rows",
   rowNumber: "Row number",
+  selectRow: (row) => `Select row ${row}`,
+  // With no count yet, the control says what it does and leaves the number
+  // out — naming it after a wrong one would be worse than naming it after none.
+  selectAllRows: (count) => (count === undefined ? "Select all rows" : `Select all ${count} rows`),
   expandRow: "Expand row",
   collapseRow: "Collapse row",
   columnActions: "Column actions",
@@ -205,6 +210,32 @@ export interface DataTableProps<TData extends RowData> {
   toolbar?: boolean
   /** Extra toolbar content, rendered at the toolbar's leading edge. */
   toolbarContent?: ReactNode
+  /**
+   * Actions for the rows that are selected, in a bar of their own above the
+   * table — **rendered only while something is selected**.
+   *
+   * That is the whole difference from {@link DataTableProps.toolbarContent},
+   * which is a static `ReactNode` and knows nothing about a selection. This
+   * slot is for the thing that appears *because* rows were picked; a host that
+   * wants a bar always on screen renders it from `toolbarContent` instead.
+   *
+   * It is handed the model, the query the selection is relative to, the count,
+   * and `clear` — so a "Cancel" button does not have to reach back into the
+   * instance. See the README's Row selection section for turning the model
+   * into a `WHERE` clause.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`: whether a
+   * table offers bulk actions is usually a condition at the call site.
+   *
+   * @example
+   * renderSelectionActions={({ count, clear }) => (
+   *   <>
+   *     <span>{count ?? "…"} selected</span>
+   *     <button onClick={() => approve(selection).then(clear)}>Approve</button>
+   *   </>
+   * )}
+   */
+  renderSelectionActions?: ((selection: SelectionSummary) => ReactNode) | undefined
   /** Shown instead of rows when there are none. */
   emptyState?: ReactNode
   /**
@@ -387,6 +418,7 @@ export function DataTable<TData extends RowData>({
   stickyHeader = true,
   toolbar = true,
   toolbarContent,
+  renderSelectionActions,
   emptyState,
   renderDetail,
   labels: labelOverrides,
@@ -765,6 +797,20 @@ export function DataTable<TData extends RowData>({
           </div>
         ) : null}
 
+        {/*
+          The bulk-action bar. Mounted only while something is selected, which
+          is the one thing that tells it apart from `toolbarContent`.
+
+          It appears once, when the first row is ticked, and goes once, when
+          the last is unticked — it does NOT come and go as the count changes,
+          so the table is not pushed down and back on every tick. Its entrance
+          animates `transform` and `opacity` only, and `styles.css` drops that
+          under `prefers-reduced-motion`.
+        */}
+        {renderSelectionActions && !instance.selection.isEmpty ? (
+          <div className="dt-selection-bar">{renderSelectionActions(instance.selection.summary)}</div>
+        ) : null}
+
         <TableStatus loading={showProgress} error={error} onRetry={onRetry} labels={labels} />
 
         <CellEditNotice
@@ -864,6 +910,7 @@ export function DataTable<TData extends RowData>({
                         onOpenMenu={(at) => setMenu({ columnId: header.column.id, at })}
                         onAutosize={autosize}
                         drop={drop}
+                        selection={instance.selection.enabled ? instance.selection : undefined}
                       />
                     )),
                 )

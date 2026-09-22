@@ -14,6 +14,7 @@ import { columnLabel } from "../core/columnLabel"
 import { dropRegionOf, isMovableRegion } from "../core/dropRegion"
 import { orderedLeafColumns } from "../core/pinning"
 import { isRowNumberColumn } from "../core/rowNumbers"
+import { isSelectionColumn } from "../core/selection"
 import { reachableRange, type DropSide } from "../core/reorder"
 import { useDropSlot } from "../core/useDropSlot"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
@@ -79,15 +80,17 @@ export function ColumnsTab<TData extends RowData>({
    * have no way back to it.
    */
   /*
-   * The row-number column is left out entirely, and that is the whole of
+   * The chrome columns are left out entirely, and that is the whole of
    * "absent from the Columns panel tree": the tree below is built from this
    * list and nothing else, so a column that is not in it has no row to be
-   * shown, ticked, moved or counted in. Showing it would mean offering a tick
-   * that removes the column the `rowNumbers` flag put there, which contradicts
-   * the flag — and `dropRegionOf` refuses it a second time, for the surfaces
-   * that do list it.
+   * shown, ticked, moved or counted in. Showing either would mean offering a
+   * tick that removes the column its own feature flag put there, which
+   * contradicts the flag — and `dropRegionOf` refuses them a second time, for
+   * the surfaces that do list them.
    */
-  const columns = orderedLeafColumns(table).filter((column) => !isRowNumberColumn(column.id))
+  const columns = orderedLeafColumns(table).filter(
+    (column) => !isRowNumberColumn(column.id) && !isSelectionColumn(column.id),
+  )
   const tree = buildColumnTree(columns)
   /*
    * The column holding the group values, which the grouping has lifted to the

@@ -97,6 +97,14 @@ export const ruLabels: DataTableLabels = {
     `Высота таблицы ${pixels} ${plural(pixels, "пиксель", "пикселя", "пикселей")}`,
   tableBody: "Строки таблицы",
   rowNumber: "Номер строки",
+  selectRow: (row) => `Выбрать строку ${row}`,
+  // The count is spoken, so it agrees: 1 строку, 3 строки, 25 строк — in the
+  // accusative, which is the case "выбрать" governs. With no count yet the
+  // control says what it does and names no number.
+  selectAllRows: (count, raw) =>
+    count === undefined
+      ? "Выбрать все строки"
+      : `Выбрать все ${count} ${plural(raw ?? 0, "строку", "строки", "строк")}`,
   expandRow: "Развернуть строку",
   collapseRow: "Свернуть строку",
   columnActions: "Действия со столбцом",

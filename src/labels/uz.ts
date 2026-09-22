@@ -82,6 +82,9 @@ export const uzLabels: DataTableLabels = {
   tableHeight: (pixels) => `Jadval balandligi ${pixels} piksel`,
   tableBody: "Jadval qatorlari",
   rowNumber: "Qator raqami",
+  selectRow: (row) => `${row}-qatorni tanlash`,
+  selectAllRows: (count) =>
+    count === undefined ? "Barcha qatorlarni tanlash" : `Barcha ${count} ta qatorni tanlash`,
   expandRow: "Qatorni ochish",
   collapseRow: "Qatorni yopish",
   columnActions: "Ustun amallari",

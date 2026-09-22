@@ -645,12 +645,9 @@ export function useDataTable<TData extends RowData>({
    * is open inside them — so the page the user is on describes a result set
    * that no longer exists, exactly as it does after a sort or a filter.
    *
-   * A change to WHICH columns group the rows resets the page unconditionally,
-   * because it also clears every open path below: every level of the
-   * grouping is being replaced, so nothing about the previous flattened
-   * list — its length or what was open in it — still applies. `toggleGroup`
-   * below opens or closes ONE existing group without touching the others, and
-   * resets the page on a narrower condition; see the comment there.
+   * Expansion is part of the query here, so it resets the page too: opening a
+   * group makes the flattened list longer and closing one makes it shorter,
+   * and an un-reset page points past the end of a shorter list.
    *
    * A grouping change also clears the open paths. A path's keys are
    * positional — index 0 is the outermost level — so adding or removing a
@@ -680,31 +677,13 @@ export function useDataTable<TData extends RowData>({
     [groupingEnabled, id, updateSlices, columnIds, resetPage],
   )
 
-  /**
-   * Open or close one group, without disturbing the others.
-   *
-   * Only a COLLAPSE resets the page: it can only shorten the flattened list,
-   * and an un-reset page can point past its new end. An EXPAND can only
-   * lengthen the list, so it never needs a reset — resetting on expand was
-   * the bug this fixes: it sent a page-2 user back to page 1 for opening a
-   * group they could already see, discarding the very page they clicked from.
-   *
-   * The collapse-side reset is belt-and-braces rather than load-bearing:
-   * `usePagination` already clamps `pageIndex` to `pageCount - 1` during
-   * render (see usePagination.ts), so an un-reset page cannot actually end up
-   * past the end. It is kept anyway so a host watching `resetPage`'s effects
-   * (`onQueryChange`, for one) sees the page settle on the same tick as the
-   * collapse rather than one render later, behind a clamp this function does
-   * not control.
-   */
   const toggleGroup = useCallback(
     (path: readonly FilterValue[]) => {
       if (!groupingEnabled || path.length === 0) return
-      const wasOpen = isPathExpanded(layout.expanded, path)
       updateSlice("expanded", (current) => togglePath(current, path))
-      if (wasOpen) resetPage()
+      resetPage()
     },
-    [groupingEnabled, layout.expanded, updateSlice, resetPage],
+    [groupingEnabled, updateSlice, resetPage],
   )
 
   const collapseAllGroups = useCallback(() => {

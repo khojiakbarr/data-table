@@ -41,6 +41,7 @@ function Receipts({ data, columns }) {
 | **Quick search** | One box over every searchable column. Every token must appear somewhere on the row; different tokens may match different columns. |
 | **Filter columns** | Text, number, date, boolean and values-list filters, from the header menu or the side panel's Filters tab. Each one is published as an explicit operator a backend can translate. |
 | **Hide columns** | From the **Columns** panel. |
+| **Number the rows** | An optional leading column carrying each row's place in the whole result set — not in the page. Off by default. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
 | **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. |
 | **Edit a cell** | Right-click a body cell and choose **Edit**. Text, number, date, boolean and single-choice list editors. The edit is a request to your `onCellEdit` — the table never writes to its own data. |
@@ -527,6 +528,10 @@ would be drawn as a header.
 they are rows the pager pages past, and a total of records alone would let it
 run off the end.
 
+For the same reason, **[row numbers](#row-numbers) count group headers too**
+— they are rows of the list being looked at, and the offset a page carries is
+the only thing either feature can count from.
+
 **One more field on the answer: `startPath`.** With a group open and a page
 boundary falling inside it, a page comes back as records with no header above
 them — and a record carries no path, so nothing in the rows says which group
@@ -710,6 +715,49 @@ and never in silence.
 > conventional answer and it is a bigger change than it looks; it is its own
 > piece of work. Until it lands, do not ship cell editing as the only route to
 > something a keyboard user must be able to do.
+
+---
+
+## Row numbers
+
+Off by default — the one feature flag that is. Every other flag turns OFF
+something the table has always done, so `true` is what you already had; this
+one adds a column, and a table that grew one on a minor upgrade would be a
+breaking change dressed as a small one.
+
+```tsx
+useDataTable({ id: "receipts", data, columns, features: { rowNumbers: true } })
+```
+
+The number is the row's **1-based place in the whole result set** —
+`pageIndex * pageSize + indexOnPage + 1` — and not its place on the page. A
+count that restarted at 1 on page 2 of a hundred thousand rows would tell the
+user nothing they did not already know, and in server mode the page offset is
+the one thing the client always has.
+
+**Group rows are numbered too.** This is not what AG Grid does, and the
+difference is deliberate: numbering only the records needs to know how many
+group headers come before this page, and no field on the wire carries that —
+a page is a window, and the client cannot count what it has never been sent.
+Numbering every flattened row is computable from the offset alone and is
+truthful about position in the list on screen. The one row with no number is
+the "continued" header the table draws itself from
+[`startPath`](#row-grouping): it was never in the server's answer, so giving
+it one would put every row after a page boundary out by one. Its cell is
+there and empty.
+
+The column is **chrome, not a column of data**, and that decides the rest:
+
+- It leads everything, the grouped column included.
+- Pinned to the start, and not unpinnable.
+- Not sortable, filterable, groupable, editable, hideable or reorderable, and
+  **absent from the Columns panel** — a tick that could remove it would
+  contradict the flag that put it there.
+- Resizable, and the width you drag it to is saved in the layout like any
+  other column width. Its default width is as wide as the largest number the
+  current `rowCount` can print.
+- Its header is empty to the eye and named for a screen reader through the
+  `rowNumber` label, so translate that one alongside the rest.
 
 ---
 
@@ -1271,7 +1319,7 @@ to a docked bar, the component did not change.
 | `columns` | `ColumnDef[]` | — | Standard TanStack column definitions. |
 | `storage` | `LayoutStorage` | none | Where layouts live. |
 | `initialLayout` | `Partial<TableLayout>` | `{}` | Applied on a user's first visit. |
-| `features` | `DataTableFeatureFlags` | all on | Turn off `sorting`, `resizing`, `reordering`, `pinning` or `hiding`. |
+| `features` | `DataTableFeatureFlags` | all on except `rowNumbers` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `rowNumbers`. See [Row numbers](#row-numbers). |
 | `defaultColumnWidth` | `number` | `160` | |
 | `minColumnWidth` | `number` | `60` | |
 | `maxColumnWidth` | `number` | `800` | |
@@ -1349,6 +1397,10 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 - A floating panel's own two tabs are a `tablist` with arrow-key movement and a single roving tab stop, the same as the rail's.
 - An empty table says whether it has no rows or no *matching* rows, and the second offers a way out.
 - Row toggles report `aria-expanded` and name themselves.
+- The [row-number](#row-numbers) column's header is empty to the eye and carries the
+  `rowNumber` label for a screen reader. The number it prints is the same quantity every row
+  already announces as `aria-rowindex`, so the two can never tell a user two different things
+  about where a row is.
 - Reordering has a keyboard path: each row of the **Columns** panel carries a drag handle that
   is in the `Tab` order. `Space` picks the column up, the arrow keys move the drop slot,
   `Space` puts it down and `Escape` gives it back. The handle reports `aria-pressed`, and every

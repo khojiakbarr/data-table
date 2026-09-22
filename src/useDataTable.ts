@@ -30,8 +30,7 @@ import {
   type Updater,
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
-import { deriveColumnId } from "./core/columnIds"
-import { leafIdsOfColumn } from "./core/columnTree"
+import { declaredLeafIds, deriveColumnId, leafIdsOf } from "./core/columnIds"
 import { dropRegionOf } from "./core/dropRegion"
 import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
@@ -417,7 +416,7 @@ export function useDataTable<TData extends RowData>({
 
   const store = useMemo(() => storage ?? noLayoutStorage(), [storage])
 
-  const columnIds = useMemo(() => collectLeafIds(columns), [columns])
+  const columnIds = useMemo(() => leafIdsOf(columns), [columns])
 
   const bounds: ColumnBounds = useMemo(
     () => ({ min: minColumnWidth, max: maxColumnWidth }),
@@ -1372,6 +1371,11 @@ export function useDataTable<TData extends RowData>({
    * group too, and the run is never landed inside it — which is what keeps a
    * drag between groups from quietly nesting one in the other.
    *
+   * Which run that is comes from the HOST's definitions and never from the
+   * live columns — see {@link declaredLeafIds}. The stored order is the
+   * host's arrangement, so a group's run in it is the one the host declared,
+   * whatever a grouped table has hoisted out of it to render.
+   *
    * @param draggedId - The column being moved: a leaf, or a group column.
    * @param targetId - The column it was dropped on, likewise.
    * @param side - Which edge of the target it was dropped on.
@@ -1390,9 +1394,23 @@ export function useDataTable<TData extends RowData>({
       if (!dragged || !target) return
       if (dropRegionOf(dragged, groupColumnId) !== dropRegionOf(target, groupColumnId)) return
 
-      // What each of them is, to an order made of leaves: itself, or its run.
-      const movedIds = leafIdsOfColumn(dragged)
-      const targetIds = leafIdsOfColumn(target)
+      /*
+       * What each of them is, to an order made of leaves: itself, or its run.
+       *
+       * Read off the HOST's definitions, not off the live column. While rows
+       * are grouped the table is built from a hoisted tree — the column
+       * holding the group values has been taken out of its column group so it
+       * can lead the table — and that tree answers with one leaf where the
+       * host declared two. Carrying the move out against that answer drops the
+       * dragged column into the gap the hoisted leaf left, splitting the group
+       * in the stored order: two headers with one name, and no sign of it
+       * until the grouping comes off. See {@link declaredLeafIds}.
+       */
+      const movedIds = declaredLeafIds(columns, draggedId)
+      const targetIds = declaredLeafIds(columns, targetId)
+      // Both columns were just found on a table built from these definitions,
+      // so this is unreachable rather than a refusal a surface has to predict.
+      if (movedIds === null || targetIds === null) return
 
       /*
        * Same region, so the target is pinned exactly as the dragged column is
@@ -1440,7 +1458,7 @@ export function useDataTable<TData extends RowData>({
             ]),
       ])
     },
-    [table, updateSlices, groupColumnId, columnIds, layout.columnPinning],
+    [table, updateSlices, groupColumnId, columns, columnIds, layout.columnPinning],
   )
 
   /*
@@ -1792,8 +1810,8 @@ interface ColumnDefShape {
  *
  * Read off the definitions rather than off the table, because the one caller
  * runs before `useTable` does — the derived `columnSizing` is an INPUT to it.
- * Ids are derived with {@link deriveColumnId}, the same way `collectLeafIds`
- * does, so a column declared with an `accessorKey` and no `id` is found.
+ * Ids are derived with {@link deriveColumnId}, the same way `leafIdsOf` does,
+ * so a column declared with an `accessorKey` and no `id` is found.
  *
  * @param columns - Column definitions, possibly nested.
  * @param columnId - The leaf being looked up.
@@ -1812,25 +1830,6 @@ function declaredLeafSize(
     if (deriveColumnId(column, index) === columnId) return column.size
   }
   return undefined
-}
-
-/**
- * Leaf column ids, in declaration order.
- *
- * Only leaves carry order, visibility, width and pinning, so a group's own id
- * must not appear — mixing them in makes TanStack drop every id it cannot match
- * and reshuffle the rest. Derives each id with {@link deriveColumnId}, the same
- * way TanStack's own `constructColumn` does, so stored layouts line up with
- * live columns.
- *
- * @param columns - Column definitions, possibly nested.
- * @returns Every leaf id, depth-first.
- */
-function collectLeafIds(columns: readonly ColumnDefShape[]): string[] {
-  return columns.flatMap((column, index) => {
-    if (column.columns?.length) return collectLeafIds(column.columns)
-    return [deriveColumnId(column, index)]
-  })
 }
 
 /** The column-definition element the public `columns` option carries. */

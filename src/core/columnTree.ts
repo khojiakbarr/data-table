@@ -149,25 +149,6 @@ export function leafColumnsOfNode<TData extends RowData>(
 }
 
 /**
- * The leaf ids a column stands for: itself, or every leaf under a group.
- *
- * What a column GROUP means to the flat order the table is arranged by. A
- * group has no place of its own in that order — only its leaves do — so every
- * question asked about a group's position is really a question about the run
- * its leaves occupy.
- *
- * @param column - Any column, leaf or group.
- * @returns One id for a leaf; every leaf id beneath a group, left to right.
- *
- * @example
- * leafIdsOfColumn(table.getColumn("document")!) // ["number", "date"]
- */
-export function leafIdsOfColumn<TData extends RowData>(column: AnyColumn<TData>): string[] {
-  if (column.columns.length === 0) return [column.id]
-  return column.getLeafColumns().map((leaf) => leaf.id)
-}
-
-/**
  * The nodes standing at one column's own level, in render order.
  *
  * A drag is always a move among siblings — that is what `dropRegionOf` allows

@@ -176,7 +176,54 @@ const FIXTURES: Fixture[] = [
     pinning: { start: [], end: [] },
     baseline: ["a", "b", "c", "d", "e", "f"],
   },
+  {
+    // The shape the torn group was found in: the column the rows are grouped
+    // by is the LAST leaf of a declared group, so hoisting it out leaves a
+    // hole at that group's trailing edge. A drop on that edge resolved against
+    // the rendered tree lands INSIDE the group in the stored order — invisible
+    // until the grouping comes off. See the stored-order suite at the bottom.
+    name: "a leaf beside two groups, grouped by the last column of the first",
+    shape: "mixed",
+    pinning: { start: [], end: [] },
+    rowGrouping: ["c"],
+    baseline: ["c", "a", "b", "d", "e", "f"],
+  },
 ]
+
+/**
+ * Which leaves each declared column GROUP stands over, per shape.
+ *
+ * The host's own reading, written out rather than read back off the live
+ * columns: while rows are grouped the table is built from a HOISTED tree, in
+ * which the grouped column has left its group — so asking the table what a
+ * group contains gives exactly the answer that tore the group in the first
+ * place. A fixture that quietly changed shape is caught here instead.
+ */
+const DECLARED_GROUPS: Record<Shape, Readonly<Record<string, readonly string[]>>> = {
+  flat: {},
+  grouped: { left: ["a", "b", "c"], right: ["d", "e", "f"] },
+  mixed: { left: ["b", "c"], right: ["d", "e", "f"] },
+}
+
+/**
+ * The declared groups an order has torn apart.
+ *
+ * A group's leaves are a RUN — whatever else moves, they stay side by side —
+ * because TanStack draws one header per run of adjacent leaves sharing a
+ * parent: split them and the group's name appears twice with a foreign column
+ * wedged between the halves.
+ *
+ * @param shape - Which fixture shape the order belongs to.
+ * @param order - A flat leaf order, usually the STORED one.
+ * @returns The ids of the groups whose leaves are no longer adjacent.
+ */
+const tornGroups = (shape: Shape, order: readonly string[]): string[] =>
+  Object.entries(DECLARED_GROUPS[shape])
+    .filter(([, leaves]) => {
+      const at = leaves.map((id) => order.indexOf(id)).filter((index) => index !== -1)
+      return at.length > 1 && Math.max(...at) - Math.min(...at) !== at.length - 1
+    })
+    .map(([group]) => group)
 
 /**
  * The columns a fixture lets a user pick up.
@@ -339,6 +386,28 @@ const renderedOrder = (): string[] =>
   Array.from(document.querySelectorAll("colgroup col[data-column-id]"))
     .map((col) => col.getAttribute("data-column-id") ?? "")
     .filter((id) => LEAF_ID_SET.has(id))
+
+/** Every header there is, the leaves under the groups included. */
+const everyHeaderId = (): string[] =>
+  [...document.querySelectorAll("th[data-column-id]")].map(
+    (th) => th.getAttribute("data-column-id") ?? "",
+  )
+
+/**
+ * One complete header drag, start to finish.
+ *
+ * For the cases that read the OUTCOME rather than the slot — the loops above
+ * have to stop between `dragover` and `drop` to see what was promised, and
+ * cannot use this.
+ */
+const dragHeader = (draggedId: string, targetId: string, side: Side) => {
+  const surface = SURFACES[0] as Surface
+  const dataTransfer = makeDataTransfer()
+  fireEvent.dragStart(headerCell(draggedId), { dataTransfer })
+  pointAt(surface, "dragOver", headerCell(targetId), side, dataTransfer)
+  pointAt(surface, "drop", headerCell(targetId), side, dataTransfer)
+  fireEvent.dragEnd(headerCell(draggedId))
+}
 
 /** The order the Columns panel is listing in. */
 const panelOrder = (): string[] =>
@@ -521,12 +590,6 @@ describe.each(FIXTURES.filter((fixture) => fixture.shape !== "flat"))(
     /** The header's top row: the groups, and any leaf that belongs to none. */
     const topLevelOrder = (): string[] =>
       [...document.querySelectorAll("thead tr:first-child th[data-column-id]")].map(
-        (th) => th.getAttribute("data-column-id") ?? "",
-      )
-
-    /** Every header there is, the leaves under the groups included. */
-    const everyHeaderId = (): string[] =>
-      [...document.querySelectorAll("th[data-column-id]")].map(
         (th) => th.getAttribute("data-column-id") ?? "",
       )
 
@@ -857,5 +920,203 @@ describe("the drop keeps the slot's promise in the Row Groups zone", () => {
     }
 
     expect(violations).toEqual([])
+  })
+})
+
+/**
+ * The third account of the arrangement: what is WRITTEN DOWN while the rows
+ * are grouped.
+ *
+ * A grouped table is not built from the columns the host declared. The column
+ * holding the group values is hoisted out of its column group so it can lead
+ * the table with a full-height header of its own, which means the live
+ * `Left` group stands over one leaf where the host declared two. Resolve a
+ * drop against that tree and carry it out against the stored order, and the
+ * dragged column lands in the hole the hoisted leaf left — splitting the group
+ * in storage.
+ *
+ * Nothing on screen says so. The group column leads the table either way, so
+ * the drop slot is kept and the two accounts agree; the disagreement is with
+ * the DEFINITIONS, and it surfaces one gesture later, when the grouping comes
+ * off and the group's header is suddenly drawn twice with a foreign column
+ * between the halves. That is why this suite reads the stored layout rather
+ * than the screen, and why every case below ends by taking the grouping off.
+ */
+describe("a drag made while rows are grouped keeps the declared groups whole", () => {
+  const fixture = FIXTURES.find((entry) => entry.rowGrouping?.[0] === "c") as Fixture
+
+  /**
+   * The layout a returning visit would be restored from.
+   *
+   * `pagehide` is the flush `useDebouncedSave` installs for a navigation that
+   * gives no unmount, and it writes synchronously — which is what makes the
+   * stored order readable BETWEEN two gestures rather than only after a
+   * teardown.
+   */
+  function layoutSpy() {
+    const saved: TableLayout[] = []
+    const storage: LayoutStorage = {
+      load: () => null,
+      save: (_id, layout) => void saved.push(layout),
+      clear: () => undefined,
+    }
+    return {
+      storage,
+      /** Write any pending layout, then hand back the newest one. */
+      flush: (): TableLayout | undefined => {
+        fireEvent(window, new Event("pagehide"))
+        return saved[saved.length - 1]
+      },
+      /** How many layouts have been written, to tell "unchanged" from "stale". */
+      count: () => saved.length,
+    }
+  }
+
+  /** Take the grouping off, by the control a user would use. */
+  const ungroup = () => {
+    const panel = document.querySelector<HTMLElement>(".dt-panel") as HTMLElement
+    fireEvent.click(within(panel).getByRole("button", { name: "Clear grouping" }))
+  }
+
+  let spy: ReturnType<typeof layoutSpy>
+
+  beforeEach(() => {
+    localStorage.clear()
+    spy = layoutSpy()
+    render(<Table fixture={fixture} storage={spy.storage} />)
+    openPanel()
+  })
+
+  afterEach(() => cleanup())
+
+  it("renders the three-gesture reproduction's starting point", () => {
+    // Grouped by C, which the host declared as the second leaf of Left. The
+    // hoist has taken it out, so Left now stands over B alone.
+    expect(renderedOrder()).toEqual(fixture.baseline)
+    expect(headerCell("left").getAttribute("colspan")).toBe("1")
+  })
+
+  it("puts a leaf after the WHOLE declared group, not into the hole the hoist left", () => {
+    // Gesture 2: A onto the Left group header's right half.
+    dragHeader("a", "left", "end")
+
+    // The slot stays truthful: the group column still leads, so A is exactly
+    // where the slot was painted — immediately right of B.
+    expect(renderedOrder()).toEqual(["c", "b", "a", "d", "e", "f"])
+
+    const order = spy.flush()?.columnOrder ?? []
+    expect(order).toEqual(["b", "c", "a", "d", "e", "f"])
+    expect(tornGroups(fixture.shape, order)).toEqual([])
+
+    // Gesture 3: and the group is still one group, with A beside it.
+    ungroup()
+    expect(renderedOrder()).toEqual(["b", "c", "a", "d", "e", "f"])
+    expect(headerCell("left").getAttribute("colspan")).toBe("2")
+  })
+
+  it("carries a dragged group's hoisted leaf along with the rest of it", () => {
+    // The second route to the same torn state: the group header itself is
+    // dragged, and the leaf the hoist took out of it must travel too.
+    dragHeader("left", "right", "end")
+
+    const order = spy.flush()?.columnOrder ?? []
+    expect(order).toEqual(["a", "d", "e", "f", "b", "c"])
+    expect(tornGroups(fixture.shape, order)).toEqual([])
+
+    ungroup()
+    expect(renderedOrder()).toEqual(["a", "d", "e", "f", "b", "c"])
+    expect(headerCell("left").getAttribute("colspan")).toBe("2")
+  })
+
+  it("offers no move at all on the group column's own header", () => {
+    /*
+     * Its place is derived — it leads the table while grouped and returns to
+     * its declaring group the moment the grouping comes off — so a drag of it
+     * could not mean anything durable. `dropRegionOf` puts it alone in a
+     * region, which is what refuses the grab, the slot and the write in one
+     * answer rather than three.
+     */
+    expect(headerCell("c")).toHaveAttribute("draggable", "false")
+
+    const before = renderedOrder()
+    const surface = SURFACES[0] as Surface
+    const dataTransfer = makeDataTransfer()
+    fireEvent.dragStart(headerCell("c"), { dataTransfer })
+    pointAt(surface, "dragOver", headerCell("a"), "end", dataTransfer)
+    expect(surface.slot()).toBeNull()
+    pointAt(surface, "drop", headerCell("a"), "end", dataTransfer)
+    fireEvent.dragEnd(headerCell("c"))
+
+    expect(renderedOrder()).toEqual(before)
+    expect(spy.flush()?.columnOrder ?? []).toEqual([])
+  })
+})
+
+/**
+ * The same rule as a property: no accepted drop, anywhere, tears a group.
+ *
+ * The two cases above are the routes someone found. This is every route there
+ * is on the fixtures a hoist actually changes the shape of — each header
+ * dragged onto every header, on both edges — checked against the stored order
+ * rather than the screen, because while the rows are grouped the screen cannot
+ * tell the tear from the hoist.
+ */
+describe.each(
+  FIXTURES.filter((fixture) => fixture.rowGrouping !== undefined && fixture.shape !== "flat"),
+)("no accepted drop tears a declared group in $name", (fixture) => {
+  const saved: TableLayout[] = []
+  const storage: LayoutStorage = {
+    load: () => null,
+    save: (_id, layout) => void saved.push(layout),
+    clear: () => undefined,
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    saved.length = 0
+    render(<Table fixture={fixture} storage={storage} />)
+    openPanel()
+  })
+
+  afterEach(() => cleanup())
+
+  it("leaves every declared group's leaves in one run", () => {
+    const violations: string[] = []
+    const ids = everyHeaderId()
+    let writes = 0
+
+    for (const draggedId of ids) {
+      for (const targetId of ids) {
+        for (const side of SIDES) {
+          const before = saved.length
+          dragHeader(draggedId, targetId, side)
+          fireEvent(window, new Event("pagehide"))
+
+          // Nothing written means nothing changed; the previous case's layout
+          // is still the newest one, and reading it here would be a lie.
+          if (saved.length > before) {
+            writes += 1
+            const order = saved[saved.length - 1]?.columnOrder ?? []
+            const torn = tornGroups(fixture.shape, order)
+            if (torn.length > 0) {
+              violations.push(
+                `${draggedId} onto ${targetId}'s ${side}: ${torn.join(", ")} torn apart — ` +
+                  order.join(" "),
+              )
+            }
+          }
+
+          resetToBaseline()
+          if (renderedOrder().join(" ") !== fixture.baseline.join(" ")) {
+            violations.push(`${draggedId} onto ${targetId}'s ${side}: Reset left ${renderedOrder().join(" ")}`)
+          }
+        }
+      }
+    }
+
+    expect(violations).toEqual([])
+    // A fixture that stopped accepting drops at all would pass in silence,
+    // which is the shape a regression in the derived order would take.
+    expect(writes).toBeGreaterThan(0)
   })
 })

@@ -1,5 +1,6 @@
 import type { ChangeEvent } from "react"
 import type { ChromeStrings } from "./chrome"
+import { ControlGroup } from "./ControlGroup"
 import type { FeatureState } from "./playgroundState"
 
 /** Which hint, if any, a toggle carries under its label. */
@@ -85,20 +86,19 @@ export function FeatureControls({ value, onChange, chrome }: FeatureControlsProp
     onChange({ ...value, [key]: event.target.checked })
 
   return (
-    <div className="pg-controls" aria-label={chrome.features.groupLabel}>
+    <div className="pg-controls" role="group" aria-label={chrome.features.groupLabel}>
       {GROUPS.map((group) => (
-        <fieldset key={group.legend} className="pg-fieldset">
-          <legend>{chrome.features.legends[group.legend]}</legend>
+        <ControlGroup key={group.legend} legend={chrome.features.legends[group.legend]}>
           {group.toggles.map((def) => (
             <label key={def.key} className="pg-toggle">
               <input type="checkbox" checked={value[def.key]} onChange={toggle(def.key)} />
-              <span>
+              <span className="pg-toggle-text">
                 {chrome.features.labels[def.key]}
                 {def.hint ? <small className="pg-hint">{chrome.features.hints[def.hint]}</small> : null}
               </span>
             </label>
           ))}
-        </fieldset>
+        </ControlGroup>
       ))}
     </div>
   )

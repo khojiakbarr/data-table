@@ -1,5 +1,6 @@
 import type { ChangeEvent } from "react"
 import type { ChromeStrings } from "./chrome"
+import { ControlGroup } from "./ControlGroup"
 import {
   DEFAULT_THEME,
   SYSTEM_FONT_STACK,
@@ -114,9 +115,8 @@ export function ThemeControls({
     onChange({ ...value, overrides: { ...value.overrides, [key]: Number(event.target.value) } })
 
   return (
-    <div className="pg-controls" aria-label={chrome.theme.groupLabel}>
-      <fieldset className="pg-fieldset">
-        <legend>{chrome.theme.legends.appearance}</legend>
+    <div className="pg-controls" role="group" aria-label={chrome.theme.groupLabel}>
+      <ControlGroup legend={chrome.theme.legends.appearance}>
         <label className="pg-field">
           <span>{chrome.theme.appearance}</span>
           <select
@@ -145,20 +145,23 @@ export function ThemeControls({
             ))}
           </select>
         </label>
-      </fieldset>
+      </ControlGroup>
 
-      <fieldset className="pg-fieldset">
-        <legend>{chrome.theme.legends.colors}</legend>
+      {/*
+        The one section that starts closed. Ten swatches is the longest block
+        in the rail and the least likely to be the reason a visitor came, so
+        it costs one click rather than a screen of scrolling past it.
+      */}
+      <ControlGroup legend={chrome.theme.legends.colors} defaultOpen={false}>
         {COLOR_FIELDS.map((key) => (
           <label key={key} className="pg-field pg-field-color">
             <span>{chrome.theme.colors[key]}</span>
             <input type="color" value={resolved[key]} onChange={setColor(key)} />
           </label>
         ))}
-      </fieldset>
+      </ControlGroup>
 
-      <fieldset className="pg-fieldset">
-        <legend>{chrome.theme.legends.sizing}</legend>
+      <ControlGroup legend={chrome.theme.legends.sizing}>
         {NUMBER_FIELDS.map((field) => (
           <label key={field.key} className="pg-field pg-field-range">
             <span>
@@ -206,9 +209,9 @@ export function ThemeControls({
             }}
           />
         </label>
-      </fieldset>
+      </ControlGroup>
 
-      <button type="button" className="pg-reset" onClick={() => onChange(DEFAULT_THEME)}>
+      <button type="button" className="pg-button pg-reset" onClick={() => onChange(DEFAULT_THEME)}>
         {chrome.theme.reset}
       </button>
     </div>

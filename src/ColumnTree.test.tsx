@@ -76,7 +76,7 @@ function Grouped() {
 const openPanel = async () => {
   const user = userEvent.setup()
   render(<Grouped />)
-  await user.click(screen.getByRole("button", { name: "Columns" }))
+  await user.click(screen.getByRole("tab", { name: "Columns" }))
   return user
 }
 

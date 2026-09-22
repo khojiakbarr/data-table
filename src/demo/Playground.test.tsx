@@ -244,11 +244,11 @@ describe("playground", () => {
     await user.click(screen.getByLabelText("Русский"))
 
     // The column header is the page's own translation, the sidebar copy is
-    // `CHROME.ru`, and the toolbar button is the library's `ruLabels` — all
-    // three have to move for the switcher to have done its job.
+    // `CHROME.ru`, and the rail's tab is the library's `ruLabels` — all three
+    // have to move for the switcher to have done its job.
     await waitFor(() => expect(header().getByText("Контрагент")).toBeInTheDocument())
     expect(screen.getByText(CHROME.ru.resetAll)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Столбцы" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Столбцы" })).toBeInTheDocument()
     expect(screen.queryByText(CHROME.en.resetAll)).not.toBeInTheDocument()
 
     await user.click(screen.getByLabelText("Oʻzbekcha"))

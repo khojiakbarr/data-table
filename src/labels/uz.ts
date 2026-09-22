@@ -24,7 +24,6 @@ import type { CellEditingLabels } from "./editing"
  * <DataTable instance={table} labels={uzLabels} />
  */
 export const uzLabels: DataTableLabels = {
-  columnsButton: "Ustunlar",
   columnsTitle: "Ustunlar",
   sideBar: "Jadvalning yon paneli",
   showAll: "Hammasini koʻrsatish",

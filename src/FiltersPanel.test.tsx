@@ -74,7 +74,7 @@ const entries = () => within(panel()).getAllByRole("listitem").map((item) => ite
 /** Open the panel and switch to its Filters tab. */
 const openFilters = async () => {
   const user = userEvent.setup()
-  await user.click(screen.getByRole("button", { name: "Columns" }))
+  await user.click(screen.getByRole("tab", { name: "Columns" }))
   await user.click(screen.getByRole("tab", { name: "Filters" }))
   return user
 }
@@ -94,7 +94,7 @@ describe("the side panel's tabs", () => {
   it("opens on the Columns tab, with Show all inside it", async () => {
     const user = userEvent.setup()
     render(<Table />)
-    await user.click(screen.getByRole("button", { name: "Columns" }))
+    await user.click(screen.getByRole("tab", { name: "Columns" }))
 
     expect(screen.getByRole("tab", { name: "Columns" })).toHaveAttribute("aria-selected", "true")
     expect(within(panel()).getByRole("button", { name: "Show all" })).toBeInTheDocument()

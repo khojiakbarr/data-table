@@ -18,9 +18,19 @@ releases are summarised in one line rather than reconstructed.
   only way back was Show all. A group keeps its row for the same reason, even
   once every leaf under it is hidden — while its header does leave the table,
   which is what hiding the columns means.
-- Reordering is unchanged: `dropRegionOf` still owns the group boundary, a
-  group row has no drag handle of its own, and both drag surfaces resolve every
-  move against the same flat order they always did.
+- **A column group's header is draggable**, and dragging it moves the whole
+  group — every leaf under it, in the order it already had. A group moves among
+  its siblings at its own level: never into another group, never across a
+  pinned boundary, and never onto one of its own leaves. That is the rule its
+  leaves already obeyed, said one level up, so `dropRegionOf` still owns the
+  boundary for every surface and no slot appears where the drop would be
+  refused. The drop slot is drawn on the sibling the group will stand in place
+  of, so it outlines the whole destination rather than one column of it.
+  - The Columns tab is unchanged: a group row there is still a checkbox and a
+    collapse control, with no drag handle of its own.
+  - The group column of a grouped table stays undraggable and unhideable, as
+    does a group whose leaves straddle a pinning boundary — neither has a place
+    of its own to be moved to.
 - **The playground's columns are grouped** — "Document" over Code and Partner,
   "Payment" over Amount and Status, with Flagged and Date left flat, so the
   header has a grouped half and a flat one.
@@ -35,8 +45,9 @@ releases are summarised in one line rather than reconstructed.
     to the rail tab;
   - **an outside click no longer closes it.** A bar docked beside the table is
     furniture, and using the table is not a request to dismiss it.
-  Below 640px the rail is withdrawn, the toolbar's Columns button stays the way
-  in, and the panel overlays the card at full width as it did before.
+  Below 640px the rail stays docked where it is, and the panel it opens
+  overlays the card at full width as it did before, with the rail laid
+  horizontally across the top of that overlay.
 - `DataTable` renders its toolbar, status, viewport and footer inside a new
   `.dt-main` element, the flex sibling of `.dt-sidebar`. A host that styled
   `.dt-root > .dt-toolbar`, `.dt-root > .dt-error` or any other direct-child
@@ -45,8 +56,18 @@ releases are summarised in one line rather than reconstructed.
   `.dt-root:has(> .dt-panel-floating)`. It exists for a panel that can be
   painted over by a later sibling table, which a docked panel — in flow, inside
   the card — cannot be.
-- The toolbar's Columns button no longer claims `aria-haspopup="dialog"`: what
-  it opens is the side bar's tab panel, in flow beside the table.
+- **The toolbar's Columns button is gone**, and with it the `columnsButton`
+  label. The rail's own tab is the way in, at every width: two controls for one
+  panel, one of them duplicating a tab standing beside it, was one too many —
+  and the button never covered a shell rendering `toolbar={false}` anyway,
+  which is what made it the wrong thing to hang the narrow-width fallback on.
+  A host that translated `columnsButton` should drop the key; `columnsTitle`
+  names both the rail tab and the panel heading.
+- **Hovering a header no longer moves its label.** The room for the ⋮ is
+  reserved in every state instead of appearing with it, so the text does not
+  shift sideways under the pointer and the point a long label truncates at
+  stays put. A group header, which has no ⋮, no longer reserves or shifts
+  anything at all.
 
 ### Added
 

@@ -59,7 +59,7 @@ function Table({
 /** Open the side panel, which starts on its Columns tab. */
 async function openPanel() {
   const user = userEvent.setup()
-  await user.click(screen.getByRole("button", { name: "Columns" }))
+  await user.click(screen.getByRole("tab", { name: "Columns" }))
 }
 
 /**

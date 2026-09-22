@@ -122,7 +122,7 @@ export interface DataTableFeatureFlags {
 
 /** Text shown in the built-in shell, for translation. */
 export interface DataTableLabels {
-  columnsButton: string
+  /** The Columns tab: its rail tab, and the heading inside the panel. */
   columnsTitle: string
   /**
    * The docked side bar's rail, named for a screen reader.

@@ -226,20 +226,89 @@ describe("column reordering", () => {
     expect(headerOrder()).toEqual(["A", "B", "C", "D"])
   })
 
-  it("does not make group headers draggable", () => {
-    render(<Table grouped />)
-    expect(screen.getByRole("columnheader", { name: "Left" })).not.toHaveAttribute(
-      "draggable",
-      "true",
-    )
-  })
-
   it("does not make pinned columns draggable", () => {
     render(<Table pinned />)
     expect(screen.getByRole("columnheader", { name: /^D/ })).not.toHaveAttribute(
       "draggable",
       "true",
     )
+  })
+})
+
+/**
+ * A column group is a thing a user can pick up, and what it carries is every
+ * column under it.
+ *
+ * The rule it obeys is the one the leaves already obey, one level up: a group
+ * moves among its SIBLINGS. It cannot be dropped inside another group, for
+ * the same reason a leaf cannot leave its own — the nesting is the column
+ * definitions' to decide, not a drag's.
+ */
+describe("dragging a column group", () => {
+  beforeEach(() => localStorage.clear())
+
+  /** A group's header cell, by the name it is labelled with. */
+  const group = (name: string): HTMLElement => screen.getByRole("columnheader", { name })
+
+  /** The column id the drop slot is currently on, group ids included. */
+  const slotColumnId = (): string | null =>
+    document.querySelector("th.dt-drop-slot")?.getAttribute("data-column-id") ?? null
+
+  it("is draggable, unlike the group column of a grouped table", () => {
+    render(<Table grouped />)
+    expect(group("Left")).toHaveAttribute("draggable", "true")
+  })
+
+  it("moves every leaf under it, together and in order", () => {
+    render(<Table grouped />)
+    dragHeader(group("Left"), group("Right"), "end")
+
+    // A and B travelled as one block and kept their own order; so did C and D.
+    expect(headerOrder()).toEqual(["C", "D", "A", "B"])
+    expect(bodyOrder()).toEqual(["3", "4", "1", "2"])
+  })
+
+  it("comes back the other way", () => {
+    render(<Table grouped />)
+    dragHeader(group("Right"), group("Left"), "start")
+
+    expect(headerOrder()).toEqual(["C", "D", "A", "B"])
+  })
+
+  it("outlines the whole group it will land on, not one leaf of it", () => {
+    render(<Table grouped />)
+    const transfer = startDrag(group("Left"))
+    pointAt("dragOver", group("Right"), "end", transfer)
+
+    // The slot is on the GROUP header, which spans C and D — so what the user
+    // sees outlined is the place the whole of Left is going.
+    expect(slotColumnId()).toBe("right")
+  })
+
+  it("refuses a drop inside another group, and says so before the drop", () => {
+    render(<Table grouped />)
+    const c = screen.getByRole("columnheader", { name: /^C/ })
+    const transfer = startDrag(group("Left"))
+    pointAt("dragOver", c, "end", transfer)
+
+    // No slot: Left among Right's children is not a position the definitions
+    // have, so promising it would be promising a move that never happens.
+    expect(slotColumnId()).toBeNull()
+
+    pointAt("drop", c, "end", transfer)
+    expect(headerOrder()).toEqual(["A", "B", "C", "D"])
+  })
+
+  it("refuses a leaf dropped on a group, which is not the leaf's level", () => {
+    render(<Table grouped />)
+    const a = screen.getByRole("columnheader", { name: /^A/ })
+    const transfer = startDrag(a)
+    pointAt("dragOver", group("Right"), "start", transfer)
+
+    expect(slotColumnId()).toBeNull()
+
+    pointAt("drop", group("Right"), "start", transfer)
+    expect(headerOrder()).toEqual(["A", "B", "C", "D"])
   })
 })
 

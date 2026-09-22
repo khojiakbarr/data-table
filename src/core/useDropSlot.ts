@@ -27,6 +27,19 @@ interface DropSlotDrag {
   keyboard: boolean
 }
 
+/**
+ * The order a slot is resolved against.
+ *
+ * A plain array for a surface where every draggable thing sits in one list —
+ * the Columns tab's leaves, the Row Groups zone's levels. A FUNCTION where the
+ * list depends on what was picked up: the table header drags a leaf among its
+ * group's children and a group header among the groups beside it, and those
+ * are different orders with different steps. The function is called with the
+ * column in flight, which is only known once the drag has started, so a caller
+ * cannot compute it up front.
+ */
+export type DropSlotOrder = readonly string[] | ((draggedId: string) => readonly string[])
+
 /** The drag state and the handlers a reordering surface drives it with. */
 export interface DropSlot {
   /** The column in flight, or `null` when nothing is being dragged. */
@@ -55,7 +68,9 @@ export interface DropSlot {
  * Track a column drag and resolve the slot it would land in.
  *
  * @param order - Column ids in the order they are rendered, which is the order
- *   the slot is resolved against. Read on every call, so it may change between
+ *   the slot is resolved against — or a function of the column in flight, for
+ *   a surface whose order depends on what was picked up (see
+ *   {@link DropSlotOrder}). Read on every call, so it may change between
  *   renders.
  * @returns The current drag and the handlers that drive it. See {@link DropSlot}.
  *
@@ -67,8 +82,12 @@ export interface DropSlot {
  *   onDragEnd={drop.end}
  * />
  */
-export function useDropSlot(order: readonly string[]): DropSlot {
+export function useDropSlot(order: DropSlotOrder): DropSlot {
   const [drag, setDrag] = useState<DropSlotDrag | null>(null)
+
+  /** The order this particular column is moving within. */
+  const orderFor = (draggedId: string): readonly string[] =>
+    typeof order === "function" ? order(draggedId) : order
 
   /*
    * A pointer drag shows no slot until the pointer is over a column it may
@@ -77,19 +96,20 @@ export function useDropSlot(order: readonly string[]): DropSlot {
    * opposite: the column has been picked up deliberately and has not been
    * asked to go anywhere, so its own place is exactly where it would land.
    */
+  const activeOrder = drag === null ? null : orderFor(drag.draggedId)
   const slotId =
-    drag === null
+    drag === null || activeOrder === null
       ? null
       : drag.target
-        ? dropSlotId(order, drag.draggedId, drag.target.id, drag.target.side)
-        : drag.keyboard && order.includes(drag.draggedId)
+        ? dropSlotId(activeOrder, drag.draggedId, drag.target.id, drag.target.side)
+        : drag.keyboard && activeOrder.includes(drag.draggedId)
           ? drag.draggedId
           : null
 
   return {
     draggedId: drag?.draggedId ?? null,
     slotId,
-    slotIndex: slotId === null ? -1 : order.indexOf(slotId),
+    slotIndex: slotId === null || activeOrder === null ? -1 : activeOrder.indexOf(slotId),
     isKeyboardGrab: drag?.keyboard ?? false,
 
     start: (draggedId, options) =>
@@ -103,7 +123,7 @@ export function useDropSlot(order: readonly string[]): DropSlot {
     moveTo: (index) =>
       setDrag((current) => {
         if (current === null) return null
-        const next = dropAtIndex(order, current.draggedId, index)
+        const next = dropAtIndex(orderFor(current.draggedId), current.draggedId, index)
         // Past either end of the order there is no position to move to, so the
         // slot stays where it is rather than jumping to an edge.
         return next === null

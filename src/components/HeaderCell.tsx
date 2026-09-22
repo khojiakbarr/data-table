@@ -11,7 +11,7 @@ import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 import { classNames } from "../core/classNames"
 import { columnLabel } from "../core/columnLabel"
-import { dropRegionOf } from "../core/dropRegion"
+import { dropRegionOf, isMovableRegion } from "../core/dropRegion"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
 import { dropSideAt, type DropSide } from "../core/reorder"
 import type { DropSlot } from "../core/useDropSlot"
@@ -88,10 +88,11 @@ export function HeaderCell<TData extends RowData>({
   const isDropSlot = drop.slotId === column.id
 
   /**
-   * A group header spans several leaf columns. Sorting and reordering act on
-   * a single column, so neither applies here. Resizing does: TanStack's
-   * handler snapshots every leaf under the header and scales each by the same
-   * percentage, which is how AG Grid treats a group's edge too.
+   * A group header spans several leaf columns. Sorting acts on a single
+   * column, so it does not apply here. Resizing does: TanStack's handler
+   * snapshots every leaf under the header and scales each by the same
+   * percentage, which is how AG Grid treats a group's edge too. So does
+   * reordering, which moves the group's whole run of leaves — see `moveRun`.
    *
    * The test is on the COLUMN, not on `header.subHeaders`: a leaf column that
    * sits above its natural depth is rendered by a spanning placeholder header,
@@ -104,7 +105,16 @@ export function HeaderCell<TData extends RowData>({
   const pinned = pinning.side
   const canSort = flags.sorting && !isGroup && column.getCanSort()
   const canResize = flags.resizing && column.getCanResize()
-  const canDrag = flags.reordering && !isGroup && !pinned && column.id !== groupColumnId
+  /*
+   * A group is picked up exactly as a leaf is, and refused for exactly the
+   * same reasons: `dropRegionOf` says which columns it could ever swap with,
+   * and a column alone in its region — the group column, a group split across
+   * a pinning boundary — is not offered at all. Saying it with the region
+   * rather than with a list of exceptions is what keeps the affordance and the
+   * drop from disagreeing.
+   */
+  const region = dropRegionOf(column, groupColumnId)
+  const canDrag = flags.reordering && !pinned && isMovableRegion(region)
   const isResizing = column.getIsResizing()
   const sorted = column.getIsSorted()
 
@@ -129,20 +139,18 @@ export function HeaderCell<TData extends RowData>({
   /**
    * Whether a drop on this cell would really be carried out.
    *
-   * A group header, a pinned column and the filler are not drop targets at
-   * all — that is `canDrag`. But a leaf that IS one can still be out of the
-   * dragged column's reach: the shell refuses a move across a group or a
-   * pinning boundary, so the two have to be in the same region as well. Both
-   * questions belong here, because a cell that refuses draws no slot, and a
-   * slot on a cell the drop would ignore promises a move that never happens.
+   * A pinned column and the filler are not drop targets at all — that is
+   * `canDrag`. But a header that IS one can still be out of the dragged
+   * column's reach: the shell refuses a move across a group or a pinning
+   * boundary, and a group and the leaves inside it are never in one region, so
+   * the two have to share a region as well. Both questions belong here,
+   * because a cell that refuses draws no slot, and a slot on a cell the drop
+   * would ignore promises a move that never happens.
    */
   const canDropHere = (): boolean => {
     if (!canDrag || drop.draggedId === null) return false
     const dragged = column.table.getColumn(drop.draggedId)
-    return (
-      dragged !== undefined &&
-      dropRegionOf(dragged, groupColumnId) === dropRegionOf(column, groupColumnId)
-    )
+    return dragged !== undefined && dropRegionOf(dragged, groupColumnId) === region
   }
 
   const handleDragOver = (event: DragEvent<HTMLTableCellElement>) => {

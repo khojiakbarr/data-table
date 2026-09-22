@@ -78,9 +78,16 @@ const columns = [
 ```
 
 `Code` and `Status` span down to the rows on their own; you do not declare that.
-Group headers carry no sort or drag control — those act on one column. A group's
-width is the sum of its children's, and dragging a group's edge scales them all by
-the same proportion.
+A group header carries no sort control — sorting acts on one column — but it is
+**dragged and resized as a unit**: dragging a group's edge scales every column
+under it by the same proportion, and dragging the header itself moves the whole
+group, every leaf in its existing order.
+
+A group moves **among its siblings at its own level**, which is the rule its
+leaves already obey one level down: a group is never dropped inside another
+group, and a leaf is never dropped onto a group. `dropRegionOf` owns that
+boundary for every surface, so no slot is ever drawn where the drop would be
+refused — see [Accessibility](#accessibility) for the keyboard path.
 
 Widths are declared in a `<colgroup>` rather than on each cell. Under
 `table-layout: fixed` the browser reads widths from the first row only, which
@@ -1068,8 +1075,10 @@ to the table's inline-end edge, visible whether or not a panel is open, and the
 panel one of them opens *beside* the table rather than over it. Opening it takes
 width from the table, which is the point — this table scrolls horizontally, and
 a floating panel covers columns the user cannot then scroll out from under it.
-Below 640px the rail is withdrawn, the toolbar's Columns button is the only way
-in, and the panel overlays the card at full width.
+Below 640px the rail stays where it is — it is the only way into the panel, at
+any width — and the panel it opens overlays the card at full width instead of
+docking beside it, with the rail laid horizontally across the top of that
+overlay.
 
 `<TablePanel instance={instance} labels={…} tab={tab} onTabChange={setTab} onReorder={…} onClose={…} />` —
 the side panel with both tabs, for a shell that wants to choose which one opens;
@@ -1150,7 +1159,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `striped` | `boolean` | `false` | |
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
-| `toolbarContent` | `ReactNode` | — | Rendered before the Columns button. |
+| `toolbarContent` | `ReactNode` | — | Rendered at the toolbar's leading edge. |
 | `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters and/or Clear grouping button while the table is filtered or grouped | Supplying this replaces **both** defaults, including the narrowed-empty exit — a host that wants its own art for "no data" but still wants a way out should branch on `instance.filtering.isFiltered` and `instance.grouping.isGrouped` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | Ignored for any token a `style` of your own sets — see [Material UI](#material-ui). |

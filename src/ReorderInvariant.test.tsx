@@ -65,10 +65,41 @@ const groupedColumns = [
   }),
 ]
 
+/**
+ * A leaf standing at the top level beside two groups.
+ *
+ * The shape a group drag can go wrong in that the other two cannot: the
+ * things being moved past one another are different WIDTHS, so any
+ * arithmetic that counts in leaves rather than in siblings lands one of them
+ * somewhere else.
+ */
+const mixedColumns = [
+  flatColumns[0]!,
+  helper.group({
+    id: "left",
+    header: "Left",
+    columns: helper.columns(flatColumns.slice(1, 3)),
+  }),
+  helper.group({
+    id: "right",
+    header: "Right",
+    columns: helper.columns(flatColumns.slice(3)),
+  }),
+]
+
+/** The three table shapes the fixtures below are built from. */
+const SHAPES = {
+  flat: flatColumns,
+  grouped: groupedColumns,
+  mixed: mixedColumns,
+} as const
+
+type Shape = keyof typeof SHAPES
+
 /** A table shape, and the order it renders in before anything is dragged. */
 interface Fixture {
   name: string
-  grouped: boolean
+  shape: Shape
   pinning: { start: string[]; end: string[] }
   /**
    * Columns the ROWS are grouped by — which is a different thing from
@@ -85,7 +116,7 @@ interface Fixture {
 const FIXTURES: Fixture[] = [
   {
     name: "a flat table",
-    grouped: false,
+    shape: "flat",
     pinning: { start: [], end: [] },
     baseline: ["a", "b", "c", "d", "e", "f"],
   },
@@ -93,19 +124,19 @@ const FIXTURES: Fixture[] = [
     // The finding: two columns pinned to the SAME edge, which is the only way
     // a pinned column has anywhere to move to.
     name: "two columns pinned to the start",
-    grouped: false,
+    shape: "flat",
     pinning: { start: ["e", "f"], end: [] },
     baseline: ["e", "f", "a", "b", "c", "d"],
   },
   {
     name: "columns pinned to both edges",
-    grouped: false,
+    shape: "flat",
     pinning: { start: ["c", "d"], end: ["e", "f"] },
     baseline: ["c", "d", "a", "b", "e", "f"],
   },
   {
     name: "two column groups",
-    grouped: true,
+    shape: "grouped",
     pinning: { start: [], end: [] },
     baseline: ["a", "b", "c", "d", "e", "f"],
   },
@@ -114,7 +145,7 @@ const FIXTURES: Fixture[] = [
     // exactly the kind of thing this property exists to catch: D is declared
     // fourth and renders first.
     name: "a table grouped by its fourth column",
-    grouped: false,
+    shape: "flat",
     pinning: { start: [], end: [] },
     rowGrouping: ["d"],
     baseline: ["d", "a", "b", "c", "e", "f"],
@@ -123,7 +154,7 @@ const FIXTURES: Fixture[] = [
     // Two derivations at once: the group column leads the SCROLLING columns,
     // and the pinned pair still owns the left edge.
     name: "a grouped table with two columns pinned to the start",
-    grouped: false,
+    shape: "flat",
     pinning: { start: ["e", "f"], end: [] },
     rowGrouping: ["d"],
     baseline: ["e", "f", "d", "a", "b", "c"],
@@ -132,10 +163,18 @@ const FIXTURES: Fixture[] = [
     // The group column is hoisted OUT of the Right group to lead the table, so
     // the runs a drop may move within are not the ones the definitions declare.
     name: "two column groups, grouped by one of the right-hand columns",
-    grouped: true,
+    shape: "grouped",
     pinning: { start: [], end: [] },
     rowGrouping: ["e"],
     baseline: ["e", "a", "b", "c", "d", "f"],
+  },
+  {
+    // A single column beside two groups, so the siblings a drag steps past
+    // are one, three and three columns wide.
+    name: "a leaf standing beside two column groups",
+    shape: "mixed",
+    pinning: { start: [], end: [] },
+    baseline: ["a", "b", "c", "d", "e", "f"],
   },
 ]
 
@@ -157,7 +196,7 @@ function Table({ fixture, storage }: { fixture: Fixture; storage?: LayoutStorage
   const instance = useDataTable({
     id: "reorder-invariant",
     data: rows,
-    columns: fixture.grouped ? groupedColumns : flatColumns,
+    columns: SHAPES[fixture.shape],
     initialLayout: {
       columnPinning: fixture.pinning,
       ...(fixture.rowGrouping ? { grouping: [...fixture.rowGrouping] } : {}),
@@ -286,12 +325,19 @@ function pointAt(
 /**
  * The order the table is rendering in.
  *
- * Read from the headers, which is the thing a user is looking at, and filtered
- * to leaves — a group header carries its group's id in the same attribute.
+ * Read from the `<colgroup>`, which is the one flat list of leaf columns the
+ * table draws — and the list every width, every pinned offset and every cell
+ * is lined up against, so it IS the rendered order.
+ *
+ * Not from the headers. Those are two-dimensional: a leaf that belongs to no
+ * group is rendered in the TOP row, spanning down, so reading `th`s in
+ * document order puts it before every leaf that sits under a group no matter
+ * where it actually is. That reading was right only as long as no fixture
+ * mixed the two depths, which the mixed fixture does.
  */
 const renderedOrder = (): string[] =>
-  Array.from(document.querySelectorAll("th[data-column-id]"))
-    .map((th) => th.getAttribute("data-column-id") ?? "")
+  Array.from(document.querySelectorAll("colgroup col[data-column-id]"))
+    .map((col) => col.getAttribute("data-column-id") ?? "")
     .filter((id) => LEAF_ID_SET.has(id))
 
 /** The order the Columns panel is listing in. */
@@ -305,7 +351,7 @@ const announced = (): string =>
   document.querySelector(".dt-panel .dt-sr-only")?.textContent ?? ""
 
 /** Open the side panel, which starts on its Columns tab. */
-const openPanel = () => fireEvent.click(screen.getByRole("button", { name: "Columns" }))
+const openPanel = () => fireEvent.click(screen.getByRole("tab", { name: "Columns" }))
 
 /**
  * Put the fixture back, so the next case starts where the last one did.
@@ -450,6 +496,145 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     expect(violations).toEqual([])
   })
 })
+
+/**
+ * The same promise, made by a header that stands for several columns.
+ *
+ * A column group is dragged too, and it carries every leaf under it. That
+ * makes the promise one level up: the slot appears on a SIBLING — another
+ * group, or a leaf that belongs to none — and what it promises is that the
+ * dragged group will stand where that sibling stands now.
+ *
+ * Checked at that level and not in leaves, because leaves are the one reading
+ * a group drag cannot be measured in: move a single column past a group of
+ * three and it travels three places, which is right and would look like a
+ * broken promise to an assertion counting columns. The fixture with a leaf
+ * beside two groups exists to keep that case in the loop.
+ *
+ * The second half of the promise is that the group arrives INTACT — the same
+ * leaves, in the same order, still under one header. A move that scattered
+ * them would satisfy the first half and be the worse defect.
+ */
+describe.each(FIXTURES.filter((fixture) => fixture.shape !== "flat"))(
+  "a column group keeps the slot's promise in $name",
+  (fixture) => {
+    /** The header's top row: the groups, and any leaf that belongs to none. */
+    const topLevelOrder = (): string[] =>
+      [...document.querySelectorAll("thead tr:first-child th[data-column-id]")].map(
+        (th) => th.getAttribute("data-column-id") ?? "",
+      )
+
+    /** Every header there is, the leaves under the groups included. */
+    const everyHeaderId = (): string[] =>
+      [...document.querySelectorAll("th[data-column-id]")].map(
+        (th) => th.getAttribute("data-column-id") ?? "",
+      )
+
+    /**
+     * Which leaves each top-level header stands over, read the way a user
+     * reads it: a cell's `colspan` is how many leaf columns it sits above,
+     * and the top row runs left to right over the same leaf order.
+     *
+     * The filler is skipped without advancing — it has a cell but no column.
+     */
+    const leavesUnderTopLevel = (): Map<string, string[]> => {
+      const leaves = renderedOrder()
+      const under = new Map<string, string[]>()
+      let at = 0
+      for (const th of document.querySelectorAll("thead tr:first-child th")) {
+        const id = th.getAttribute("data-column-id")
+        if (id === null) continue
+        const span = Number(th.getAttribute("colspan") ?? "1")
+        under.set(id, leaves.slice(at, at + span))
+        at += span
+      }
+      return under
+    }
+
+    const surface = SURFACES[0] as Surface
+
+    beforeEach(() => {
+      localStorage.clear()
+      render(<Table fixture={fixture} />)
+      openPanel()
+    })
+
+    it("draws a header row the cases below can read", () => {
+      // Every leaf is accounted for exactly once, under one top-level header:
+      // the reading the whole property rests on.
+      const under = leavesUnderTopLevel()
+      expect([...under.values()].flat()).toEqual(fixture.baseline)
+      expect(new Set(topLevelOrder()).size).toBe(topLevelOrder().length)
+    })
+
+    it("lands the whole group where the slot promised", () => {
+      const violations: string[] = []
+      let moves = 0
+      // The group column has no place of its own to drag, exactly as its leaf
+      // counterpart has none — it stays in the target loop.
+      const draggable = topLevelOrder().filter((id) => id !== fixture.rowGrouping?.[0])
+      const targets = everyHeaderId()
+
+      for (const draggedId of draggable) {
+        for (const targetId of targets) {
+          for (const side of SIDES) {
+            const beforeNodes = topLevelOrder()
+            const beforeLeaves = renderedOrder()
+            const carried = leavesUnderTopLevel().get(draggedId) ?? []
+            const dataTransfer = makeDataTransfer()
+
+            fireEvent.dragStart(headerCell(draggedId), { dataTransfer })
+            const target = headerCell(targetId)
+            pointAt(surface, "dragOver", target, side, dataTransfer)
+            const slot = surface.slot()
+            pointAt(surface, "drop", target, side, dataTransfer)
+            fireEvent.dragEnd(headerCell(draggedId))
+
+            const afterNodes = topLevelOrder()
+            const afterLeaves = renderedOrder()
+            const where = `${draggedId} onto ${targetId}'s ${side}`
+            if (afterLeaves.join(" ") !== beforeLeaves.join(" ")) moves += 1
+
+            if (slot === null) {
+              if (afterLeaves.join(" ") !== beforeLeaves.join(" ")) {
+                violations.push(`${where}: no slot, yet the order became ${afterLeaves.join(" ")}`)
+              }
+            } else {
+              const promised = beforeNodes.indexOf(slot)
+              const landed = afterNodes.indexOf(draggedId)
+              if (landed !== promised) {
+                violations.push(
+                  `${where}: the slot was at ${promised} (on ${slot}), ` +
+                    `the header landed at ${landed} — ${afterNodes.join(" ")}`,
+                )
+              }
+              const arrived = leavesUnderTopLevel().get(draggedId) ?? []
+              if (arrived.join(" ") !== carried.join(" ")) {
+                violations.push(
+                  `${where}: it set out with ${carried.join(" ")} and arrived with ` +
+                    `${arrived.join(" ")}`,
+                )
+              }
+              if (afterNodes.length !== beforeNodes.length) {
+                violations.push(`${where}: the header row became ${afterNodes.join(" ")}`)
+              }
+            }
+
+            resetToBaseline()
+            if (renderedOrder().join(" ") !== fixture.baseline.join(" ")) {
+              violations.push(`${where}: Reset left ${renderedOrder().join(" ")}`)
+            }
+          }
+        }
+      }
+
+      expect(violations).toEqual([])
+      // A fixture whose groups stopped offering slots would pass every check
+      // above in silence, which is the shape this regression would take.
+      expect(moves).toBeGreaterThan(0)
+    })
+  },
+)
 
 /**
  * What is written down, as against what is shown.

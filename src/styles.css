@@ -860,12 +860,19 @@
 
 /*
  * Narrow widths. 640px is where a 44px rail plus a 260px panel leaves the
- * table under 340px — less than two average columns, so the bar would be
- * eating the thing it exists to configure. Below it the rail is withdrawn
- * while closed, the toolbar's Columns button is the only way in, and the
- * panel goes back to OVERLAYING the table at full width, the way it did
- * before it was docked; the rail comes back horizontally across the top of
- * that overlay so the active tab still closes it.
+ * table under 340px — less than two average columns, so an OPEN bar would be
+ * eating the thing it exists to configure. So below it the panel goes back to
+ * OVERLAYING the table at full width, the way it did before it was docked,
+ * with the rail laid horizontally across the top of that overlay so the
+ * active tab still closes it.
+ *
+ * The rail itself stays put while the panel is closed, exactly as it is at
+ * every other width. It used to be withdrawn here, on the grounds that the
+ * toolbar's Columns button was the way in — but that button is gone, and it
+ * was never the whole story anyway: a host rendering `toolbar={false}` had no
+ * way into the panel below 640px at all. 44px of furniture is a smaller price
+ * than an unreachable feature, and it is the same 44px the user already knows
+ * from the wider layout rather than a second, narrower idiom to learn.
  *
  * A viewport media query and not a container query, deliberately:
  * `container-type: inline-size` on `.dt-root` would make it a containing
@@ -873,7 +880,7 @@
  * popover are fixed and clamped to the viewport on purpose.
  */
 @media (max-width: 640px) {
-  .dt-sidebar {
+  .dt-sidebar[data-dt-open] {
     position: absolute;
     inset: 0;
     z-index: 10;
@@ -883,25 +890,21 @@
     background: var(--dt-bg);
   }
 
-  .dt-sidebar:not([data-dt-open]) {
-    display: none;
-  }
-
-  .dt-sidebar-rail {
+  .dt-sidebar[data-dt-open] .dt-sidebar-rail {
     flex-direction: row;
     width: auto;
     border-radius: 0;
     border-bottom: 1px solid var(--dt-border);
   }
 
-  .dt-sidebar-tab {
+  .dt-sidebar[data-dt-open] .dt-sidebar-tab {
     writing-mode: horizontal-tb;
     width: auto;
     min-height: 0;
     padding: 8px 12px;
   }
 
-  .dt-sidebar-tab[aria-selected="true"] {
+  .dt-sidebar[data-dt-open] .dt-sidebar-tab[aria-selected="true"] {
     box-shadow: inset 0 -2px 0 0 var(--dt-accent);
   }
 
@@ -1385,9 +1388,22 @@
   border-radius: 3px;
 }
 
-/* Leave room so the label never runs under the kebab. */
-.dt-th:hover .dt-th-inner,
-.dt-th:focus-within .dt-th-inner {
+/*
+ * The kebab's room is RESERVED, not made when it appears.
+ *
+ * It used to be added on `:hover` and `:focus-within`, which moved the label
+ * sideways under the pointer — and moved the point a long label truncates at,
+ * so the text changed as well as its position. Nothing about the header is
+ * different on hover; only the affordance's opacity is, and an affordance
+ * that pushes the thing it belongs to is a worse way of announcing itself
+ * than simply fading in where it already stood (WCAG 3.2.5: no change of
+ * context the user did not ask for).
+ *
+ * Scoped to the headers that HAVE a kebab: `HeaderCell` renders none over a
+ * column group, and reserving space there would push a centred group label
+ * permanently off centre for a button that is never coming.
+ */
+.dt-th:not(.dt-th-group) .dt-th-inner {
   padding-inline-end: 26px;
 }
 

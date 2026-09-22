@@ -86,7 +86,7 @@ describe("DataTable", () => {
     const user = userEvent.setup()
     render(<Table id="t1" />)
 
-    await user.click(screen.getByRole("button", { name: /columns/i }))
+    await user.click(screen.getByRole("tab", { name: /columns/i }))
     await user.click(screen.getByLabelText("Partner"))
 
     expect(screen.queryByRole("columnheader", { name: /partner/i })).toBeNull()
@@ -118,7 +118,7 @@ describe("DataTable", () => {
     const user = userEvent.setup()
     const first = render(<Table id="persisted" />)
 
-    await user.click(screen.getByRole("button", { name: /columns/i }))
+    await user.click(screen.getByRole("tab", { name: /columns/i }))
     await user.click(screen.getByLabelText("Partner"))
     // Unmounting mid-debounce must still flush.
     first.unmount()
@@ -144,7 +144,7 @@ describe("DataTable", () => {
     const right = screen.getByTestId("right")
 
     // Hide "Partner" in the left table only.
-    await user.click(within(left).getByRole("button", { name: /columns/i }))
+    await user.click(within(left).getByRole("tab", { name: /columns/i }))
     await user.click(within(left).getByLabelText("Partner"))
 
     expect(within(left).queryByRole("columnheader", { name: /partner/i })).toBeNull()

@@ -308,6 +308,99 @@ describe(".dt-menu sizing", () => {
 })
 
 /**
+ * Hovering a header must not move anything.
+ *
+ * The sort chevron and the ⋮ appear on hover, and the room for the ⋮ used to
+ * appear with it: `.dt-th:hover .dt-th-inner` added 26px of trailing padding,
+ * which slid the label sideways under the pointer and moved the point a long
+ * label truncates at — so the text itself changed as the pointer crossed it.
+ * A group header, which has no ⋮ at all, moved too.
+ *
+ * jsdom does not apply `:hover`, so this is read off the sheet: no rule that
+ * hover or focus brings in may touch the box, and the room has to be reserved
+ * unconditionally instead.
+ */
+describe("a hovered header", () => {
+  /** Every style rule in the sheet, media blocks included. */
+  const allRules = (): CSSStyleRule[] => {
+    const styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+    document.head.appendChild(styleEl)
+    const flatten = (rules: CSSRule[]): CSSStyleRule[] =>
+      rules.flatMap((rule) =>
+        rule.constructor.name === "CSSMediaRule"
+          ? flatten([...(rule as CSSMediaRule).cssRules])
+          : rule.constructor.name === "CSSStyleRule"
+            ? [rule as CSSStyleRule]
+            : [],
+      )
+    const rules = flatten([...(styleEl.sheet?.cssRules ?? [])])
+    styleEl.remove()
+    return rules
+  }
+
+  /** Properties that change an element's own box, and so its neighbours'. */
+  const LAYOUT_PROPERTIES = [
+    "padding",
+    "padding-inline",
+    "padding-inline-end",
+    "padding-inline-start",
+    "padding-left",
+    "padding-right",
+    "margin",
+    "margin-inline",
+    "margin-inline-end",
+    "width",
+    "display",
+    "gap",
+    "font-size",
+  ]
+
+  it("changes no box a header's text is laid out in", () => {
+    const offenders = allRules()
+      .filter(
+        (rule) =>
+          rule.selectorText.includes(".dt-th") &&
+          (rule.selectorText.includes(":hover") || rule.selectorText.includes(":focus-within")),
+      )
+      .filter((rule) => LAYOUT_PROPERTIES.some((property) => rule.style.getPropertyValue(property)))
+      .map((rule) => rule.selectorText)
+
+    expect(offenders, "a hover rule on a header changes its layout").toEqual([])
+  })
+
+  it("reserves the kebab's room in every state, on the headers that have one", () => {
+    const styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+    document.head.appendChild(styleEl)
+
+    const th = document.createElement("th")
+    th.className = "dt-th"
+    const inner = document.createElement("div")
+    inner.className = "dt-th-inner"
+    th.appendChild(inner)
+    document.body.appendChild(th)
+
+    // 26px at rest is the room the ⋮ sits in: reserved, so nothing reflows
+    // when it fades in.
+    expect(getComputedStyle(inner).paddingInlineEnd).toBe("26px")
+
+    /*
+     * A group header renders no ⋮, so reserving there would push a centred
+     * label permanently off centre for a button that never comes. What is
+     * asserted is that the reservation does not reach it: jsdom does not
+     * expand `.dt-th-inner`'s own `padding-inline: 10px` shorthand into the
+     * longhand read here, so the symmetrical value is not legible.
+     */
+    th.className = "dt-th dt-th-group"
+    expect(getComputedStyle(inner).paddingInlineEnd).not.toBe("26px")
+
+    th.remove()
+    styleEl.remove()
+  })
+})
+
+/**
  * The narrow-width fallback, asserted structurally rather than by cascade.
  *
  * jsdom does not evaluate `@media` at all when resolving styles (verified: a
@@ -315,9 +408,10 @@ describe(".dt-menu sizing", () => {
  * of 1024 still does not reach `getComputedStyle`), so there is no way to ask
  * it what the sheet computes to at 500px. What CAN be checked, and is what
  * would actually regress, is that the rule exists, at the documented
- * breakpoint, and says the three things the fallback is made of: the closed
- * bar is withdrawn, the open one overlays the card, and the rotated labels
- * turn back the right way up.
+ * breakpoint, and says the two things the fallback is made of — the OPEN bar
+ * overlays the card and its rotated labels turn back the right way up — while
+ * saying nothing that would take the closed rail away, since the rail is the
+ * only way into the panel at any width.
  */
 describe("the side bar's narrow-width fallback", () => {
   /** The `@media (max-width: 640px)` block, as the browser parsed it. */
@@ -349,12 +443,23 @@ describe("the side bar's narrow-width fallback", () => {
     expect(narrowRule().conditionText).toBe("(max-width: 640px)")
   })
 
-  it("withdraws the rail while the bar is closed, so the toolbar button is the way in", () => {
-    expect(declarationsFor(".dt-sidebar:not([data-dt-open])")).toContain("display: none")
+  it("keeps the closed rail, which is the only way into the panel", () => {
+    /*
+     * It used to be withdrawn here, on the grounds that the toolbar's Columns
+     * button was the way in. That button is gone — and it never covered
+     * `toolbar={false}` anyway — so a rule hiding the closed bar at this
+     * width would leave the panel with no control at all.
+     */
+    const hides = [...narrowRule().cssRules].filter(
+      (rule) =>
+        rule.constructor.name === "CSSStyleRule" &&
+        (rule as CSSStyleRule).style.display === "none",
+    )
+    expect(hides, "the narrow-width block hides something").toHaveLength(0)
   })
 
-  it("overlays the card at full width instead of docking", () => {
-    const sidebar = declarationsFor(".dt-sidebar")
+  it("overlays the card at full width instead of docking, but only once open", () => {
+    const sidebar = declarationsFor(".dt-sidebar[data-dt-open]")
     expect(sidebar).toContain("position: absolute")
     // `inset: 0` is the full width and height of the card; a shorthand jsdom
     // may expand, so both spellings are accepted.
@@ -362,10 +467,13 @@ describe("the side bar's narrow-width fallback", () => {
     expect(declarationsFor(".dt-panel-docked")).toContain("width: auto")
   })
 
-  it("turns the rotated tab labels back to horizontal", () => {
+  it("turns the rotated tab labels back to horizontal inside that overlay", () => {
     // The rail is laid across the top of the overlay there, so a label left in
-    // `vertical-rl` would read down the page inside a horizontal strip.
-    expect(declarationsFor(".dt-sidebar-tab")).toContain("writing-mode: horizontal-tb")
+    // `vertical-rl` would read down the page inside a horizontal strip. A
+    // CLOSED rail keeps its rotation, because it keeps its docked shape.
+    expect(declarationsFor(".dt-sidebar[data-dt-open] .dt-sidebar-tab")).toContain(
+      "writing-mode: horizontal-tb",
+    )
   })
 })
 

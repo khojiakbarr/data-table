@@ -4,6 +4,7 @@ import {
   dropSlotId,
   leadColumn,
   moveColumn,
+  moveRun,
   pinnedFirstOrder,
   reachableRange,
 } from "./reorder"
@@ -66,6 +67,105 @@ describe("moveColumn", () => {
   it("moves to the very start and to the very end", () => {
     expect(moveColumn(order, "c", "a", "start")).toEqual(["c", "a", "b", "d", "e"])
     expect(moveColumn(order, "c", "e", "end")).toEqual(["a", "b", "d", "e", "c"])
+  })
+})
+
+/**
+ * A column group, to an order that only knows leaves.
+ *
+ * The arithmetic `moveColumn` does for one column, done for several at once —
+ * and it is the same code, so what these pin down is the part a run has and a
+ * single column does not: which end of the target the block lands at, that it
+ * arrives whole and in its own order, and what happens when the ids are not
+ * side by side to begin with.
+ */
+describe("moveRun", () => {
+  const groups = ["a", "b", "c", "d", "e", "f"]
+
+  it("lands the whole run after the target run's trailing edge", () => {
+    expect(moveRun(groups, ["a", "b", "c"], ["d", "e", "f"], "end")).toEqual([
+      "d",
+      "e",
+      "f",
+      "a",
+      "b",
+      "c",
+    ])
+  })
+
+  it("lands it before the target run's leading edge", () => {
+    expect(moveRun(groups, ["d", "e", "f"], ["a", "b", "c"], "start")).toEqual([
+      "d",
+      "e",
+      "f",
+      "a",
+      "b",
+      "c",
+    ])
+  })
+
+  it("never lands inside the target run", () => {
+    // Both edges of a three-column target, and neither answer splits it.
+    for (const side of ["start", "end"] as const) {
+      const next = moveRun(groups, ["a"], ["d", "e", "f"], side)
+      expect(next.indexOf("e") - next.indexOf("d")).toBe(1)
+      expect(next.indexOf("f") - next.indexOf("e")).toBe(1)
+    }
+  })
+
+  it("keeps the run's own order however the ids were listed", () => {
+    expect(moveRun(groups, ["c", "a", "b"], ["f"], "end")).toEqual([
+      "d",
+      "e",
+      "f",
+      "a",
+      "b",
+      "c",
+    ])
+  })
+
+  it("gathers a run the order has something else sitting inside", () => {
+    /*
+     * What a grouped table hands it: the column holding the group values is
+     * lifted to the front of the SCREEN, but the stored order still has it
+     * where the user left it — here, inside the group being moved. Refusing
+     * this is what made a group drag draw a slot and then do nothing.
+     */
+    expect(moveRun(["a", "b", "x", "c", "d"], ["b", "c"], ["d"], "end")).toEqual([
+      "a",
+      "x",
+      "d",
+      "b",
+      "c",
+    ])
+  })
+
+  it("leaves the order alone when the runs overlap", () => {
+    // A column on itself, and a leaf dropped on the group it belongs to.
+    expect(moveRun(groups, ["a"], ["a"], "end")).toEqual(groups)
+    expect(moveRun(groups, ["b"], ["a", "b", "c"], "start")).toEqual(groups)
+  })
+
+  it("leaves the order alone when the run would not move", () => {
+    expect(moveRun(groups, ["a", "b", "c"], ["d", "e", "f"], "start")).toEqual(groups)
+  })
+
+  it("ignores runs it does not fully know", () => {
+    expect(moveRun(groups, ["a", "zz"], ["f"], "end")).toEqual(groups)
+    expect(moveRun(groups, ["a"], ["zz"], "end")).toEqual(groups)
+    expect(moveRun(groups, [], ["f"], "end")).toEqual(groups)
+  })
+
+  it("does not mutate the array it was given", () => {
+    const input = [...groups]
+    moveRun(input, ["a", "b"], ["f"], "end")
+    expect(input).toEqual(groups)
+  })
+
+  it("is what moveColumn is made of", () => {
+    for (const side of ["start", "end"] as const) {
+      expect(moveRun(order, ["a"], ["c"], side)).toEqual(moveColumn(order, "a", "c", side))
+    }
   })
 })
 

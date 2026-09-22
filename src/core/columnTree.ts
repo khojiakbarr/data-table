@@ -148,6 +148,59 @@ export function leafColumnsOfNode<TData extends RowData>(
   return node.children.flatMap(leafColumnsOfNode)
 }
 
+/**
+ * The leaf ids a column stands for: itself, or every leaf under a group.
+ *
+ * What a column GROUP means to the flat order the table is arranged by. A
+ * group has no place of its own in that order — only its leaves do — so every
+ * question asked about a group's position is really a question about the run
+ * its leaves occupy.
+ *
+ * @param column - Any column, leaf or group.
+ * @returns One id for a leaf; every leaf id beneath a group, left to right.
+ *
+ * @example
+ * leafIdsOfColumn(table.getColumn("document")!) // ["number", "date"]
+ */
+export function leafIdsOfColumn<TData extends RowData>(column: AnyColumn<TData>): string[] {
+  if (column.columns.length === 0) return [column.id]
+  return column.getLeafColumns().map((leaf) => leaf.id)
+}
+
+/**
+ * The nodes standing at one column's own level, in render order.
+ *
+ * A drag is always a move among siblings — that is what `dropRegionOf` allows
+ * and nothing else — so the order a drop slot is resolved against is this one,
+ * not the flat run of leaves. For a leaf inside a group it is that group's
+ * children; for a group it is whatever stands beside the group. Resolving a
+ * group's drop in the leaf order instead would answer with a leaf halfway
+ * through the group being moved, because the arithmetic would be measuring a
+ * six-column move against one-column steps.
+ *
+ * @param nodes - The tree, from {@link buildColumnTree}.
+ * @param columnId - The column whose level is wanted — a leaf or a group.
+ * @returns The column ids at that level, left to right; empty when the column
+ *   is not in this tree at all (hidden, or from another table).
+ *
+ * @example
+ * siblingOrderOf(tree, "document") // ["id", "document", "payment"]
+ * siblingOrderOf(tree, "number")   // ["number", "date"]
+ */
+export function siblingOrderOf<TData extends RowData>(
+  nodes: readonly ColumnTreeNode<TData>[],
+  columnId: string,
+): string[] {
+  const ids = nodes.map((node) => node.column.id)
+  if (ids.includes(columnId)) return ids
+  for (const node of nodes) {
+    if (node.kind !== "group") continue
+    const level = siblingOrderOf(node.children, columnId)
+    if (level.length > 0) return level
+  }
+  return []
+}
+
 /** What a group's checkbox shows. */
 export interface GroupVisibility {
   /** True only when every leaf under the group is visible. */

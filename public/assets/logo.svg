@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="dt-logo-title">
+  <title id="dt-logo-title">data-table</title>
+  <!--
+    The mark is the library's headline drawn literally: one column group
+    spanning the two columns beneath it, a pinned first column held to the
+    left edge through every row, and rows under both.
+
+    Every colour is opaque. An earlier draft tinted one accent with `opacity`,
+    which composites against whatever is behind the file — so the mark
+    dissolved on a dark README and survived only on a light one. Carrying its
+    own surface is what lets one file serve both.
+  -->
+  <defs>
+    <clipPath id="dt-logo-frame"><rect x="4" y="4" width="56" height="56" rx="13"/></clipPath>
+  </defs>
+  <g clip-path="url(#dt-logo-frame)">
+    <rect x="4" y="4" width="56" height="56" fill="#E8EFFE"/>
+    <!-- the group header, spanning everything below it -->
+    <rect x="4" y="4" width="56" height="15" fill="#3B6BE8"/>
+    <!-- the pinned column: its own header cell, then a lane through the rows -->
+    <rect x="4" y="21" width="13" height="39" fill="#CBDBFB"/>
+    <rect x="4" y="21" width="13" height="10" fill="#A8C3F7"/>
+    <!-- the two columns the group stands over -->
+    <rect x="19" y="21" width="17" height="10" fill="#8FB1F4"/>
+    <rect x="38" y="21" width="22" height="10" fill="#8FB1F4"/>
+    <!-- rows -->
+    <rect x="19" y="34" width="17" height="7" fill="#B9CEF9"/>
+    <rect x="38" y="34" width="22" height="7" fill="#B9CEF9"/>
+    <rect x="19" y="44" width="17" height="7" fill="#B9CEF9"/>
+    <rect x="38" y="44" width="22" height="7" fill="#B9CEF9"/>
+    <rect x="19" y="54" width="17" height="6" fill="#B9CEF9"/>
+    <rect x="38" y="54" width="22" height="6" fill="#B9CEF9"/>
+  </g>
+  <rect x="5.5" y="5.5" width="53" height="53" rx="11.5" fill="none" stroke="#3B6BE8" stroke-width="3"/>
+</svg>

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { dropAtIndex, dropSlotId, type DropSide } from "./reorder"
 
 /**
@@ -84,6 +84,51 @@ export interface DropSlot {
  */
 export function useDropSlot(order: DropSlotOrder): DropSlot {
   const [drag, setDrag] = useState<DropSlotDrag | null>(null)
+
+  /*
+   * A backstop for the case a `dragend` on the source element never arrives.
+   *
+   * `onDragEnd={drop.end}` on the dragged element is the ordinary way a drag
+   * ends — a drop, Escape, and the pointer released outside the window all
+   * fire it — but it depends on that element still being in the document when
+   * the browser goes to dispatch it. A drop that is itself the cause of the
+   * dragged element's removal — grouping a column drops it into the Row
+   * Groups zone, which hides or hoists that very header or panel row out of
+   * the tree the state update this drop triggers — can unmount the source
+   * before the browser gets there, and per the drag-and-drop spec a source no
+   * longer in a document gets no `dragend` at all. Left alone, `draggedId`
+   * and the dragging class it drives would survive indefinitely, clearing
+   * only when some unrelated drag on the same surface happened to end.
+   *
+   * `document` is the fix rather than the element: it is an ancestor of
+   * every possible drop target, including ones far outside this hook's own
+   * surface — the table header, the Columns tab and the Row Groups zone each
+   * run their own `useDropSlot`, and a header drag can be consumed by the
+   * zone's `<li>`, in a different component entirely. `drop` and `dragend`
+   * both bubble, and they bubble from the TARGET (or, for `dragend`, from a
+   * source that is still attached) — an element that is still mounted at
+   * the moment the browser dispatches the event, before the state change the
+   * drop causes has had a chance to unmount anything — so by the time either
+   * reaches `document` the bubbling itself is not at risk, only the source's
+   * own listener was. Listening in the capture phase means no drop handler
+   * added later, on this surface or another, can hide the event from this
+   * hook with `stopPropagation()`.
+   *
+   * Scoped to `drag?.draggedId` rather than to every change of `drag`: `over`
+   * and `moveTo` update `drag.target` on nearly every `dragover`, and
+   * tearing this listener down and back up that often would be pure waste for
+   * a pair of listeners that only ever need to exist once per drag.
+   */
+  useEffect(() => {
+    if (drag === null) return
+    const clear = () => setDrag(null)
+    document.addEventListener("dragend", clear, { capture: true })
+    document.addEventListener("drop", clear, { capture: true })
+    return () => {
+      document.removeEventListener("dragend", clear, { capture: true })
+      document.removeEventListener("drop", clear, { capture: true })
+    }
+  }, [drag?.draggedId])
 
   /** The order this particular column is moving within. */
   const orderFor = (draggedId: string): readonly string[] =>

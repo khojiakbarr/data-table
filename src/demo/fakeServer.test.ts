@@ -391,6 +391,29 @@ describe("fetchValues", () => {
     // spinner would never clear.
     await expect(fetchValues("status", { search: "", signal: controller.signal })).rejects.toThrow("Aborted")
   })
+
+  it("labels the Status options in the caller's language, English by default", async () => {
+    const controller = new AbortController()
+    const values = await fetchValues("status", { search: "", signal: controller.signal })
+    const byValue = new Map(values.map((option) => [option.value, option.label]))
+    expect(byValue.get("closed")).toBe("Closed")
+    expect(byValue.get("in_process")).toBe("In process")
+  })
+
+  it("labels the Status options in whichever language it is asked for", async () => {
+    const controller = new AbortController()
+    const values = await fetchValues("status", { search: "", signal: controller.signal }, "ru")
+    const byValue = new Map(values.map((option) => [option.value, option.label]))
+    expect(byValue.get("closed")).toBe("Закрыт")
+  })
+
+  it("leaves a column with no translation unlabelled", async () => {
+    // `partner` values are already the text a user reads — there is nothing
+    // for a label to translate them into.
+    const controller = new AbortController()
+    const values = await fetchValues("partner", { search: "", signal: controller.signal }, "ru")
+    expect(values.every((option) => option.label === undefined)).toBe(true)
+  })
 })
 
 /**

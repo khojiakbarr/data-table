@@ -1,6 +1,8 @@
 import type { FilterCondition, FilterValue, FilterValueOption } from "../core/filters"
 import type { GroupRow } from "../core/grouping"
 import type { TableQuery, TableSearch } from "../core/query"
+import type { Language } from "./playgroundState"
+import { STATUS_LABELS } from "./statusLabels"
 
 /*
  * A group header is the LIBRARY's shape, re-exported here so this file's own
@@ -594,16 +596,26 @@ const VALUES_DELAY_MS = 250
  * the editor builds, and the comparison at the far end is `===`, so a
  * stringified boolean or number would select rows and then match none of them.
  *
+ * `label` rides along for the Status column, in the caller's own language —
+ * the same {@link STATUS_LABELS} the column's cell and its `meta.groupLabel`
+ * read, so the list filter stops showing the raw `closed` / `in_process` a
+ * real host would never put in front of a user. Every other column answers
+ * with no `label` at all, and the editor falls back to `String(value)`.
+ *
  * @param columnId - The column whose values are wanted.
  * @param options - The editor's search box, and an abort signal.
+ * @param language - The playground's current language. Defaults to English,
+ *   which is also what a caller that has not been told about languages at
+ *   all — this file's own tests — gets.
  * @returns Every distinct value that matches, with its count.
  *
  * @example
- * const options = await fetchValues("status", { search: "", signal: controller.signal })
+ * const options = await fetchValues("status", { search: "", signal: controller.signal }, "ru")
  */
 export function fetchValues(
   columnId: string,
   options: { search: string; signal: AbortSignal },
+  language: Language = "en",
 ): Promise<FilterValueOption[]> {
   const read = FIELD_READERS[columnId]
   return new Promise((resolve, reject) => {
@@ -636,7 +648,13 @@ export function fetchValues(
         if (needle !== "" && !String(value).toLowerCase().includes(needle)) continue
         counts.set(value, (counts.get(value) ?? 0) + 1)
       }
-      resolve([...counts].map(([value, count]) => ({ value, count })))
+      resolve(
+        [...counts].map(([value, count]) => {
+          const label =
+            columnId === "status" && typeof value === "string" ? STATUS_LABELS[language][value] : undefined
+          return label === undefined ? { value, count } : { value, count, label }
+        }),
+      )
     }, VALUES_DELAY_MS)
     options.signal.addEventListener("abort", onAbort, { once: true })
   })

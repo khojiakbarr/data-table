@@ -92,7 +92,11 @@ export function Playground() {
     pagination: features.pagination,
     // Quick search rides with filtering — turning the toggle off drops both,
     // which is also why `loadValues` only needs wiring in this one branch.
-    filtering: features.filtering ? { loadValues: fetchValues } : false,
+    // Wrapped rather than passed straight through so the Status list filter
+    // gets its options' `label` in whichever language the switcher is on.
+    filtering: features.filtering
+      ? { loadValues: (columnId, options) => fetchValues(columnId, options, language) }
+      : false,
   })
 
   return (

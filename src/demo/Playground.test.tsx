@@ -143,11 +143,22 @@ describe("playground", () => {
     await user.click(screen.getByRole("button", { name: /status: column actions/i }))
     await user.click(screen.getByText(defaultLabels.filter))
 
-    // These are the raw stored values, which only the server knows: the cells
-    // render them translated ("In process"), and one page of 50 rows could not
-    // produce the 25 000 count beside each. A bare `filtering: true` drops
-    // `loadValues` and the editor falls back to "no values to choose from".
-    expect(await screen.findByText("in_process", {}, { timeout: SERVER_TIMEOUT })).toBeInTheDocument()
+    // Scoped to the popover's own list: the body's Status cells read the same
+    // translated word, and an unscoped query would find both.
+    const list = await waitFor(() => {
+      const found = document.querySelector<HTMLElement>(".dt-values-list")
+      if (found === null) throw new Error("no values list yet")
+      return found
+    })
+
+    // The count beside each is server knowledge one page of 50 rows could not
+    // produce on its own. The label reads the same translated word the cells
+    // do ("In process"), not the raw server enum `loadValues` answers with —
+    // `fetchValues` carries the playground's own language into its options'
+    // `label`. A bare `filtering: true` drops `loadValues` and the editor
+    // falls back to "no values to choose from".
+    expect(await within(list).findByText("In process", {}, { timeout: SERVER_TIMEOUT })).toBeInTheDocument()
+    expect(within(list).queryByText("in_process")).not.toBeInTheDocument()
     expect(screen.queryByText(defaultLabels.noValues)).not.toBeInTheDocument()
   })
 

@@ -284,6 +284,27 @@ export interface UseDataTableOptions<TData extends RowData> {
    */
   rowCount?: number | undefined
   /**
+   * Rows before the active filter and the quick search narrowed them, for the
+   * status bar's "X of Y" — see `DataTableFeatureFlags.statusBar`.
+   *
+   * **Server mode only, and undefined is the graceful case, not a hole.** A
+   * server-side filter means the client never sees the wider set, so it has
+   * to be told; a backend that has not implemented this field yet leaves the
+   * status bar stating only how many rows matched, which is the honest
+   * reading of "unknown" rather than a state the bar has to guard against.
+   *
+   * Ignored in client mode: `data` there already IS the whole set the table
+   * filters, so `instance.pagination.unfilteredTotal` is `data.length` on its
+   * own — nothing a host could pass here would tell the table something it
+   * does not already know.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`, for the same
+   * reason {@link UseDataTableOptions.rowCount} is: the natural call site is
+   * `unfilteredTotal: data?.unfilteredTotal`, itself optional before the
+   * response arrives.
+   */
+  unfilteredTotal?: number | undefined
+  /**
    * Page the rows. Off by default in client mode, on in server mode. Pass
    * `true` for the defaults or an object to set the page size and choices.
    */
@@ -398,6 +419,7 @@ export function useDataTable<TData extends RowData>({
   canExpand,
   mode = "client",
   rowCount,
+  unfilteredTotal,
   pagination,
   filtering,
   getRowId,
@@ -422,6 +444,11 @@ export function useDataTable<TData extends RowData>({
        * a breaking change dressed as a small one. See the flag's own JSDoc.
        */
       rowNumbers: features?.rowNumbers ?? false,
+      // False for the same reason `rowNumbers` is — see that flag's JSDoc and
+      // `DataTableFeatureFlags.statusBar`'s own. `??` only steps in for a
+      // missing (`undefined`/`null`) flag; a host's own `true`, `false` or a
+      // `ReactNode` passes through exactly as given.
+      statusBar: features?.statusBar ?? false,
     }),
     [features],
   )
@@ -1608,7 +1635,7 @@ export function useDataTable<TData extends RowData>({
     if (pageState.pageIndex > last) pageState.setPageIndex(last)
   })
 
-  const paginationApi: PaginationApi = useMemo(
+  const paginationApi: PaginationApi & { unfilteredTotal: number | undefined } = useMemo(
     () => ({
       ...pageState,
       rowCount: isServer ? rowCount : clientRowCount,
@@ -1620,8 +1647,17 @@ export function useDataTable<TData extends RowData>({
             // there is to show is on screen.
             1
           : Math.max(1, Math.ceil(clientRowCount / pageState.pageSize)),
+      /*
+       * Server mode: whatever the host passed, undefined until it has — see
+       * `UseDataTableOptions.unfilteredTotal`. Client mode: `data` already IS
+       * the whole set the table filters, so its own length answers the
+       * question outright and a host has nothing to add. `data.length` and
+       * not `clientRowCount`: that one is POST-filter (`getPrePaginatedRowModel`),
+       * the very count this field exists to be compared against.
+       */
+      unfilteredTotal: isServer ? unfilteredTotal : data.length,
     }),
-    [pageState, isServer, rowCount, clientRowCount],
+    [pageState, isServer, rowCount, clientRowCount, unfilteredTotal, data.length],
   )
 
   const query = useTableQuery({

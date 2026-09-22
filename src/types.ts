@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import type { EditableDeclaration } from "./core/cellEditing"
 import type { FilterCondition, FilterValue, FilterValueOption, FilterKind } from "./core/filters"
 import type { CellEditingLabels } from "./labels/editing"
@@ -198,6 +199,29 @@ export interface DataTableFeatureFlags {
    * saved in the layout like any other.
    */
   rowNumbers?: boolean
+  /**
+   * A band under the table stating what the result set contains. **Default
+   * false**, for the same reason {@link DataTableFeatureFlags.rowNumbers} is:
+   * every other flag turns OFF a rearrangement the table has always offered,
+   * so `true` preserves what a host already had, while this one adds a band
+   * nobody asked for — a table that grew one on a minor upgrade would be a
+   * breaking change dressed as a small one.
+   *
+   * `true` renders the built-in band: total rows, or the count labelled
+   * "filtered" while a filter or the quick search is narrowing it, plus the
+   * columns the table is grouped by. Pass a `ReactNode` instead to keep the
+   * band but end it with content of your own — something this library has no
+   * business knowing, the way `toolbarContent` lets a host add to the
+   * toolbar. Same flag, two shapes, one decision.
+   *
+   * Read directly off `instance.flags.statusBar` by `<TablePagination>` too:
+   * the row count moves OUT of the footer and into the band the moment this
+   * is anything other than `false`, so the two never repeat a number that is
+   * already on screen. A shell built on `useDataTable` alone gets that
+   * hand-off for free just by flipping this flag, with no prop of its own to
+   * keep in sync.
+   */
+  statusBar?: boolean | ReactNode
 }
 
 /**
@@ -456,6 +480,36 @@ export interface DataTableLabels extends CellEditingLabels {
    * is the outermost.
    */
   rowGroupLevel: (column: string, level: number, total: number) => string
+
+  /* The status bar. See `DataTableFeatureFlags.statusBar`. */
+  /**
+   * Total rows, not narrowed by a filter or the quick search.
+   *
+   * `count` arrives pre-formatted — the same grouping `rows` prints in the
+   * footer, so the two never disagree about what a thousand looks like.
+   * `raw` is the number behind it, undefined while a server has not answered
+   * yet, for a language that agrees a noun with the count it governs
+   * (Russian); a language that does not is free to ignore it, the way
+   * `uzLabels` ignores it everywhere else.
+   */
+  statusBarRows: (count: string, raw: number | undefined) => string
+  /**
+   * Rows narrowed by a filter or the quick search. `count`/`raw` describe
+   * what matched, exactly as {@link DataTableLabels.statusBarRows} does.
+   *
+   * `total` is the pre-formatted count from BEFORE narrowing — see
+   * `UseDataTableOptions.unfilteredTotal` — or undefined while the server has
+   * not said. Absent is the honest, expected case for a server-side filter
+   * whose backend has not implemented that field yet, not a hole to fill:
+   * say only how many matched.
+   */
+  statusBarFiltered: (count: string, raw: number | undefined, total: string | undefined) => string
+  /**
+   * The columns rows are grouped by, outermost first — the same names the
+   * Row Groups chips already speak, so the status bar never invents a second
+   * way to say a column's name.
+   */
+  statusBarGroupedBy: (columns: string[]) => string
 
   /* Cell editing, beyond the strings the editor and the menu carry themselves. */
   /**

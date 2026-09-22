@@ -11,6 +11,7 @@ import {
 import { columnLabel } from "../core/columnLabel"
 import { dropRegionOf } from "../core/dropRegion"
 import { orderedLeafColumns } from "../core/pinning"
+import { isRowNumberColumn } from "../core/rowNumbers"
 import { reachableRange, type DropSide } from "../core/reorder"
 import { useDropSlot } from "../core/useDropSlot"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
@@ -71,7 +72,16 @@ export function ColumnsTab<TData extends RowData>({
    * list of only the visible ones would let a user hide a column and then
    * have no way back to it.
    */
-  const columns = orderedLeafColumns(table)
+  /*
+   * The row-number column is left out entirely, and that is the whole of
+   * "absent from the Columns panel tree": every index this list hands out —
+   * the drop slots, the reachable range a keyboard move is clamped to, the
+   * "position 3 of 8" a screen reader is told — is an index into it, so a
+   * column that is not in it cannot be shown, ticked, moved, or counted.
+   * Showing it would mean offering a tick that removes the column the
+   * `rowNumbers` flag put there, which contradicts the flag.
+   */
+  const columns = orderedLeafColumns(table).filter((column) => !isRowNumberColumn(column.id))
   const tree = buildColumnTree(columns)
   /*
    * The column holding the group values, which the grouping has lifted to the

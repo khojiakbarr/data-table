@@ -431,6 +431,29 @@
   background: var(--dt-row-hover);
 }
 
+/*
+ * The row-number column: chrome beside the data rather than data of its own.
+ *
+ * Right-aligned, so consecutive numbers line their digits up under one
+ * another — the only alignment in which a column of numbers can be scanned —
+ * and tabular figures so 111 and 999 are the same width while the page
+ * changes under them. Not selectable: a drag across the rows to copy their
+ * text should not pick up positions the server never sent.
+ *
+ * --dt-muted-fg rather than a token of its own: this is text at the table's
+ * own size, so it needs WCAG AA's 4.5:1 and not the 3:1 an affordance would,
+ * and --dt-muted-fg clears 4.5:1 on --dt-bg and on --dt-row-stripe in both
+ * palettes already (themes.test.ts, "prints the row numbers at WCAG AA").
+ * A new --dt-* token would also be one more thing both shadcn presets have to
+ * map, for a colour the palette already has.
+ */
+.dt-row-number {
+  text-align: end;
+  color: var(--dt-muted-fg);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
 /* ---------- pinning ---------- *
  * Offsets come from column.getStart()/getAfter(), which already account for
  * the live width of every preceding column — so a pinned column stays put

@@ -1,5 +1,6 @@
 import type { Column, ColumnPinningPosition, RowData } from "@tanstack/react-table"
 import type { DataTableFeatures } from "../useDataTable"
+import { isRowNumberColumn } from "./rowNumbers"
 
 /**
  * The prefix a region nobody can share is spelled with.
@@ -17,6 +18,18 @@ const SOLITARY_PREFIX = "||"
  * it may be dropped nowhere.
  */
 const GROUP_COLUMN_REGION = `${SOLITARY_PREFIX}group-column`
+
+/**
+ * The region the row-number column is alone in.
+ *
+ * It is pinned to the start, so without this it would share `"|start"` with
+ * every other start-pinned column and could be swapped with them — a move
+ * that the shell would then refuse (the column is not one of the host's
+ * declarations, so `declaredLeafIds` answers null for it) after the header
+ * had already drawn the slot for it. Its place is not the user's to set at
+ * all: it leads the table because the `rowNumbers` flag put it there.
+ */
+const ROW_NUMBER_COLUMN_REGION = `${SOLITARY_PREFIX}row-number`
 
 /**
  * A group whose leaves straddle a pinning boundary: alone in a region of its
@@ -100,6 +113,7 @@ export function dropRegionOf<TData extends RowData>(
   column: Column<DataTableFeatures, TData, unknown>,
   groupColumnId: string | undefined,
 ): string {
+  if (isRowNumberColumn(column.id)) return ROW_NUMBER_COLUMN_REGION
   if (groupColumnId !== undefined && column.id === groupColumnId) return GROUP_COLUMN_REGION
   const pinned = pinnedSideOf(column)
   if (pinned === null) return splitGroupRegion(column.id)
@@ -115,7 +129,8 @@ export function dropRegionOf<TData extends RowData>(
  * does not deliver, made one step earlier.
  *
  * @param region - A key from {@link dropRegionOf}.
- * @returns False for the group column and for a group split by pinning.
+ * @returns False for the row-number column, for the group column, and for a
+ *   group split by pinning.
  *
  * @example
  * const canDrag = flags.reordering && isMovableRegion(dropRegionOf(column, groupId))

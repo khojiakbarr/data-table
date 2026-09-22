@@ -170,6 +170,34 @@ export interface DataTableFeatureFlags {
    * the surrounding layout immediately overrides.
    */
   heightGrip?: boolean
+  /**
+   * A leading column numbering the rows. **Default false.**
+   *
+   * The odd one out here, and deliberately: every other flag turns OFF a
+   * rearrangement the table has always offered, so `true` preserves what a
+   * host already had. This one ADDS furniture nobody asked for, and a table
+   * that grew a new column on a minor upgrade would be a breaking change
+   * dressed as a small one.
+   *
+   * The number is the row's 1-based place in the WHOLE result set —
+   * `pageIndex * pageSize + indexOnPage + 1` — not in the page, because a
+   * count restarting at 1 on page 2 of a hundred thousand rows tells the user
+   * nothing they did not already know.
+   *
+   * **Group rows are numbered too**, which is not what AG Grid does. Numbering
+   * only the leaves needs to know how many group headers precede this page,
+   * and no field on the wire carries that; numbering everything is computable
+   * from the page offset alone and is truthful about position in the list
+   * being looked at. The one row with no number is the "continued" header the
+   * client draws from `startPath`, which the server never sent.
+   *
+   * The column is chrome, not data: pinned to the start, not unpinnable, not
+   * sortable, filterable, groupable, editable, hideable or reorderable, and
+   * absent from the Columns panel — a tick that could remove it would
+   * contradict this very flag. It is resizable, and a width the user sets is
+   * saved in the layout like any other.
+   */
+  rowNumbers?: boolean
 }
 
 /**
@@ -243,6 +271,15 @@ export interface DataTableLabels extends CellEditingLabels {
    * what a screen reader reads on arriving there, not decoration.
    */
   tableBody: string
+  /**
+   * The row-number column's header, for a screen reader.
+   *
+   * The header is empty to the eye — a heading over a column of positions
+   * would be noise a user reads once and then looks past — so this is the
+   * only name the column has, and it is what every control in that header
+   * (the resize handle) is named after.
+   */
+  rowNumber: string
   expandRow: string
   collapseRow: string
   columnActions: string

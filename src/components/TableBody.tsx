@@ -2,6 +2,7 @@ import type { Row, RowData } from "@tanstack/react-table"
 import { useCallback, useEffect, useMemo, type ReactNode, type RefObject } from "react"
 import { groupValueLabel, isGroupRow } from "../core/grouping"
 import type { CellEditing } from "../core/useCellEditing"
+import { rowNumberAt } from "../core/rowNumbers"
 import { useRowVirtualizer } from "../core/useRowVirtualizer"
 import { displayItemKey } from "../core/virtualRows"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
@@ -163,7 +164,18 @@ export function TableBody<TData extends RowData>({
     <tbody>
       {continuation ? (
         <tr className="dt-tr dt-group-row dt-group-continued" role="presentation">
-          <td className="dt-td dt-group-cell" colSpan={columnCount}>
+          {/*
+            The one row that takes NO number. It is drawn by the client from
+            `startPath`, not returned by the server, so counting it would put
+            every row after a page boundary one out. The cell is kept — the
+            number column's gutter runs the whole height of the body — and
+            left empty.
+          */}
+          {instance.flags.rowNumbers ? <td className="dt-td dt-row-number" /> : null}
+          <td
+            className="dt-td dt-group-cell"
+            colSpan={instance.flags.rowNumbers ? columnCount - 1 : columnCount}
+          >
             <div className="dt-lead">
               <span className="dt-group-value">{labels.groupContinued(continuation)}</span>
             </div>
@@ -180,7 +192,7 @@ export function TableBody<TData extends RowData>({
               data-depth={item.row.depth}
               data-index={index}
               /* A panel is part of the row it belongs to, not a row of its own. */
-              aria-rowindex={item.position + rowIndexOffset + headerRowCount + 1}
+              aria-rowindex={rowNumberAt(item.position, rowIndexOffset) + headerRowCount}
               ref={measureElement}
             >
               <td className="dt-detail-cell" colSpan={columnCount}>

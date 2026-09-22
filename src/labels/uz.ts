@@ -81,6 +81,7 @@ export const uzLabels: DataTableLabels = {
     "Balandlikni oʻzgartirish uchun yuqoriga va pastga strelkalar, Shift bilan katta qadam",
   tableHeight: (pixels) => `Jadval balandligi ${pixels} piksel`,
   tableBody: "Jadval qatorlari",
+  rowNumber: "Qator raqami",
   expandRow: "Qatorni ochish",
   collapseRow: "Qatorni yopish",
   columnActions: "Ustun amallari",

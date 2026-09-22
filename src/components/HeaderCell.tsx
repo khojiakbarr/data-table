@@ -13,6 +13,7 @@ import { classNames } from "../core/classNames"
 import { columnLabel } from "../core/columnLabel"
 import { dropRegionOf, isMovableRegion } from "../core/dropRegion"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
+import { isRowNumberColumn } from "../core/rowNumbers"
 import { dropSideAt, type DropSide } from "../core/reorder"
 import type { DropSlot } from "../core/useDropSlot"
 import { clampColumnWidth } from "../core/sizing"
@@ -100,6 +101,18 @@ export function HeaderCell<TData extends RowData>({
    * sortable column.
    */
   const isGroup = column.columns.length > 0
+
+  /**
+   * The row-number column's header: empty to the eye, named for a screen
+   * reader, and offering nothing but its resize handle.
+   *
+   * No kebab, because every item a column menu holds is either impossible
+   * here (sort, filter, pin, hide — all refused by the column itself) or a
+   * second route to the width the handle beside it already sets. A menu whose
+   * only content is a duplicate is not a menu, and the spec asks for a header
+   * that is empty to look at.
+   */
+  const isRowNumber = isRowNumberColumn(column.id)
 
   const pinning = headerPinning(header)
   const pinned = pinning.side
@@ -250,7 +263,14 @@ export function HeaderCell<TData extends RowData>({
   }
 
   const label = flexRender(column.columnDef.header, header.getContext())
-  const columnName = columnLabel(column.id, column.columnDef.header)
+  /*
+   * The row-number column has no header text to fall back on and no id worth
+   * reading out, so its name is the `rowNumber` label — which is also what
+   * the sr-only span below puts in the header cell itself, so the column is
+   * announced when a screen reader reaches it rather than only when it
+   * reaches one of its controls.
+   */
+  const columnName = isRowNumber ? labels.rowNumber : columnLabel(column.id, column.columnDef.header)
 
   return (
     <th
@@ -272,7 +292,7 @@ export function HeaderCell<TData extends RowData>({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onContextMenu={
-        isGroup
+        isGroup || isRowNumber
           ? undefined
           : (event) => {
               event.preventDefault()
@@ -282,6 +302,7 @@ export function HeaderCell<TData extends RowData>({
     >
       {/* The tooltip lives on the label area so the buttons keep their own. */}
       <div className="dt-th-inner" title={canDrag ? labels.dragHint : undefined}>
+        {isRowNumber ? <span className="dt-sr-only">{columnName}</span> : null}
         {canSort ? (
           <button
             type="button"
@@ -327,7 +348,7 @@ export function HeaderCell<TData extends RowData>({
         ) : null}
       </div>
 
-      {isGroup ? null : (
+      {isGroup || isRowNumber ? null : (
         <button
           type="button"
           className="dt-kebab"

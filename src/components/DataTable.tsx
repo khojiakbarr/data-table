@@ -65,6 +65,7 @@ export const defaultLabels: DataTableLabels = {
   resizeTableHint: "Press the up and down arrows to resize, Shift for larger steps",
   tableHeight: (pixels) => `Table height ${pixels} pixels`,
   tableBody: "Table rows",
+  rowNumber: "Row number",
   expandRow: "Expand row",
   collapseRow: "Collapse row",
   columnActions: "Column actions",

@@ -32,6 +32,11 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react"
 import { declaredLeafIds, deriveColumnId, leafIdsOf } from "./core/columnIds"
 import { dropRegionOf } from "./core/dropRegion"
+import {
+  ROW_NUMBER_COLUMN_ID,
+  rowNumberColumnDef,
+  rowNumberColumnWidth,
+} from "./core/rowNumbers"
 import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
 import {
@@ -410,6 +415,13 @@ export function useDataTable<TData extends RowData>({
       pinning: features?.pinning ?? true,
       hiding: features?.hiding ?? true,
       heightGrip: features?.heightGrip ?? true,
+      /*
+       * False, unlike every flag above it. The others turn OFF something the
+       * table has always done, so `true` is what a host already had; this one
+       * adds a column, and a table that grew one on a minor upgrade would be
+       * a breaking change dressed as a small one. See the flag's own JSDoc.
+       */
+      rowNumbers: features?.rowNumbers ?? false,
     }),
     [features],
   )
@@ -417,6 +429,26 @@ export function useDataTable<TData extends RowData>({
   const store = useMemo(() => storage ?? noLayoutStorage(), [storage])
 
   const columnIds = useMemo(() => leafIdsOf(columns), [columns])
+
+  /*
+   * The same ids, plus the row-number column's, for the STORED layout alone.
+   *
+   * `pruneLayout` drops every reference to a column the table does not
+   * define, which is what keeps a stale layout from resurrecting a column
+   * that has been removed — and without this it would also drop the width the
+   * user dragged the row-number column to, on the very next load. The column
+   * really is one the table defines while the flag is on, so saying so here
+   * is honest rather than a loophole.
+   *
+   * It is `columnIds` and NOT this that everything else reads — the filter
+   * prune, the grouping prune, the natural-order fallback — because those
+   * answer questions about the HOST's columns, and the row-number column is
+   * not one: nothing may filter it, group by it, or move it.
+   */
+  const layoutColumnIds = useMemo(
+    () => (flags.rowNumbers ? [ROW_NUMBER_COLUMN_ID, ...columnIds] : columnIds),
+    [flags.rowNumbers, columnIds],
+  )
 
   const bounds: ColumnBounds = useMemo(
     () => ({ min: minColumnWidth, max: maxColumnWidth }),
@@ -491,7 +523,9 @@ export function useDataTable<TData extends RowData>({
     id,
     store,
     initialLayout,
-    columnIds,
+    // The stored layout may name the row-number column's width; see
+    // `layoutColumnIds`.
+    columnIds: layoutColumnIds,
     filterKinds,
     /*
      * Both, and not `persist` alone: `filteringOptions?.persist ?? true` reads
@@ -758,10 +792,38 @@ export function useDataTable<TData extends RowData>({
    * change whose header stands above it, and a leaf that leads the table from
    * inside a group splits that group's header in two.
    */
-  const tableColumns = useMemo(
-    () => (groupColumnId === undefined ? columns : hoistGroupColumn(columns, groupColumnId)),
-    [columns, groupColumnId],
+  /*
+   * How wide the row-number column is declared, from the number it will have
+   * to print in the last row.
+   *
+   * The COUNT is not the dependency — the width is. A count changes whenever
+   * a filter narrows the result; the width changes only when the count gains
+   * or loses a digit, and rebuilding every column definition (which is what a
+   * new `tableColumns` array makes TanStack do) on every count change would
+   * be a rebuild per keystroke of a search.
+   *
+   * In server mode the count is `rowCount` and the table never sees the other
+   * pages; in client mode `data` IS the whole result, so its length is the
+   * same quantity read where the client keeps it.
+   */
+  const rowNumberWidth = flags.rowNumbers
+    ? rowNumberColumnWidth(isServer ? rowCount : data.length)
+    : 0
+  const rowNumberDef = useMemo(
+    () => (flags.rowNumbers ? rowNumberColumnDef<TData>(rowNumberWidth) : null),
+    [flags.rowNumbers, rowNumberWidth],
   )
+
+  /*
+   * The row-number column leads EVERYTHING, the group column included, which
+   * is why it is prepended after the hoist rather than inside it: the hoist
+   * decides where the host's own columns stand, and this column stands before
+   * all of them.
+   */
+  const tableColumns = useMemo(() => {
+    const declared = groupColumnId === undefined ? columns : hoistGroupColumn(columns, groupColumnId)
+    return rowNumberDef === null ? declared : [rowNumberDef, ...declared]
+  }, [columns, groupColumnId, rowNumberDef])
 
   /*
    * Order as the table renders it: the user's own, with the group column
@@ -812,16 +874,33 @@ export function useDataTable<TData extends RowData>({
    * otherwise it leads the section it is in.
    */
   const columnPinning = useMemo(() => {
-    if (groupColumnId === undefined) return layout.columnPinning
-    const { start, end } = layout.columnPinning
-    if (start.includes(groupColumnId)) {
-      return { ...layout.columnPinning, start: leadColumn(start, groupColumnId) }
-    }
-    if (end.includes(groupColumnId)) {
-      return { ...layout.columnPinning, end: leadColumn(end, groupColumnId) }
-    }
-    return layout.columnPinning
-  }, [groupColumnId, layout.columnPinning])
+    const grouped = (() => {
+      if (groupColumnId === undefined) return layout.columnPinning
+      const { start, end } = layout.columnPinning
+      if (start.includes(groupColumnId)) {
+        return { ...layout.columnPinning, start: leadColumn(start, groupColumnId) }
+      }
+      if (end.includes(groupColumnId)) {
+        return { ...layout.columnPinning, end: leadColumn(end, groupColumnId) }
+      }
+      return layout.columnPinning
+    })()
+    if (!flags.rowNumbers) return grouped
+    /*
+     * And the row-number column leads the start section, which — since
+     * TanStack renders that section in `columnPinning.start` order and puts
+     * it before everything else — is how "it leads the table, before the
+     * group column" is actually enforced. Derived, never written into
+     * `layout.columnPinning`, for the same reason the lift above is not:
+     * turning `rowNumbers` off again has to leave the user's own pinning
+     * exactly as it was, and the only way that is true by construction is if
+     * nothing was written to begin with.
+     *
+     * Not `columnOrder`: the column is pinned, and a pinned section is
+     * rendered from these arrays rather than from the flat order.
+     */
+    return { ...grouped, start: [ROW_NUMBER_COLUMN_ID, ...grouped.start] }
+  }, [groupColumnId, layout.columnPinning, flags.rowNumbers])
 
   /*
    * Widths as the table renders them: the user's own, with a floor under the

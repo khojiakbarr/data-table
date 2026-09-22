@@ -3,6 +3,7 @@ import { classNames, insertAt } from "../core/classNames"
 import { isSameCell } from "../core/cellEditing"
 import { groupValueLabel, type GroupRow } from "../core/grouping"
 import { pinnedStyle } from "../core/pinning"
+import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
 import type { CellEditing } from "../core/useCellEditing"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -95,7 +96,33 @@ export function GroupBodyRow<TData extends RowData>({
   const value = groupValueLabel(key, valueColumn?.columnDef.meta?.groupLabel, labels.blanks)
   const name = labels.groupRow(value, group.count)
 
-  const cells = row.getVisibleCells().map((cell, index) => {
+  /*
+   * A group header is numbered like any other row, which is NOT what AG Grid
+   * does — and the difference is not an oversight. Numbering only the leaves
+   * needs to know how many group headers come before this page, and no field
+   * on the wire carries that: a page is a window, and the client cannot count
+   * what it has never been sent. Numbering every flattened row is computable
+   * from the page offset alone, and it is truthful about position in the list
+   * the user is actually looking at.
+   */
+  const number = rowNumberAt(position, rowIndexOffset)
+  const visible = row.getVisibleCells()
+  /* The group's chevron and value belong beside the first real column; see BodyRow. */
+  const leadIndex = visible.findIndex((cell) => !isRowNumberColumn(cell.column.id))
+
+  const cells = visible.map((cell, index) => {
+    if (isRowNumberColumn(cell.column.id)) {
+      return (
+        <td
+          key={cell.id}
+          className={classNames("dt-td", "dt-row-number", cell.column.getIsPinned() && "dt-pinned")}
+          style={pinnedStyle(cell.column)}
+          data-column-id={cell.column.id}
+        >
+          {number}
+        </td>
+      )
+    }
     const isGroupCell = cell.column.id === groupColumnId
     return (
       <td
@@ -103,7 +130,7 @@ export function GroupBodyRow<TData extends RowData>({
         className={classNames(
           "dt-td",
           cell.column.getIsPinned() && "dt-pinned",
-          index === 0 && "dt-td-lead",
+          index === leadIndex && "dt-td-lead",
           isGroupCell && "dt-group-cell",
         )}
         style={pinnedStyle(cell.column)}
@@ -137,7 +164,7 @@ export function GroupBodyRow<TData extends RowData>({
       className="dt-tr dt-group-row"
       data-depth={depth}
       data-parity={position % 2 === 0 ? "even" : "odd"}
-      aria-rowindex={position + rowIndexOffset + headerRowCount + 1}
+      aria-rowindex={number + headerRowCount}
     >
       {insertAt(
         cells,

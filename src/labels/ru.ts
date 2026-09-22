@@ -96,6 +96,7 @@ export const ruLabels: DataTableLabels = {
   tableHeight: (pixels) =>
     `Высота таблицы ${pixels} ${plural(pixels, "пиксель", "пикселя", "пикселей")}`,
   tableBody: "Строки таблицы",
+  rowNumber: "Номер строки",
   expandRow: "Развернуть строку",
   collapseRow: "Свернуть строку",
   columnActions: "Действия со столбцом",

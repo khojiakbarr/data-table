@@ -3,6 +3,7 @@ import type { CSSProperties } from "react"
 import { isSameCell } from "../core/cellEditing"
 import { classNames, insertAt } from "../core/classNames"
 import { pinnedStyle } from "../core/pinning"
+import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
 import type { CellEditing } from "../core/useCellEditing"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -81,8 +82,38 @@ export function BodyRow<TData extends RowData>({
   const cells = row.getVisibleCells()
   const expandable = row.subRows.length > 0 || hasDetail
   const isExpanded = expandable && row.getIsExpanded()
+  /*
+   * The row's place in the whole result set, printed in the row-number cell
+   * and — plus the header rows — announced as `aria-rowindex` below. One
+   * expression for both: see {@link rowNumberAt}.
+   */
+  const number = rowNumberAt(position, rowIndexOffset)
+  /*
+   * Which cell leads the row's CONTENT, which is not always the first cell:
+   * with `rowNumbers` on, the first cell is the number, and the expand toggle
+   * belongs beside the row's first real value rather than beside its
+   * position. Everything that used to ask `index === 0` asks this instead.
+   */
+  const leadIndex = cells.findIndex((cell) => !isRowNumberColumn(cell.column.id))
 
   const rendered = cells.map((cell, index) => {
+    if (isRowNumberColumn(cell.column.id)) {
+      return (
+        <td
+          key={cell.id}
+          className={classNames("dt-td", "dt-row-number", cell.column.getIsPinned() && "dt-pinned")}
+          style={pinnedStyle(cell.column)}
+          data-column-id={cell.column.id}
+          /*
+           * No cell menu here, unlike every other cell: the column is chrome,
+           * carries none of the host's data, and an Edit item explaining it
+           * cannot be edited is a menu that exists only to say no.
+           */
+        >
+          {number}
+        </td>
+      )
+    }
     const isGroupCell = cell.column.id === groupColumnId
     const self = { rowId: row.id, columnId: cell.column.id }
     const isEditing = isSameCell(editing?.editor?.cell, self)
@@ -128,7 +159,7 @@ export function BodyRow<TData extends RowData>({
         className={classNames(
           "dt-td",
           cell.column.getIsPinned() && "dt-pinned",
-          index === 0 && "dt-td-lead",
+          index === leadIndex && "dt-td-lead",
           isGroupCell && "dt-group-cell",
         )}
         style={pinnedStyle(cell.column)}
@@ -163,7 +194,7 @@ export function BodyRow<TData extends RowData>({
         }
       >
         {override?.pending === true ? <span className="dt-sr-only">{labels.editPending}</span> : null}
-        {index === 0 || isGroupCell ? (
+        {index === leadIndex || isGroupCell ? (
           <div className="dt-lead">
             {/*
               The detail/tree toggle belongs to the FIRST cell, the group
@@ -171,7 +202,7 @@ export function BodyRow<TData extends RowData>({
               when they are the same one both appear, toggle first, because
               each answers a different question about the row.
             */}
-            {index === 0 &&
+            {index === leadIndex &&
               (expandable ? (
                 <ExpandToggle
                   expanded={isExpanded}
@@ -187,9 +218,7 @@ export function BodyRow<TData extends RowData>({
                    * colon form is `GroupBodyRow`'s, kept identical so the two
                    * read as one control rather than two.
                    */
-                  label={`${isExpanded ? labels.collapseRow : labels.expandRow}: ${
-                    position + rowIndexOffset + 1
-                  }`}
+                  label={`${isExpanded ? labels.collapseRow : labels.expandRow}: ${number}`}
                   onToggle={() => row.toggleExpanded()}
                 />
               ) : (
@@ -210,7 +239,7 @@ export function BodyRow<TData extends RowData>({
       className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
       data-depth={row.depth}
       data-parity={position % 2 === 0 ? "even" : "odd"}
-      aria-rowindex={position + rowIndexOffset + headerRowCount + 1}
+      aria-rowindex={number + headerRowCount}
       style={
         height === undefined
           ? undefined

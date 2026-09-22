@@ -84,7 +84,7 @@ function pointAt(
   fireEvent(element, event)
 }
 
-const openPanel = () => fireEvent.click(screen.getByRole("button", { name: "Columns" }))
+const openPanel = () => fireEvent.click(screen.getByRole("tab", { name: "Columns" }))
 
 const zone = (): HTMLElement | null => document.querySelector("ul.dt-rowgroups-list")
 

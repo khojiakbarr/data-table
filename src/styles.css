@@ -860,12 +860,19 @@
 
 /*
  * Narrow widths. 640px is where a 44px rail plus a 260px panel leaves the
- * table under 340px — less than two average columns, so the bar would be
- * eating the thing it exists to configure. Below it the rail is withdrawn
- * while closed, the toolbar's Columns button is the only way in, and the
- * panel goes back to OVERLAYING the table at full width, the way it did
- * before it was docked; the rail comes back horizontally across the top of
- * that overlay so the active tab still closes it.
+ * table under 340px — less than two average columns, so an OPEN bar would be
+ * eating the thing it exists to configure. So below it the panel goes back to
+ * OVERLAYING the table at full width, the way it did before it was docked,
+ * with the rail laid horizontally across the top of that overlay so the
+ * active tab still closes it.
+ *
+ * The rail itself stays put while the panel is closed, exactly as it is at
+ * every other width. It used to be withdrawn here, on the grounds that the
+ * toolbar's Columns button was the way in — but that button is gone, and it
+ * was never the whole story anyway: a host rendering `toolbar={false}` had no
+ * way into the panel below 640px at all. 44px of furniture is a smaller price
+ * than an unreachable feature, and it is the same 44px the user already knows
+ * from the wider layout rather than a second, narrower idiom to learn.
  *
  * A viewport media query and not a container query, deliberately:
  * `container-type: inline-size` on `.dt-root` would make it a containing
@@ -873,7 +880,7 @@
  * popover are fixed and clamped to the viewport on purpose.
  */
 @media (max-width: 640px) {
-  .dt-sidebar {
+  .dt-sidebar[data-dt-open] {
     position: absolute;
     inset: 0;
     z-index: 10;
@@ -883,25 +890,21 @@
     background: var(--dt-bg);
   }
 
-  .dt-sidebar:not([data-dt-open]) {
-    display: none;
-  }
-
-  .dt-sidebar-rail {
+  .dt-sidebar[data-dt-open] .dt-sidebar-rail {
     flex-direction: row;
     width: auto;
     border-radius: 0;
     border-bottom: 1px solid var(--dt-border);
   }
 
-  .dt-sidebar-tab {
+  .dt-sidebar[data-dt-open] .dt-sidebar-tab {
     writing-mode: horizontal-tb;
     width: auto;
     min-height: 0;
     padding: 8px 12px;
   }
 
-  .dt-sidebar-tab[aria-selected="true"] {
+  .dt-sidebar[data-dt-open] .dt-sidebar-tab[aria-selected="true"] {
     box-shadow: inset 0 -2px 0 0 var(--dt-accent);
   }
 
@@ -1385,9 +1388,22 @@
   border-radius: 3px;
 }
 
-/* Leave room so the label never runs under the kebab. */
-.dt-th:hover .dt-th-inner,
-.dt-th:focus-within .dt-th-inner {
+/*
+ * The kebab's room is RESERVED, not made when it appears.
+ *
+ * It used to be added on `:hover` and `:focus-within`, which moved the label
+ * sideways under the pointer — and moved the point a long label truncates at,
+ * so the text changed as well as its position. Nothing about the header is
+ * different on hover; only the affordance's opacity is, and an affordance
+ * that pushes the thing it belongs to is a worse way of announcing itself
+ * than simply fading in where it already stood (WCAG 3.2.5: no change of
+ * context the user did not ask for).
+ *
+ * Scoped to the headers that HAVE a kebab: `HeaderCell` renders none over a
+ * column group, and reserving space there would push a centred group label
+ * permanently off centre for a button that is never coming.
+ */
+.dt-th:not(.dt-th-group) .dt-th-inner {
   padding-inline-end: 26px;
 }
 
@@ -1628,6 +1644,79 @@
 .dt-toolbar ~ .dt-error {
   border-start-start-radius: 0;
   border-start-end-radius: 0;
+}
+
+/*
+ * What an edit has to say for itself: a refused write, an editor its row left
+ * behind, a row a saved edit filtered away. The same strip as .dt-error, in
+ * the same slot, because it answers the same question ("why is the table not
+ * showing what I expected") — it differs only in carrying a way to dismiss it.
+ *
+ * No colour of its own. A --dt-danger token would have to be mapped by both
+ * shadcn presets (themes.test.ts) for a band of red behind a sentence, and
+ * WCAG 1.4.1 never allowed colour to be the only carrier of the meaning in
+ * any case: the sentence says what went wrong, and the failure is set in
+ * full-strength --dt-fg and weighted rather than tinted.
+ */
+.dt-edit-notice {
+  flex: none;
+  border-radius: inherit;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dt-border);
+  background: var(--dt-bg);
+  color: var(--dt-fg);
+  font-size: 13px;
+  /* transform and opacity only: a strip arriving above the rows must not
+     relayout them as it does. */
+  animation: dt-edit-notice-in 150ms ease both;
+}
+
+.dt-edit-notice-error {
+  font-weight: 500;
+}
+
+/* The strip is not the first thing in the column once a toolbar is above it,
+   nor the last once anything follows — the same two joins .dt-error makes. */
+.dt-toolbar ~ .dt-edit-notice {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.dt-edit-notice ~ .dt-viewport {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.dt-edit-notice span {
+  /* The sentence takes the room, so the Dismiss button stays at the far edge
+     rather than drifting in beside a short message. */
+  flex: 1;
+}
+
+@keyframes dt-edit-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* A pending cell, while the host's promise is in flight. Dimmed rather than
+   badged: the value on screen is the one the user asked for, and a badge in
+   the cell would push it around every time a write started or finished. */
+.dt-td[data-dt-pending] {
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The strip still appears; it just stops moving to get there. */
+  .dt-edit-notice {
+    animation: none;
+  }
 }
 
 .dt-skeleton {
@@ -1899,4 +1988,85 @@
 .dt-group-chip-ghost {
   border-style: dashed;
   color: var(--dt-muted-fg);
+}
+
+/* ---------- the cell menu ---------- */
+
+/*
+ * A cell menu offers Edit even where it cannot be taken (§2: a menu that
+ * sometimes fails to appear teaches the user the feature is broken). The item
+ * carries `aria-disabled` rather than `disabled`, so it stays focusable and
+ * the reason on it is actually announced — which leaves these two rules as the
+ * only thing that says "not now" to a sighted user.
+ */
+.dt-menu-item[aria-disabled="true"] {
+  color: var(--dt-muted-fg);
+  cursor: default;
+}
+
+.dt-menu-item[aria-disabled="true"]:hover {
+  background: none;
+}
+
+/*
+ * Why a menu item cannot be taken, under its label. Full --dt-muted-fg rather
+ * than a dimmed --dt-fg: it clears 4.5:1 on --dt-bg in both palettes on its
+ * own (themes.test.ts, "base palette"), which an opacity fraction of another
+ * token would not, and this text is small.
+ */
+.dt-menu-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--dt-muted-fg);
+  white-space: normal;
+}
+
+/* ---------- the cell editor ---------- */
+
+.dt-cell-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Fills the cell it replaced instead of sizing to its own content, so the
+     column does not jump the moment the editor opens or commits. */
+  width: 100%;
+}
+
+.dt-cell-editor .dt-filter-input,
+.dt-cell-editor .dt-select {
+  width: 100%;
+}
+
+/*
+ * Why the refusal is not red: a colour meaning "wrong" would need a
+ * --dt-danger token, and every --dt-* token has to be mapped by both shadcn
+ * presets (themes.test.ts) — an avoidable addition. The refusal is a sentence
+ * saying what is wrong, which WCAG 1.4.1 requires in any case (colour was
+ * never allowed to be the only carrier), so it is set in full-strength
+ * --dt-fg and weighted rather than tinted.
+ */
+.dt-cell-editor-error {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dt-fg);
+  animation: dt-cell-editor-error-in 120ms ease both;
+}
+
+/* transform and opacity only: the refusal arriving under a field must not
+   relayout the row it is in. */
+@keyframes dt-cell-editor-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The refusal still appears; it just stops moving to get there. */
+  .dt-cell-editor-error {
+    animation: none;
+  }
 }

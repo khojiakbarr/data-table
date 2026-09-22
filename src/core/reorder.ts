@@ -27,24 +27,90 @@ export function moveColumn(
   targetId: string,
   side: DropSide,
 ): string[] {
-  const next = [...order]
-  const from = next.indexOf(draggedId)
-  const targetIndex = next.indexOf(targetId)
+  // One column is a run of one. Expressed in terms of {@link moveRun} rather
+  // than beside it: a group drag and a leaf drag land in the same places
+  // because they are literally the same arithmetic, not two copies of it.
+  return moveRun(order, [draggedId], [targetId], side)
+}
 
-  if (from === -1 || targetIndex === -1 || draggedId === targetId) return next
+/**
+ * Where each of a set of ids sits in an order.
+ *
+ * @param order - The order to look them up in.
+ * @param ids - Distinct ids.
+ * @returns Their positions, ascending, or `null` when the set is empty or one
+ *   of them is not in this order at all.
+ */
+function positionsOf(order: readonly string[], ids: readonly string[]): number[] | null {
+  if (ids.length === 0) return null
+  const positions: number[] = []
+  for (const id of ids) {
+    const index = order.indexOf(id)
+    if (index === -1) return null
+    positions.push(index)
+  }
+  return positions.sort((a, b) => a - b)
+}
 
-  // The gap the caret sits in, expressed against the ORIGINAL array.
-  const gap = side === "start" ? targetIndex : targetIndex + 1
+/**
+ * Move a whole run of columns next to another run.
+ *
+ * What a column GROUP is, to an order that only knows leaves: a group header
+ * stands over a run of leaf ids, and dragging it moves that run — every leaf,
+ * in the order it already had — to one side of the target's run. A leaf
+ * dragged onto a group is the same move with a run of one, which is why the
+ * group is never landed *inside*: the destination is a gap at one END of the
+ * target's run, never a position within it.
+ *
+ * The run is a SET of ids and not a slice, because the two orders this is
+ * applied to do not always hold a group's leaves side by side. A grouped
+ * table lifts the column holding the group values to the front of its
+ * section, and that lift is a view of the stored order rather than a change
+ * to it — so a group the user sees as three columns in a row can be, in the
+ * array being rewritten, three ids with the hoisted one still sitting between
+ * two of them. Demanding a contiguous slice refused exactly that move, and
+ * refused it after the header had already drawn the slot for it. Gathering
+ * the ids instead closes the gap the lifted column left, which is the same
+ * arrangement read back.
+ *
+ * Both runs still have to exist in `order`, and they may not overlap: a
+ * column dropped on itself, or a leaf dropped on the group it belongs to,
+ * names no gap to move to.
+ *
+ * @param order - Current order. Not modified.
+ * @param moved - The ids being moved, in any order.
+ * @param target - The ids being dropped onto, likewise.
+ * @param side - Whether the drop was on the target run's leading or trailing edge.
+ * @returns A new order, or the original array's contents when nothing moves.
+ *
+ * @example
+ * moveRun(["a", "b", "c", "d"], ["a", "b"], ["d"], "end") // ["c", "d", "a", "b"]
+ */
+export function moveRun(
+  order: readonly string[],
+  moved: readonly string[],
+  target: readonly string[],
+  side: DropSide,
+): string[] {
+  const from = positionsOf(order, moved)
+  const to = positionsOf(order, target)
+  if (from === null || to === null) return [...order]
 
-  // Removing the dragged column shifts every later index down by one, so the
-  // destination has to be corrected before the insert — this is the step the
-  // `splice(to, 0, ...splice(from, 1))` idiom silently skips.
-  const insertAt = from < gap ? gap - 1 : gap
-  if (insertAt === from) return next
+  const lifted = new Set(from)
+  if (to.some((index) => lifted.has(index))) return [...order]
 
-  const [moved] = next.splice(from, 1)
-  next.splice(insertAt, 0, moved as string)
-  return next
+  // The gap the caret sits in, expressed against the ORIGINAL array: the far
+  // edge of the target's run, whatever else happens to lie inside it.
+  const gap = side === "start" ? (to[0] as number) : (to[to.length - 1] as number) + 1
+
+  // Taking the run out shifts every later index down by however many of it
+  // stood before the gap, so the destination has to be corrected before the
+  // insert — the step the `splice(to, 0, ...splice(from, 1))` idiom skips.
+  const insertAt = gap - from.filter((index) => index < gap).length
+
+  const block = order.filter((_, index) => lifted.has(index))
+  const rest = order.filter((_, index) => !lifted.has(index))
+  return [...rest.slice(0, insertAt), ...block, ...rest.slice(insertAt)]
 }
 
 /**

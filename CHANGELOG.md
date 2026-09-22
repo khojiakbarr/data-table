@@ -18,9 +18,19 @@ releases are summarised in one line rather than reconstructed.
   only way back was Show all. A group keeps its row for the same reason, even
   once every leaf under it is hidden — while its header does leave the table,
   which is what hiding the columns means.
-- Reordering is unchanged: `dropRegionOf` still owns the group boundary, a
-  group row has no drag handle of its own, and both drag surfaces resolve every
-  move against the same flat order they always did.
+- **A column group's header is draggable**, and dragging it moves the whole
+  group — every leaf under it, in the order it already had. A group moves among
+  its siblings at its own level: never into another group, never across a
+  pinned boundary, and never onto one of its own leaves. That is the rule its
+  leaves already obeyed, said one level up, so `dropRegionOf` still owns the
+  boundary for every surface and no slot appears where the drop would be
+  refused. The drop slot is drawn on the sibling the group will stand in place
+  of, so it outlines the whole destination rather than one column of it.
+  - The Columns tab is unchanged: a group row there is still a checkbox and a
+    collapse control, with no drag handle of its own.
+  - The group column of a grouped table stays undraggable and unhideable, as
+    does a group whose leaves straddle a pinning boundary — neither has a place
+    of its own to be moved to.
 - **The playground's columns are grouped** — "Document" over Code and Partner,
   "Payment" over Amount and Status, with Flagged and Date left flat, so the
   header has a grouped half and a flat one.
@@ -35,8 +45,9 @@ releases are summarised in one line rather than reconstructed.
     to the rail tab;
   - **an outside click no longer closes it.** A bar docked beside the table is
     furniture, and using the table is not a request to dismiss it.
-  Below 640px the rail is withdrawn, the toolbar's Columns button stays the way
-  in, and the panel overlays the card at full width as it did before.
+  Below 640px the rail stays docked where it is, and the panel it opens
+  overlays the card at full width as it did before, with the rail laid
+  horizontally across the top of that overlay.
 - `DataTable` renders its toolbar, status, viewport and footer inside a new
   `.dt-main` element, the flex sibling of `.dt-sidebar`. A host that styled
   `.dt-root > .dt-toolbar`, `.dt-root > .dt-error` or any other direct-child
@@ -45,11 +56,55 @@ releases are summarised in one line rather than reconstructed.
   `.dt-root:has(> .dt-panel-floating)`. It exists for a panel that can be
   painted over by a later sibling table, which a docked panel — in flow, inside
   the card — cannot be.
-- The toolbar's Columns button no longer claims `aria-haspopup="dialog"`: what
-  it opens is the side bar's tab panel, in flow beside the table.
+- **The toolbar's Columns button is gone**, and with it the `columnsButton`
+  label. The rail's own tab is the way in, at every width: two controls for one
+  panel, one of them duplicating a tab standing beside it, was one too many —
+  and the button never covered a shell rendering `toolbar={false}` anyway,
+  which is what made it the wrong thing to hang the narrow-width fallback on.
+  A host that translated `columnsButton` should drop the key; `columnsTitle`
+  names both the rail tab and the panel heading.
+- **Hovering a header no longer moves its label.** The room for the ⋮ is
+  reserved in every state instead of appearing with it, so the text does not
+  shift sideways under the pointer and the point a long label truncates at
+  stays put. A group header, which has no ⋮, no longer reserves or shifts
+  anything at all.
 
 ### Added
 
+- **`muiTokens(theme)` — a Material UI bridge**, exported from the package
+  root. It maps a MUI theme's palette, typography and radius onto the
+  `--dt-*` tokens and returns them as a style object to spread onto the
+  table: `<DataTable instance={table} style={muiTokens(theme)} />`. The
+  shadcn presets are stylesheets that point the tokens at the host's own
+  custom properties, and a MUI **v5** application publishes none — there is
+  nothing for a stylesheet to read — so this one reads the theme instead,
+  which also covers v6's CSS-variables mode, where `theme.palette` holds the
+  `var(--mui-…)` references. The library does not depend on MUI and does not
+  import it, not even as a type: the parameter is typed structurally against
+  the fields actually read, so a v5 theme, a v6 theme and a hand-written
+  object all compile and no host needs MUI installed to typecheck. Scope is
+  colour, type and radius — density and borders stay the table's own, which
+  is what was asked for.
+  - **The theme's `palette.mode` decides the table's mode**, deliberately: an
+    inline style beats every stylesheet rule, so these tokens override the
+    built-in `prefers-color-scheme` block *and* the `theme` prop. For that to
+    be a rule rather than an accident, the function emits **every** token the
+    base sheet swaps between its light and dark blocks — a partial map would
+    leave a light MUI theme with dark borders on a machine set to dark — and
+    every fallback comes in a light and a dark form, so a theme stating
+    nothing but `mode: "dark"` still gets a dark table.
+  - The two action tints are rebuilt rather than copied. MUI states
+    `action.hover` and `action.selected` as translucent colours, and a cell
+    here paints an opaque `--dt-bg` under a `position: sticky` pinned column,
+    so a see-through hover would show the columns scrolling beneath it. The
+    opacities are recomposited against the surface with `color-mix()` — MUI's
+    own recipe, with an opaque result.
+- **`style` on `<DataTable>`**, alongside the `className` it already had. It
+  is where `muiTokens`' tokens go, since the base sheet declares every
+  `--dt-*` on `.dt-root` itself and an override has to land on that same
+  element. The table's own two inline values still win over it: the `height`
+  the prop or the resize grip decided, and `--dt-row-height`, which has to
+  stay equal to the virtualiser's row estimate.
 - **A Row Groups zone in the side bar's Columns tab**, under the column tree —
   the control the grouping was built for. Dragging a column into it groups by
   that column; dragging a second nests it inside the first. Each level is a

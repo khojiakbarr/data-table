@@ -1,14 +1,20 @@
 import type { RowData } from "@tanstack/react-table"
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { classNames, insertAt } from "../core/classNames"
+import { buildColumnTree, siblingOrderOf } from "../core/columnTree"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
+import type { CellEditHandler } from "../core/cellEditing"
+import { useCellEditing } from "../core/useCellEditing"
 import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
+import { defaultCellEditingLabels } from "../labels/editing"
 import type { DataTableLabels } from "../types"
+import { CellEditNotice } from "./CellEditNotice"
+import { CellMenu } from "./CellMenu"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import type { PanelTab } from "./TablePanel"
 import { TableSideBar } from "./TableSideBar"
@@ -23,7 +29,14 @@ import { SkeletonRows, TableStatus } from "./TableStatus"
 
 /** English defaults; pass `labels` to translate. */
 export const defaultLabels: DataTableLabels = {
-  columnsButton: "Columns",
+  /* The fifteen strings `CellEditor` and `CellMenu` render, folded in so a
+     host passes one labels object rather than two. */
+  ...defaultCellEditingLabels,
+  editPending: "Saving",
+  editFailed: (column) => `Could not save ${column}`,
+  editCancelled: (column) => `The edit to ${column} was cancelled: the row left the page`,
+  editRowFiltered: (column) => `${column} was saved. The row no longer matches the filters`,
+  dismiss: "Dismiss",
   columnsTitle: "Columns",
   sideBar: "Table side bar",
   showAll: "Show all",
@@ -175,7 +188,7 @@ export interface DataTableProps<TData extends RowData> {
   stickyHeader?: boolean
   /** Hide the toolbar when the host application provides its own controls. */
   toolbar?: boolean
-  /** Extra toolbar content, rendered before the Columns button. */
+  /** Extra toolbar content, rendered at the toolbar's leading edge. */
   toolbarContent?: ReactNode
   /** Shown instead of rows when there are none. */
   emptyState?: ReactNode
@@ -195,6 +208,21 @@ export interface DataTableProps<TData extends RowData> {
   /** Forces a theme instead of following the OS setting. */
   theme?: "light" | "dark"
   className?: string
+  /**
+   * Inline styles for the root element.
+   *
+   * This is where a design-system bridge goes — `style={muiTokens(theme)}`
+   * spreads the `--dt-*` tokens straight onto the element that declares them.
+   * An inline style beats every stylesheet rule, so tokens passed this way
+   * also override the built-in dark-mode block and the `theme` prop above;
+   * `muiTokens` documents what that means.
+   *
+   * The table's own two inline values win over anything here: `height`, which
+   * the `height` prop and the resize grip own, and `--dt-row-height`, which
+   * has to match the virtualiser's row estimate exactly (set it through
+   * `rowHeight` / `getRowHeight` instead).
+   */
+  style?: CSSProperties | undefined
   onRowClick?: (row: TData) => void
   /** Show the pagination footer when paging is on. Default true. */
   footer?: boolean
@@ -220,6 +248,34 @@ export interface DataTableProps<TData extends RowData> {
   error?: unknown
   /** Called by the Retry button. */
   onRetry?: (() => void) | undefined
+  /**
+   * Save one cell's edit. Without it no column can be edited.
+   *
+   * This table never writes to its own data: an edit is a request, and the
+   * rows it renders are the host's answer to one. Return a promise and the
+   * cell shows the new value while it is in flight, marked as pending; a
+   * rejection reverts the cell and says why. In server mode the host usually
+   * refetches after a successful write, and the optimistic value steps aside
+   * the moment that answer lands — including when the server normalised the
+   * value into something else.
+   *
+   * A column opts in with `meta: { editable: "number" }`, or with a predicate
+   * for a rule a row's own state decides. A column that declares `editable`
+   * with no handler here is a misconfiguration, and the table says so once in
+   * development.
+   *
+   * **Editing is pointer-only today.** A body cell cannot hold focus, so
+   * there is nothing for the ContextMenu key or Shift+F10 to open a menu on.
+   * A cell focus model is its own piece of work; until it lands, right-click
+   * is the way in.
+   *
+   * @example
+   * onCellEdit={async ({ row, columnId, value }) => {
+   *   await api.patch(`/receipts/${row.id}`, { [columnId]: value })
+   *   refetch()
+   * }}
+   */
+  onCellEdit?: CellEditHandler<TData> | undefined
 }
 
 /**
@@ -257,12 +313,14 @@ export function DataTable<TData extends RowData>({
   labels: labelOverrides,
   theme,
   className,
+  style,
   onRowClick,
   footer = true,
   virtualize = true,
   loading = false,
   error,
   onRetry,
+  onCellEdit,
 }: DataTableProps<TData>) {
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState<PanelState>({ open: false, tab: "columns" })
@@ -343,14 +401,41 @@ export function DataTable<TData extends RowData>({
   const leafColumns = renderedLeafColumns(table)
   const fillerAt = fillerIndex(table)
   /*
-   * Resolved against the RENDERED order, which is what the user is looking at
-   * and what `handleReorder` falls back to on the first drag. The dragged and
-   * target columns are both unpinned — `HeaderCell` refuses a drag or a drop
-   * on anything else — so the slot always resolves inside the centre section,
-   * and the relative move it describes is the same one `moveColumn` performs
-   * on the stored column order.
+   * The header as a tree, rebuilt from the RENDERED order — which is what the
+   * user is looking at, and what `handleReorder` falls back to on the first
+   * drag.
    */
-  const drop = useDropSlot(leafColumns.map((column) => column.id))
+  const headerTree = buildColumnTree(leafColumns)
+  /*
+   * A drag moves a column among its SIBLINGS and nowhere else, so that is the
+   * order each slot is resolved against: a leaf steps past the leaves beside
+   * it, a group header past the whole groups beside it. Resolving a group's
+   * move in the flat leaf order would answer with a leaf halfway through the
+   * group being dragged, because a six-column move does not land on
+   * one-column steps.
+   *
+   * Both are the same `dropSlotId` over the same kind of array, which is why
+   * the slot a group draws and the slot a leaf draws keep the same promise —
+   * and why `HeaderCell` can go on asking one question, "is the slot me".
+   *
+   * The dragged and target columns are both unpinned — `HeaderCell` refuses a
+   * drag or a drop on anything else — so a slot always resolves inside the
+   * centre section, and the relative move it describes is the one
+   * `reorderColumn` performs on the stored column order.
+   */
+  const drop = useDropSlot((draggedId) => siblingOrderOf(headerTree, draggedId))
+  /**
+   * The column in flight, when it is one the rows have values in.
+   *
+   * A group header is draggable too, and a group is not such a column: the
+   * Row Groups zone below would mint a ghost chip for a level the grouping can
+   * never hold. Asked of the table rather than of the tree so it stays true
+   * for a column the header is not currently showing.
+   */
+  const draggedLeafId =
+    drop.draggedId !== null && table.getColumn(drop.draggedId)?.columns.length === 0
+      ? drop.draggedId
+      : null
   /*
    * Header rows are assembled per pinning section rather than from the merged
    * `getHeaderGroups()`. The merged tree keeps a group in one piece even when
@@ -388,6 +473,21 @@ export function DataTable<TData extends RowData>({
    */
   const totalRowCount = instance.pagination.enabled ? instance.pagination.rowCount : rows.length
   const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
+  /*
+   * Cell editing. It is handed the rows it will be asked about and the labels
+   * it will speak, and it is `undefined` for a table no column made editable —
+   * which is what leaves the browser's own context menu alone over one (§2).
+   */
+  const cellEditing = useCellEditing({
+    instance,
+    rows,
+    labels,
+    onCellEdit,
+    // A right-click during a drag is how a user gets out of the drag, not a
+    // request for a menu on whatever cell the pointer is over.
+    busy: isResizing || drop.draggedId !== null,
+  })
+  const editing = cellEditing.enabled ? cellEditing : undefined
   const hasError = error !== undefined && error !== null
   /*
    * A server table has asked for its first page and not been answered yet.
@@ -455,17 +555,25 @@ export function DataTable<TData extends RowData>({
    * virtualiser's estimate has to match it exactly — an unmeasured data row
    * whose real height differs by a pixel drags the scrollbar off by a pixel
    * per row. Publishing the instance's value here keeps the two in step.
+   *
+   * The host's `style` is spread FIRST, so both of this table's own values
+   * survive it: a `height` the prop or the grip decided, and the row height
+   * the virtualiser is estimating with. Everything else a host passes —
+   * `muiTokens`' tokens included — lands untouched.
    */
   const rootStyle = {
+    ...style,
     ...(resolvedHeight === undefined ? undefined : { height: resolvedHeight }),
     "--dt-row-height": `${instance.rowHeight}px`,
   } as CSSProperties
 
   /*
    * Which tabs the rail offers, in rail order. Columns is the tab the panel
-   * has always had, behind the same `hiding || pinning` gate the toolbar
-   * button uses; Filters joins it only when filtering is on. An empty list
-   * means this table has no side bar at all, and no rail is drawn.
+   * has always had, and it exists only where there is something to arrange;
+   * Filters joins it only when filtering is on. An empty list means this
+   * table has no side bar at all, and no rail is drawn — which is also the
+   * only state in which the panel has no way in, because the rail IS the way
+   * in since the toolbar's Columns button was dropped.
    */
   const sideBarTabs: PanelTab[] = []
   if (flags.hiding || flags.pinning) sideBarTabs.push("columns")
@@ -473,7 +581,7 @@ export function DataTable<TData extends RowData>({
 
   /**
    * Activating a rail tab: the tab already showing closes the panel, any other
-   * switches to it. The toolbar button is the same toggle for the current tab.
+   * switches to it.
    *
    * @param tab - The tab that was activated.
    */
@@ -518,30 +626,22 @@ export function DataTable<TData extends RowData>({
             {instance.filtering.enabled ? (
               <QuickSearch instance={instance} labels={labels} loading={loading} inputRef={searchInputRef} />
             ) : null}
+            {/*
+              The spacer stays although nothing follows it any more: it is
+              what pushes a host's `toolbarContent` and the search box to the
+              leading edge, and without it they would spread across the row.
+            */}
             <span className="dt-spacer" />
-            {sideBarTabs.length > 0 ? (
-              /*
-               * Still the way in, and below the narrow-width breakpoint the
-               * only one — the rail is hidden there and the panel overlays
-               * instead. No `aria-haspopup`: what it opens is the side bar's
-               * tab panel, in flow beside the table, not a popup.
-               */
-              <button
-                type="button"
-                className="dt-menu-button"
-                aria-expanded={panelOpen.open}
-                {...(panelOpen.open
-                  ? { "aria-controls": `${instance.id}-panel-${panelOpen.tab}` }
-                  : {})}
-                onClick={() => toggleSideBarTab(panelOpen.tab)}
-              >
-                {labels.columnsButton}
-              </button>
-            ) : null}
           </div>
         ) : null}
 
         <TableStatus loading={showProgress} error={error} onRetry={onRetry} labels={labels} />
+
+        <CellEditNotice
+          notice={cellEditing.notice}
+          labels={labels}
+          onDismiss={cellEditing.dismissNotice}
+        />
 
         <div
           className={classNames("dt-viewport", showProgress && "dt-loading")}
@@ -663,6 +763,7 @@ export function DataTable<TData extends RowData>({
                 virtualize={virtualize}
                 renderDetail={renderDetail}
                 onRowClick={onRowClick}
+                editing={editing}
               />
             )}
           </table>
@@ -750,8 +851,12 @@ export function DataTable<TData extends RowData>({
            * `dataTransfer` is unreadable until the drop — so the column in
            * flight is handed over here, which is what lets the Row Groups zone
            * draw a slot for a column dragged straight off its header.
+           *
+           * Only a leaf: a group header is draggable too now, and a group has
+           * no values of its own to group rows by — a ghost chip for one would
+           * offer a level the grouping could never hold.
            */
-          draggedColumnId={drop.draggedId}
+          draggedColumnId={draggedLeafId}
           focusColumnId={panelOpen.focusColumnId}
           focusNonce={panelOpen.focusNonce}
         />
@@ -794,6 +899,19 @@ export function DataTable<TData extends RowData>({
               : undefined
           }
           onClose={() => setMenu(null)}
+        />
+      ) : null}
+
+      {cellEditing.menu ? (
+        <CellMenu
+          position={cellEditing.menu.at}
+          labels={labels}
+          notEditable={cellEditing.menu.notEditable}
+          onEdit={cellEditing.openEditor}
+          onClose={cellEditing.closeMenu}
+          /* The cell it was opened on; `BodyRow` makes exactly that one
+             focusable while the menu is up. */
+          returnFocusTo={cellEditing.menu.anchor}
         />
       ) : null}
 

@@ -1,7 +1,9 @@
 import type { Row, RowData } from "@tanstack/react-table"
 import { classNames, insertAt } from "../core/classNames"
+import { isSameCell } from "../core/cellEditing"
 import type { GroupRow } from "../core/grouping"
 import { pinnedStyle } from "../core/pinning"
+import type { CellEditing } from "../core/useCellEditing"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { ExpandToggle } from "./ExpandToggle"
@@ -24,6 +26,15 @@ interface GroupBodyRowProps<TData extends RowData> {
   /** Where the filler cell goes among the visible cells; see `fillerIndex`. */
   fillerAt: number
   labels: DataTableLabels
+  /**
+   * Cell editing, or undefined for a table that has none.
+   *
+   * A group row has nothing to edit and gets the menu all the same (§4): a
+   * menu that sometimes fails to appear teaches the user the feature is
+   * broken, so Edit is offered here disabled, saying that a group row
+   * aggregates records and has none of its own to write to.
+   */
+  editing?: CellEditing<TData> | undefined
 }
 
 /**
@@ -55,6 +66,7 @@ export function GroupBodyRow<TData extends RowData>({
   rowIndexOffset,
   fillerAt,
   labels,
+  editing,
 }: GroupBodyRowProps<TData>) {
   const depth = Math.max(0, group.path.length - 1)
   const key = group.path[group.path.length - 1]
@@ -80,6 +92,13 @@ export function GroupBodyRow<TData extends RowData>({
         )}
         style={pinnedStyle(cell.column)}
         data-column-id={cell.column.id}
+        /* See BodyRow: the cell the menu opened on takes the focus back. */
+        tabIndex={isSameCell(editing?.focusCell, { rowId: row.id, columnId: cell.column.id }) ? -1 : undefined}
+        onContextMenu={
+          editing === undefined
+            ? undefined
+            : (event) => editing.onCellContextMenu(event, row, cell.column.id)
+        }
       >
         {isGroupCell ? (
           <div className="dt-lead">

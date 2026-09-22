@@ -31,6 +31,7 @@ import {
 } from "@tanstack/react-table"
 import { useCallback, useMemo, useRef, useState } from "react"
 import { deriveColumnId } from "./core/columnIds"
+import { leafIdsOfColumn } from "./core/columnTree"
 import { dropRegionOf } from "./core/dropRegion"
 import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
@@ -53,7 +54,7 @@ import {
 } from "./core/grouping"
 import { noLayoutStorage } from "./core/persistence"
 import type { TableQuery, TableSearch } from "./core/query"
-import { leadColumn, moveColumn, pinnedFirstOrder, type DropSide } from "./core/reorder"
+import { leadColumn, moveRun, pinnedFirstOrder, type DropSide } from "./core/reorder"
 import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { clampTableHeight, minTableHeight, tableHeightStep } from "./core/tableHeight"
@@ -1347,7 +1348,8 @@ export function useDataTable<TData extends RowData>({
   })
 
   /**
-   * Move a column next to another one, the way both drag surfaces ask for.
+   * Move a column — or a whole column group — next to another one, the way
+   * both drag surfaces ask for.
    *
    * Lives here, with the layout, because a move is not always one slice. The
    * rendered order is `columnPinning.start`, then `columnOrder` minus the
@@ -1363,8 +1365,15 @@ export function useDataTable<TData extends RowData>({
    * in which the table has the new pinning and the old order, which is the
    * self-contradicting layout this exists to prevent.
    *
-   * @param draggedId - The column being moved.
-   * @param targetId - The column it was dropped on.
+   * A GROUP is moved the same way, because to this order a group is simply
+   * the run of leaf ids it stands over: {@link moveRun} lifts that run out
+   * whole and puts it down at one end of the target's run, so every leaf
+   * arrives together and in the order it already had. The target may be a
+   * group too, and the run is never landed inside it — which is what keeps a
+   * drag between groups from quietly nesting one in the other.
+   *
+   * @param draggedId - The column being moved: a leaf, or a group column.
+   * @param targetId - The column it was dropped on, likewise.
    * @param side - Which edge of the target it was dropped on.
    */
   const reorderColumn = useCallback(
@@ -1381,11 +1390,17 @@ export function useDataTable<TData extends RowData>({
       if (!dragged || !target) return
       if (dropRegionOf(dragged, groupColumnId) !== dropRegionOf(target, groupColumnId)) return
 
+      // What each of them is, to an order made of leaves: itself, or its run.
+      const movedIds = leafIdsOfColumn(dragged)
+      const targetIds = leafIdsOfColumn(target)
+
       /*
        * Same region, so the target is pinned exactly as the dragged column is
-       * — this is which array, if any, also has to move.
+       * — this is which array, if any, also has to move. Read off a leaf: a
+       * group answers "start" as soon as any one leaf under it is pinned, and
+       * `dropRegionOf` has already refused a group whose leaves disagree.
        */
-      const pinnedSide = dragged.getIsPinned()
+      const pinnedSide = dragged.getLeafColumns()[0]?.getIsPinned() ?? false
 
       updateSlices([
         sliceChange("columnOrder", (current) => {
@@ -1406,7 +1421,7 @@ export function useDataTable<TData extends RowData>({
            * send every hidden one to the end of the table on the first drag.
            */
           const order = current.length ? current : pinnedFirstOrder(columnIds, layout.columnPinning)
-          return moveColumn(order, draggedId, targetId, side)
+          return moveRun(order, movedIds, targetIds, side)
         }),
         /*
          * Written even for a pinned move, where it changes nothing on screen:
@@ -1419,8 +1434,8 @@ export function useDataTable<TData extends RowData>({
           : [
               sliceChange("columnPinning", (current) =>
                 pinnedSide === "start"
-                  ? { ...current, start: moveColumn(current.start, draggedId, targetId, side) }
-                  : { ...current, end: moveColumn(current.end, draggedId, targetId, side) },
+                  ? { ...current, start: moveRun(current.start, movedIds, targetIds, side) }
+                  : { ...current, end: moveRun(current.end, movedIds, targetIds, side) },
               ),
             ]),
       ])

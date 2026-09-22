@@ -1,4 +1,5 @@
 import type { DataTableLabels } from "../types"
+import type { CellEditingLabels } from "./editing"
 
 /**
  * Picks the Russian form a numeral governs.
@@ -28,6 +29,33 @@ function plural(count: number, one: string, few: string, many: string): string {
 }
 
 /**
+ * Russian strings for the cell editors and the cell menu.
+ *
+ * A set of its own as well as part of {@link ruLabels}, which spreads it: a
+ * shell that mounts `CellEditor` or `CellMenu` without the table needs these
+ * fifteen and not the hundred the whole shell speaks. See `labels/editing.ts`.
+ *
+ * @example
+ * <CellMenu labels={ruCellEditingLabels} … />
+ */
+export const ruCellEditingLabels: CellEditingLabels = {
+  cellActions: "Действия с ячейкой",
+  edit: "Изменить",
+  editNotEditableColumn: "Этот столбец нельзя изменить",
+  editNotEditableRow: "Эту строку нельзя изменить",
+  editNotEditableGroup: "Группу строк нельзя изменить",
+  editUnavailable: "Изменение недоступно",
+  editValue: "Значение",
+  editHint: "Enter — сохранить, Escape — отменить",
+  invalidNumber: "Введите число",
+  invalidDate: "Введите дату в формате ГГГГ-ММ-ДД",
+  invalidChoice: "Выберите одно из предложенных значений",
+  booleanTrue: "Да",
+  booleanFalse: "Нет",
+  noValue: "(пусто)",
+}
+
+/**
  * Russian labels for the built-in shell.
  *
  * Pass as `labels={ruLabels}`, or spread to override a few:
@@ -39,7 +67,12 @@ function plural(count: number, one: string, few: string, many: string): string {
  * <DataTable instance={table} labels={ruLabels} />
  */
 export const ruLabels: DataTableLabels = {
-  columnsButton: "Столбцы",
+  ...ruCellEditingLabels,
+  editPending: "Сохранение",
+  editFailed: (column) => `Не удалось сохранить «${column}»`,
+  editCancelled: (column) => `Изменение «${column}» отменено: строка ушла со страницы`,
+  editRowFiltered: (column) => `«${column}» сохранено. Строка больше не соответствует фильтрам`,
+  dismiss: "Закрыть",
   columnsTitle: "Столбцы",
   sideBar: "Боковая панель таблицы",
   showAll: "Показать все",

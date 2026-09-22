@@ -153,7 +153,7 @@ describe("quick search box", () => {
     expect(status).toHaveTextContent("1 matching rows")
   })
 
-  it("sits before the spacer, so it is left of the Columns button", () => {
+  it("sits before the spacer, so it stays at the toolbar's leading edge", () => {
     const { container } = render(<Table />)
     const toolbar = container.querySelector(".dt-toolbar")!
     const classes = Array.from(toolbar.children).map((child) => child.className)

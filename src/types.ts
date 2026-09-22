@@ -1,4 +1,6 @@
+import type { EditableDeclaration } from "./core/cellEditing"
 import type { FilterCondition, FilterValue, FilterValueOption, FilterKind } from "./core/filters"
+import type { CellEditingLabels } from "./labels/editing"
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -67,8 +69,35 @@ export interface DataTableColumnMeta {
   filter?: FilterKind | false | undefined
   /** Whether quick search covers this column. Default true for text-ish columns. */
   searchable?: boolean | undefined
-  /** Fixed choices for a list filter; shown without counts. */
+  /**
+   * Fixed choices for a list filter; shown without counts.
+   *
+   * The list EDITOR reads them too, and it is the only source it has — a
+   * facet endpoint answers a filter's question ("which values exist, and how
+   * many rows have each"), not an editor's ("which values may I write").
+   */
   values?: FilterValueOption[] | undefined
+  /**
+   * Whether a cell in this column can be edited, and with what editor.
+   *
+   * Absent means no. Silence is not consent for something that writes to a
+   * database, so a column says so explicitly or gets no Edit item.
+   *
+   * The kinds are the filter kinds deliberately: a column that filters as a
+   * date edits as a date, and one vocabulary serves `filter` and `editable`
+   * both. A predicate is the finer form — the column is editable, and this
+   * row's own state decides — and it leaves the kind to the same inference
+   * `filter` goes through. See {@link EditableDeclaration}.
+   *
+   * Nothing here writes to the data: an edit reaches the host as
+   * `onCellEdit`, and a column that declares `editable` with no `onCellEdit`
+   * on the table is a misconfiguration the table warns about in development.
+   *
+   * @example
+   * meta: { editable: "number" }
+   * meta: { editable: (row: Receipt) => row.status !== "closed" }
+   */
+  editable?: EditableDeclaration | undefined
 }
 
 /**
@@ -120,9 +149,17 @@ export interface DataTableFeatureFlags {
   heightGrip?: boolean
 }
 
-/** Text shown in the built-in shell, for translation. */
-export interface DataTableLabels {
-  columnsButton: string
+/**
+ * Text shown in the built-in shell, for translation.
+ *
+ * It extends {@link CellEditingLabels} rather than restating it: `CellEditor`
+ * and `CellMenu` are usable on their own and declare the strings they need,
+ * and a host that mounts the whole shell must pass ONE labels object, not two.
+ * `defaultLabels` spreads `defaultCellEditingLabels`, and `ruLabels`/`uzLabels`
+ * spread the two translations that sit beside them in `ru.ts` and `uz.ts`.
+ */
+export interface DataTableLabels extends CellEditingLabels {
+  /** The Columns tab: its rail tab, and the heading inside the panel. */
   columnsTitle: string
   /**
    * The docked side bar's rail, named for a screen reader.
@@ -338,4 +375,29 @@ export interface DataTableLabels {
    * is the outermost.
    */
   rowGroupLevel: (column: string, level: number, total: number) => string
+
+  /* Cell editing, beyond the strings the editor and the menu carry themselves. */
+  /**
+   * Marks a cell whose edit is still in flight. Not drawn — the pending cell
+   * is styled — so this is what a screen reader hears instead.
+   */
+  editPending: string
+  /**
+   * The write was refused. The reason the host's rejection carried is
+   * appended after it, the way {@link DataTableLabels.loadFailed} appends one.
+   */
+  editFailed: (column: string) => string
+  /**
+   * An open editor's row left the page — scrolled out of a virtualised body,
+   * or refetched away — so the edit was abandoned rather than written.
+   */
+  editCancelled: (column: string) => string
+  /**
+   * A saved edit moved its row out of what the filters match, so the row is
+   * gone from the page. Correct, and indistinguishable from a bug unless
+   * something says so.
+   */
+  editRowFiltered: (column: string) => string
+  /** Closes a notice the user has finished reading. */
+  dismiss: string
 }

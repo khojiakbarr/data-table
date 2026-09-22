@@ -176,16 +176,22 @@ describe("opening, switching and closing", () => {
     expect(railTab("Columns")).toHaveAttribute("aria-expanded", "false")
   })
 
-  it("reopens on the tab it was closed from", async () => {
+  it("remembers the tab it was closed from", async () => {
     const user = userEvent.setup()
     render(<Table />)
     await user.click(railTab("Filters"))
     await user.click(railTab("Filters"))
 
-    await user.click(screen.getByRole("button", { name: "Columns" }))
+    /*
+     * Closed, but still ON Filters: the roving tabIndex is where the rail
+     * keeps that, so Tab returns the user to the tab they were last using
+     * rather than to the top of the rail.
+     */
+    expect(panel()).toBeNull()
+    expect(railTab("Filters")).toHaveAttribute("tabindex", "0")
+    expect(railTab("Columns")).toHaveAttribute("tabindex", "-1")
 
-    // The toolbar button toggles the CURRENT tab, which the rail remembered
-    // while it was closed — not a fixed "always Columns".
+    await user.click(railTab("Filters"))
     expect(railTab("Filters")).toHaveAttribute("aria-expanded", "true")
   })
 
@@ -207,17 +213,26 @@ describe("opening, switching and closing", () => {
     expect(railTab("Filters")).toHaveAttribute("aria-expanded", "true")
   })
 
-  it("is still reachable from the toolbar button, which reports the bar's state", async () => {
+  it("is the only way in: the toolbar offers no Columns button any more", async () => {
     const user = userEvent.setup()
     render(<Table />)
-    const button = screen.getByRole("button", { name: "Columns" })
 
-    expect(button).toHaveAttribute("aria-expanded", "false")
-    await user.click(button)
-    expect(button).toHaveAttribute("aria-expanded", "true")
-    expect(button.getAttribute("aria-controls")).toBe(panel()!.id)
+    /*
+     * The button was redundant once the rail existed — two controls for one
+     * panel, one of them duplicating a tab standing right beside it. The rail
+     * tab has to carry everything it used to: the toggle, and a state a
+     * screen reader is told about.
+     */
+    expect(screen.queryByRole("button", { name: "Columns" })).toBeNull()
+    expect(document.querySelector(".dt-toolbar .dt-menu-button")).toBeNull()
 
-    await user.click(button)
+    const tab = railTab("Columns")
+    expect(tab).toHaveAttribute("aria-expanded", "false")
+    await user.click(tab)
+    expect(tab).toHaveAttribute("aria-expanded", "true")
+    expect(tab.getAttribute("aria-controls")).toBe(panel()!.id)
+
+    await user.click(tab)
     expect(panel()).toBeNull()
   })
 })

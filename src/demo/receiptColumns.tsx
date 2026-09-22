@@ -1,7 +1,7 @@
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table"
 import type { DataTableFeatures } from "../useDataTable"
 import type { Language } from "./playgroundState"
-import type { ServerReceipt } from "./fakeServer"
+import { PARTNERS, type ServerReceipt } from "./fakeServer"
 
 /** BCP-47 tag for each language, for date and number formatting. */
 const LOCALE_TAG: Record<Language, string> = { en: "en-US", ru: "ru-RU", uz: "uz-UZ" }
@@ -47,6 +47,15 @@ const FLAG_LABELS: Record<Language, [yes: string, no: string]> = {
  */
 const BLANK_CELL = "—"
 
+/**
+ * The choices the `partner` cell editor offers.
+ *
+ * `meta.values` is the list editor's only source, and it feeds the filter too
+ * wherever the filter is a list — `partner` filters as TEXT (inferred from its
+ * values), so these reach the editor and nothing else.
+ */
+const PARTNER_OPTIONS = PARTNERS.map((partner) => ({ value: partner }))
+
 const columnHelper = createColumnHelper<DataTableFeatures, ServerReceipt>()
 
 /**
@@ -81,10 +90,16 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
       id: "document",
       header: groups.document,
       columns: columnHelper.columns([
-        columnHelper.accessor("code", { header: headers.code, size: 130 }),
+        /* Edits as text: the simplest of the five, and the one that proves
+           the round trip without a parse in the way. */
+        columnHelper.accessor("code", { header: headers.code, size: 130, meta: { editable: "text" } }),
+        // Edits as a LIST: one of four known partners, or empty. The choices
+        // are fixed rather than faceted, because a list editor asks which
+        // values may be WRITTEN and a facet endpoint only knows which exist.
         columnHelper.accessor("partner", {
           header: headers.partner,
           size: 260,
+          meta: { editable: "list", values: PARTNER_OPTIONS },
           // Both blank shapes render as nothing on their own — React skips
           // `null` and `""` alike — so the rows a `blank` filter selects would
           // look like a broken cell rather than an empty column.
@@ -99,9 +114,18 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
       id: "payment",
       header: groups.payment,
       columns: columnHelper.columns([
+        /*
+         * Edits as a NUMBER, and only while the receipt is open: the predicate
+         * form, where the column offers an editor and the row's own state
+         * takes it away. A closed receipt's Edit item is disabled and says
+         * which of the two refused it. The kind is not declared — there is no
+         * `meta.filter` here either — so it is inferred the way the filter's
+         * is, from the values: `number`.
+         */
         columnHelper.accessor("amount", {
           header: headers.amount,
           size: 150,
+          meta: { editable: (row: ServerReceipt) => row.status !== "closed" },
           cell: (info) => {
             const amount: number | null = info.getValue()
             return <span className="num">{amount === null ? BLANK_CELL : numberFormat.format(amount)}</span>

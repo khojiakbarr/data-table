@@ -10,6 +10,14 @@ export type { DataTableProps } from "./components/DataTable"
 export { ruLabels } from "./labels/ru"
 export { uzLabels } from "./labels/uz"
 
+/*
+ * Design-system bridges. The shadcn presets are stylesheets under
+ * `@khojiakbarr/data-table/themes/*.css`; MUI needs a function instead,
+ * because a MUI v5 host publishes no CSS variables for a stylesheet to read.
+ */
+export { muiTokens } from "./themes/mui"
+export type { MuiThemeInput, TokenStyle } from "./themes/mui"
+
 /* The behaviour, for a shell of your own. */
 export { useDataTable } from "./useDataTable"
 export type {
@@ -49,6 +57,59 @@ export type { FiltersTabProps } from "./components/FiltersTab"
 export { QuickSearch } from "./components/QuickSearch"
 export { DepthSpacer, ExpandToggle } from "./components/ExpandToggle"
 export { GroupBodyRow } from "./components/GroupBodyRow"
+/*
+ * Cell editing. The editor and the menu are the two pieces a shell of its own
+ * would otherwise rebuild — `CellEditor` holds the five kinds, the commit
+ * rules and the IME guard, `CellMenu` the placement and focus return it shares
+ * with `HeaderMenu`. `useCellEditing` is what joins them to a table: the
+ * optimistic value, the Tab walk and the notices are the parts that are hard
+ * to get right twice.
+ */
+export { CellEditor } from "./components/CellEditor"
+export type { CellEditorProps } from "./components/CellEditor"
+export { CellMenu } from "./components/CellMenu"
+export type { CellMenuProps } from "./components/CellMenu"
+export { CellEditNotice } from "./components/CellEditNotice"
+export type { CellEditNoticeProps } from "./components/CellEditNotice"
+export {
+  cellEditKey,
+  cellEditability,
+  draftFromValue,
+  isSameCell,
+  isUnchanged,
+  nextEditableCell,
+  notEditableLabelKey,
+  parseDraft,
+  resolveEditable,
+} from "./core/cellEditing"
+export type {
+  CellEdit,
+  CellEditHandler,
+  CellRef,
+  Editability,
+  EditableDeclaration,
+  EditableFacts,
+  EditableKind,
+  EditableRowPredicate,
+  NotEditableReason,
+  ParsedDraft,
+} from "./core/cellEditing"
+export { useCellEditing } from "./core/useCellEditing"
+export type {
+  CellEditing,
+  CellEditingOptions,
+  CellOverride,
+  EditNotice,
+  OpenCellEditor,
+  OpenCellMenu,
+} from "./core/useCellEditing"
+export { defaultCellEditingLabels } from "./labels/editing"
+export type { CellEditingLabels } from "./labels/editing"
+export { ruCellEditingLabels } from "./labels/ru"
+export { uzCellEditingLabels } from "./labels/uz"
+export { useMenuSurface } from "./core/useMenuSurface"
+export type { MenuSurfaceOptions } from "./core/useMenuSurface"
+
 export { canFilterColumn, FilterEditor } from "./components/FilterEditor"
 export type { FilterEditorProps } from "./components/FilterEditor"
 export { FilterPopover } from "./components/FilterPopover"

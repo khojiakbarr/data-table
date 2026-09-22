@@ -84,6 +84,19 @@ describe("function-shaped labels return sensible text", () => {
       expect(announced).toContain("3")
     })
 
+    it(`${name}Labels' edit notices all name the column`, () => {
+      // Each one is read after the cell it is about has already reverted or
+      // gone: without the column's name the reader is being told that
+      // something failed, somewhere.
+      for (const said of [
+        labels.editFailed("Сумма"),
+        labels.editCancelled("Сумма"),
+        labels.editRowFiltered("Сумма"),
+      ]) {
+        expect(said).toContain("Сумма")
+      }
+    })
+
     it(`${name}Labels.reorderPosition names the column and both numbers`, () => {
       // What a screen reader hears on every step of a keyboard reorder: the
       // column, where it is now, and out of how many. A translation that drops
@@ -166,6 +179,9 @@ describe("Uzbek orthography", () => {
     uzLabels.groupByColumn("Holat"),
     uzLabels.ungroupColumn("Holat"),
     uzLabels.rowGroupLevel("Holat", 1, 2),
+    uzLabels.editFailed("Summa"),
+    uzLabels.editCancelled("Summa"),
+    uzLabels.editRowFiltered("Summa"),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -191,6 +207,9 @@ describe("Uzbek orthography", () => {
     // FUNCTION_OUTPUTS and to this list together.
     expect(functionKeys).toEqual([
       "columnGroup",
+      "editCancelled",
+      "editFailed",
+      "editRowFiltered",
       "filterTitle",
       "groupByColumn",
       "groupContinued",

@@ -20,7 +20,7 @@ export interface ChromeStrings {
     groupLabel: string
     legends: Record<"interactions" | "data" | "layout", string>
     labels: Record<keyof FeatureState, string>
-    hints: Record<"filtering" | "pagination" | "detailPanel", string>
+    hints: Record<"filtering" | "pagination" | "rowNumbers" | "detailPanel", string>
   }
   theme: {
     groupLabel: string
@@ -60,6 +60,7 @@ const en: ChromeStrings = {
       reordering: "Column reordering",
       pinning: "Column pinning",
       hiding: "Column hiding",
+      rowNumbers: "Row numbers",
       filtering: "Filtering",
       pagination: "Pagination",
       striped: "Striped rows",
@@ -72,6 +73,7 @@ const en: ChromeStrings = {
     hints: {
       filtering: "Quick search rides with this",
       pagination: "Server mode needs paging — with it off you see one page of 50 and no way to the rest",
+      rowNumbers: "Off by default, and group rows are numbered too",
       detailPanel: "Expand a row for more",
     },
   },
@@ -122,6 +124,7 @@ const ru: ChromeStrings = {
       reordering: "Перестановка столбцов",
       pinning: "Закрепление столбцов",
       hiding: "Скрытие столбцов",
+      rowNumbers: "Номера строк",
       filtering: "Фильтрация",
       pagination: "Постраничный вывод",
       striped: "Чередование строк",
@@ -136,6 +139,7 @@ const ru: ChromeStrings = {
       pagination:
         "Серверному режиму нужна разбивка на страницы — без неё видна одна страница из 50 строк, " +
         "а до остальных не добраться",
+      rowNumbers: "По умолчанию выключены; строки групп тоже нумеруются",
       detailPanel: "Разверните строку, чтобы увидеть больше",
     },
   },
@@ -186,6 +190,7 @@ const uz: ChromeStrings = {
       reordering: "Ustunlarni qayta tartiblash",
       pinning: "Ustunlarni mahkamlash",
       hiding: "Ustunlarni yashirish",
+      rowNumbers: "Qator raqamlari",
       filtering: "Filtrlash",
       pagination: "Sahifalash",
       striped: "Navbatma-navbat qatorlar",
@@ -200,6 +205,7 @@ const uz: ChromeStrings = {
       pagination:
         "Server rejimiga sahifalash kerak — oʻchirilganda 50 qatorlik bitta sahifa koʻrinadi, " +
         "qolgan qatorlarga yoʻl boʻlmaydi",
+      rowNumbers: "Sukut boʻyicha oʻchiq; guruh qatorlari ham raqamlanadi",
       detailPanel: "Batafsil koʻrish uchun qatorni yoying",
     },
   },

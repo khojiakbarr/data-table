@@ -31,6 +31,10 @@ const GROUPS: Group[] = [
       { key: "reordering" },
       { key: "pinning" },
       { key: "hiding" },
+      // Not an interaction so much as furniture, but this fieldset is the one
+      // whose toggles all reach `useDataTable({ features })`, and that is
+      // what this flag is.
+      { key: "rowNumbers", hint: "rowNumbers" },
     ],
   },
   {

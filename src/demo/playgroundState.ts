@@ -17,6 +17,14 @@ export interface FeatureState {
   reordering: boolean
   pinning: boolean
   hiding: boolean
+  /**
+   * The leading row-number column.
+   *
+   * The one flag here whose library default is FALSE, and the playground
+   * keeps that default rather than showing the table in a state a fresh
+   * install is not in.
+   */
+  rowNumbers: boolean
   /* `useDataTable({ filtering, pagination })`. Quick search rides with `filtering`. */
   filtering: boolean
   pagination: boolean
@@ -36,6 +44,8 @@ export const DEFAULT_FEATURES: FeatureState = {
   reordering: true,
   pinning: true,
   hiding: true,
+  // False, like the library's own default; see the field's own comment.
+  rowNumbers: false,
   filtering: true,
   pagination: true,
   striped: true,

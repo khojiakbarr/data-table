@@ -88,6 +88,7 @@ export function Playground() {
       reordering: features.reordering,
       pinning: features.pinning,
       hiding: features.hiding,
+      rowNumbers: features.rowNumbers,
     },
     pagination: features.pagination,
     // Quick search rides with filtering — turning the toggle off drops both,

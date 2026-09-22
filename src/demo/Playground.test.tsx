@@ -33,17 +33,24 @@ function themeRule(): string {
 }
 
 /**
- * The Pagination checkbox, found through the hint printed under its label.
+ * A feature checkbox that carries a hint, found through the hint itself.
  *
- * `getByLabelText` cannot be used: the hint lives inside the `<label>`, so it
- * is part of the control's accessible name and no exact label string matches.
+ * `getByLabelText` cannot be used for these: the hint lives inside the
+ * `<label>`, so it is part of the control's accessible name and no exact
+ * label string matches. The hint is the distinguishing text either way.
+ *
+ * @param hint - The hint printed under the toggle, in the page's own copy.
+ * @returns The checkbox beside it.
  */
-function paginationToggle(): HTMLInputElement {
-  const label = screen.getByText(CHROME.en.features.hints.pagination).closest("label")
+function hintedToggle(hint: string): HTMLInputElement {
+  const label = screen.getByText(hint).closest("label")
   const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]')
-  if (!input) throw new Error("no Pagination checkbox beside the hint")
+  if (!input) throw new Error(`no checkbox beside the hint "${hint}"`)
   return input
 }
+
+const paginationToggle = (): HTMLInputElement => hintedToggle(CHROME.en.features.hints.pagination)
+const rowNumbersToggle = (): HTMLInputElement => hintedToggle(CHROME.en.features.hints.rowNumbers)
 
 beforeEach(() => {
   // The page persists its layout under the id "playground"; a sorting or page
@@ -237,6 +244,28 @@ describe("playground", () => {
 
     await user.click(paginationToggle())
     await waitFor(() => expect(screen.getByRole("button", nextPage)).toBeInTheDocument())
+  })
+
+  it("adds the row-number column when Row numbers is ticked, and numbers from the page", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // Off by default, in the playground as in the library: a fresh install
+    // has no such column, and the page must show what a fresh install is.
+    expect(document.querySelector(".dt-row-number")).toBeNull()
+
+    await user.click(rowNumbersToggle())
+
+    await waitFor(() =>
+      expect(document.querySelector(".dt-row-number")?.textContent).toBe("1"),
+    )
+    // The real server behind it is paged, so the second page proves the
+    // number is the row's place in the whole result and not in the page.
+    await user.click(screen.getByRole("button", { name: defaultLabels.nextPage }))
+    await waitFor(() =>
+      expect(document.querySelector("tbody .dt-row-number")?.textContent).toBe("51"),
+    )
   })
 
   it("switches the table labels and the page chrome together", async () => {

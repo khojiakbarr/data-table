@@ -358,13 +358,21 @@ describe("a group split by pinning", () => {
 describe("dragging inside the tree", () => {
   beforeEach(() => localStorage.clear())
 
-  /** The column currently wearing the drop slot. */
+  /**
+   * The column currently wearing the drop slot.
+   *
+   * Not `li.dt-drop-slot`: a group wears the band on its own row, which is a
+   * div inside the `<li>` — the `<li>` holds the nested child list too, and a
+   * band over the whole block would say the group is landing inside itself.
+   */
   const slot = (): string | null =>
-    panel().querySelector("li.dt-drop-slot")?.getAttribute("data-column-id") ?? null
+    panel().querySelector("ul.dt-panel-list .dt-drop-slot")?.getAttribute("data-column-id") ??
+    null
 
+  /** The grip of one row: a leaf's `<li>` or a group's own row both carry it. */
   const handle = (columnId: string): HTMLElement => {
     const grip = panel().querySelector<HTMLElement>(
-      `li[data-column-id="${columnId}"] .dt-drag-handle`,
+      `[data-column-id="${columnId}"] > .dt-drag-handle`,
     )
     if (!grip) throw new Error(`no drag handle for ${columnId}`)
     return grip
@@ -387,12 +395,75 @@ describe("dragging inside the tree", () => {
     expect(slot()).toBe("city")
   })
 
-  it("gives no group its own drag handle", async () => {
+  it("gives every group its own drag handle, as the header does", async () => {
     await openPanel()
-    // One handle per leaf column and not one more. A group is moved by moving
-    // its columns; a handle on a group row would promise a move that
-    // `reorderColumn` has no flat order to carry out. Three groups are listed,
-    // so a handle on each would make this nine.
-    expect(panel().querySelectorAll(".dt-drag-handle")).toHaveLength(6)
+    /*
+     * Six leaves and three groups. The panel used to list nine rows and offer
+     * six grips — the header moved Document as one thing and the panel had no
+     * way to, which is the disagreement this count now pins down. A group's
+     * grip sits on the group's own row, so `>` keeps it from being counted
+     * again for each of its children.
+     */
+    expect(panel().querySelectorAll(".dt-drag-handle")).toHaveLength(9)
+    for (const groupId of ["document", "totals", "money"]) {
+      expect(handle(groupId)).toBeInTheDocument()
+    }
+  })
+
+  it("moves a group among its siblings, carrying its leaves with it", async () => {
+    await openPanel()
+
+    // Document stands between Code and Totals at the top level. One press of
+    // ArrowDown puts it past Totals; the leaves under it travel together.
+    fireEvent.keyDown(handle("document"), { key: " " })
+    fireEvent.keyDown(handle("document"), { key: "ArrowDown" })
+    expect(slot()).toBe("totals")
+    fireEvent.keyDown(handle("document"), { key: " " })
+
+    expect(
+      Array.from(panel().querySelectorAll("li.dt-panel-item")).map((item) =>
+        item.getAttribute("data-column-id"),
+      ),
+    ).toEqual(["code", "amount", "currency", "partner", "city", "status"])
+  })
+
+  it("will not carry a group into another group, and paints no slot for it", async () => {
+    await openPanel()
+
+    const dataTransfer = {
+      effectAllowed: "",
+      dropEffect: "",
+      setData: () => undefined,
+      getData: () => "document",
+      setDragImage: () => undefined,
+    }
+    fireEvent.dragStart(handle("document"), { dataTransfer })
+    // Amount is a leaf INSIDE Money, two levels down — never a sibling of
+    // Document, so there is nothing to promise and nothing to do.
+    const amount = panel().querySelector<HTMLElement>('li[data-column-id="amount"]')
+    fireEvent.dragOver(amount as HTMLElement, { dataTransfer })
+    expect(slot()).toBeNull()
+    fireEvent.drop(amount as HTMLElement, { dataTransfer })
+
+    expect(
+      Array.from(panel().querySelectorAll("li.dt-panel-item")).map((item) =>
+        item.getAttribute("data-column-id"),
+      ),
+    ).toEqual(["code", "partner", "city", "amount", "currency", "status"])
+  })
+
+  it("offers no grip on a group split across the pinning boundary", async () => {
+    const user = await openPanel()
+    // Partner is Document's first leaf; freezing it alone leaves City behind
+    // in the scrolling section, so TanStack draws Document twice and neither
+    // header is the group.
+    await user.click(screen.getByRole("button", { name: /partner: column actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: /pin to start/i }))
+
+    const runs = within(panel()).getAllByRole("checkbox", { name: "Document column group" })
+    expect(runs).toHaveLength(2)
+    expect(panel().querySelectorAll('[data-column-id="document"] > .dt-drag-handle')).toHaveLength(
+      0,
+    )
   })
 })

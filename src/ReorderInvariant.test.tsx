@@ -210,6 +210,17 @@ const FIXTURES: Fixture[] = [
     baseline: ["e", "a", "b", "c", "d", "f"],
   },
   {
+    // A group straddling the pinning boundary: B is frozen at the start while
+    // its siblings A and C scroll, so TanStack draws Left twice and neither
+    // header is the group. There is no honest place for it to go, so the
+    // panel must offer no grip on either half — the same refusal the header
+    // makes, which is `isMovableRegion` in both.
+    name: "a column group split across the pinning boundary",
+    shape: "grouped",
+    pinning: { start: ["b"], end: [] },
+    baseline: ["b", "a", "c", "d", "e", "f"],
+  },
+  {
     // The shape the torn group was found in: the column the rows are grouped
     // by is the LAST leaf of a declared group, so hoisting it out leaves a
     // hole at that group's trailing edge. A drop on that edge resolved against
@@ -257,6 +268,33 @@ const tornGroups = (shape: Shape, order: readonly string[]): string[] =>
       return at.length > 1 && Math.max(...at) - Math.min(...at) !== at.length - 1
     })
     .map(([group]) => group)
+
+/**
+ * The declared groups a fixture's PINNING has split in two.
+ *
+ * TanStack draws such a group twice, once over the frozen leaves and once over
+ * the rest, and neither header is the group: moving it would have to carry
+ * leaves out of the section the user froze them in. So neither surface offers
+ * a grip on it — `dropRegionOf` puts it alone in a region and
+ * `isMovableRegion` answers no.
+ *
+ * Read off the fixture's own declarations rather than the live columns, for
+ * the same reason {@link tornGroups} is: the live tree is a derivation.
+ *
+ * @param fixture - The fixture to read.
+ * @returns The ids of the groups whose leaves do not share a pinning section.
+ */
+const splitGroups = (fixture: Fixture): string[] => {
+  const sectionOf = (id: string): string =>
+    fixture.pinning.start.includes(id)
+      ? "start"
+      : fixture.pinning.end.includes(id)
+        ? "end"
+        : "center"
+  return Object.entries(DECLARED_GROUPS[fixture.shape])
+    .filter(([, leaves]) => new Set(leaves.map(sectionOf)).size > 1)
+    .map(([group]) => group)
+}
 
 /**
  * The columns a fixture lets a user pick up.
@@ -335,21 +373,75 @@ const headerCell = (columnId: string): HTMLElement => {
   return cell
 }
 
+/**
+ * The element the Columns panel identifies one row by, and drags it from.
+ *
+ * A leaf's is its `<li>`. A GROUP's is the row inside its `<li>`, because the
+ * `<li>` holds the nested child list as well — a `dragover` on a child would
+ * bubble into it, and the enclosing group would draw a slot for a drop it is
+ * about to refuse. Both carry `data-column-id`, which is the one attribute
+ * every drag surface in this library keys off; a group row answers to it
+ * because a group is a column in every sense a drag cares about.
+ */
 const panelRow = (columnId: string): HTMLElement => {
   // Scoped to the column list: the Row Groups zone below it keys its chips by
   // the same attribute, and a grouped fixture has both on screen at once.
   const row = document.querySelector<HTMLElement>(
-    `ul.dt-panel-list li[data-column-id="${columnId}"]`,
+    `ul.dt-panel-list [data-column-id="${columnId}"]`,
   )
   if (!row) throw new Error(`no panel row for ${columnId}`)
   return row
 }
 
 const panelHandle = (columnId: string): HTMLElement => {
-  const handle = panelRow(columnId).querySelector<HTMLElement>(".dt-drag-handle")
+  const handle = panelRow(columnId).querySelector<HTMLElement>(":scope > .dt-drag-handle")
   if (!handle) throw new Error(`no drag handle for ${columnId}`)
   return handle
 }
+
+/** The id one `<li>` of the panel stands for: a leaf's own, or its group's. */
+const panelRowId = (item: Element): string =>
+  item.getAttribute("data-column-id") ??
+  item.querySelector(":scope > [data-column-id]")?.getAttribute("data-column-id") ??
+  ""
+
+/**
+ * The ids standing at one panel row's OWN level, left to right.
+ *
+ * A drag is a move among siblings, so this is the order every slot and every
+ * announced position is measured in. Read back off the rendered list rather
+ * than recomputed, so the assertion cannot repeat a mistake the component
+ * made in the same arithmetic.
+ */
+const panelLevelOf = (columnId: string): string[] => {
+  const list = panelRow(columnId).closest("li")?.parentElement
+  if (!list) throw new Error(`no level for ${columnId}`)
+  return [...list.children].map(panelRowId)
+}
+
+/** Every row the panel offers a grip on, in list order — leaves and groups. */
+const panelDraggable = (): string[] =>
+  [...document.querySelectorAll("ul.dt-panel-list [data-column-id]")]
+    .filter((row) => row.querySelector(":scope > .dt-drag-handle") !== null)
+    .map((row) => row.getAttribute("data-column-id") ?? "")
+
+/** Every row the panel lists, groups included: the full set of drop targets. */
+const panelRowIds = (): string[] =>
+  [...document.querySelectorAll("ul.dt-panel-list [data-column-id]")].map(
+    (row) => row.getAttribute("data-column-id") ?? "",
+  )
+
+/** The header a column GROUP is labelled with, for the names spoken aloud. */
+const GROUP_HEADERS: Readonly<Record<string, string>> = { left: "Left", right: "Right" }
+
+/**
+ * How the panel names a row when it speaks: a leaf by its header, a group by
+ * the same "… column group" phrase its own checkbox uses.
+ */
+const spokenName = (columnId: string): string =>
+  LEAF_ID_SET.has(columnId)
+    ? label(columnId)
+    : `${GROUP_HEADERS[columnId] ?? columnId} column group`
 
 const slotAttribute = (selector: string): string | null =>
   document.querySelector(selector)?.getAttribute("data-column-id") ?? null
@@ -366,7 +458,9 @@ const SURFACES: Surface[] = [
     name: "the Columns panel",
     grip: panelHandle,
     target: panelRow,
-    slot: () => slotAttribute("li.dt-drop-slot"),
+    // Not `li.dt-drop-slot`: a group wears the band on its own row, which is
+    // a div inside the `<li>` rather than the `<li>` itself.
+    slot: () => slotAttribute("ul.dt-panel-list .dt-drop-slot"),
     axis: "clientY",
   },
 ]
@@ -443,6 +537,21 @@ const dragHeader = (draggedId: string, targetId: string, side: Side) => {
   fireEvent.dragEnd(headerCell(draggedId))
 }
 
+/**
+ * One complete Columns-panel drag, start to finish.
+ *
+ * The panel's counterpart to {@link dragHeader}, for the cases that compare
+ * the two surfaces' OUTCOMES rather than watching either one mid-drag.
+ */
+const dragPanel = (draggedId: string, targetId: string, side: Side) => {
+  const surface = SURFACES[1] as Surface
+  const dataTransfer = makeDataTransfer()
+  fireEvent.dragStart(panelHandle(draggedId), { dataTransfer })
+  pointAt(surface, "dragOver", panelRow(targetId), side, dataTransfer)
+  pointAt(surface, "drop", panelRow(targetId), side, dataTransfer)
+  fireEvent.dragEnd(panelHandle(draggedId))
+}
+
 /** The order the Columns panel is listing in. */
 const panelOrder = (): string[] =>
   Array.from(document.querySelectorAll("li.dt-panel-item")).map(
@@ -487,17 +596,30 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     // And the group column, where there is one, offers nothing to pick up —
     // which is why the loops below leave it out of the dragged set.
     for (const id of LEAF_IDS) {
-      const handle = panelRow(id).querySelector(".dt-drag-handle")
+      const handle = panelRow(id).querySelector(":scope > .dt-drag-handle")
       expect(handle === null).toBe(id === fixture.rowGrouping?.[0])
     }
+    /*
+     * The panel offers a grip on exactly the rows the drop regions allow —
+     * which is the whole affordance rule, asked of the rendered DOM. A group
+     * split across the pinning boundary is alone in its region and must offer
+     * none; every other group must offer one, because the header does.
+     */
+    expect(panelDraggable().sort()).toEqual(
+      panelRowIds()
+        .filter((id) => id !== fixture.rowGrouping?.[0] && !splitGroups(fixture).includes(id))
+        .sort(),
+    )
     // The row-number column is there or it is not, and when it is it is in
-    // neither list: no header to grab, and no row in the panel at all.
+    // neither list: no header to grab, and no row in the panel at all — so
+    // there is nothing in the panel to grip it by either.
     const numberHeader = document.querySelector(`th[data-column-id="${ROW_NUMBER_COLUMN_ID}"]`)
     expect(numberHeader !== null).toBe(fixture.rowNumbers === true)
     expect(numberHeader?.getAttribute("draggable") ?? "false").toBe("false")
     expect(
-      document.querySelector(`ul.dt-panel-list li[data-column-id="${ROW_NUMBER_COLUMN_ID}"]`),
+      document.querySelector(`ul.dt-panel-list [data-column-id="${ROW_NUMBER_COLUMN_ID}"]`),
     ).toBeNull()
+    expect(panelDraggable()).not.toContain(ROW_NUMBER_COLUMN_ID)
   })
 
 
@@ -558,41 +680,53 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     expect(moves).toBeGreaterThan(0)
   })
 
+  /**
+   * Every row the panel offers a grip on — leaves AND groups — moved to every
+   * position of its own level.
+   *
+   * Measured at that level and not in leaves, because a group is not one leaf
+   * wide: move it past a group of three and it travels three places, which is
+   * right and would read as a broken promise to an assertion counting columns.
+   * For a flat table the two readings are the same list, so nothing is lost
+   * where there are no groups.
+   */
   it("lands where it announced on the keyboard path", () => {
     const violations: string[] = []
-    const total = LEAF_IDS.length
+    let moves = 0
 
-    for (const draggedId of draggableIn(fixture)) {
-      for (let index = 0; index < total; index += 1) {
-        const before = renderedOrder()
-        const from = before.indexOf(draggedId)
+    for (const draggedId of panelDraggable()) {
+      const level = panelLevelOf(draggedId)
+      for (let index = 0; index < level.length; index += 1) {
+        const beforeLevel = panelLevelOf(draggedId)
+        const beforeLeaves = renderedOrder()
+        const from = beforeLevel.indexOf(draggedId)
         const key = index > from ? "ArrowDown" : "ArrowUp"
 
         fireEvent.keyDown(panelHandle(draggedId), { key: " " })
         for (let press = 0; press < Math.abs(index - from); press += 1) {
           fireEvent.keyDown(panelHandle(draggedId), { key })
         }
-        // A keyboard grab always has a slot — it starts at the column's own
+        // A keyboard grab always has a slot — it starts at the row's own
         // place — and the arrows stop at the edge of the run it may move in.
-        const slot = document.querySelector("li.dt-drop-slot")?.getAttribute("data-column-id")
+        const slot = slotAttribute("ul.dt-panel-list .dt-drop-slot")
         fireEvent.keyDown(panelHandle(draggedId), { key: " " })
 
-        const after = renderedOrder()
-        const where = `${label(draggedId)} towards position ${index + 1}`
+        const afterLevel = panelLevelOf(draggedId)
+        const where = `${draggedId} towards position ${index + 1}`
+        if (renderedOrder().join(" ") !== beforeLeaves.join(" ")) moves += 1
 
-        if (slot === undefined || slot === null) {
-          violations.push(`${where}: a held column showed no slot at all`)
+        if (slot === null) {
+          violations.push(`${where}: a held row showed no slot at all`)
         } else {
-          const promised = before.indexOf(slot)
-          const landed = after.indexOf(draggedId)
+          const promised = beforeLevel.indexOf(slot)
+          const landed = afterLevel.indexOf(draggedId)
           if (landed !== promised) {
-            violations.push(
-              `${where}: the slot was at ${promised}, the column landed at ${landed}`,
-            )
+            violations.push(`${where}: the slot was at ${promised}, the row landed at ${landed}`)
           }
           // The position a screen-reader user is told is the position they
-          // get: the whole point of announcing it.
-          const expected = `${label(draggedId)}: position ${promised + 1} of ${total}`
+          // get: the whole point of announcing it. Both numbers are the
+          // LEVEL's, which is the only run the arrows can reach.
+          const expected = `${spokenName(draggedId)}: position ${promised + 1} of ${level.length}`
           if (announced() !== expected) {
             violations.push(`${where}: announced "${announced()}", expected "${expected}"`)
           }
@@ -606,6 +740,9 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
     }
 
     expect(violations).toEqual([])
+    // A panel that stopped offering grips, or stopped committing the move,
+    // would pass every check above in silence.
+    expect(moves).toBeGreaterThan(0)
   })
 })
 
@@ -677,9 +814,20 @@ describe.each(FIXTURES.filter((fixture) => fixture.rowNumbers))(
  * leaves, in the same order, still under one header. A move that scattered
  * them would satisfy the first half and be the worse defect.
  */
-describe.each(FIXTURES.filter((fixture) => fixture.shape !== "flat"))(
-  "a column group keeps the slot's promise in $name",
-  (fixture) => {
+describe.each(
+  FIXTURES.filter(
+    (fixture) =>
+      fixture.shape !== "flat" &&
+      /*
+       * A fixture whose only group is split by pinning has no group move to
+       * make — neither half is the group, and the unpinned siblings are in
+       * other regions — so it belongs in the suites that check the REFUSAL,
+       * not here. Its header is also drawn one row per pinning section, which
+       * `leavesUnderTopLevel` below cannot read as one run.
+       */
+      splitGroups(fixture).length === 0,
+  ),
+)("a column group keeps the slot's promise in $name", (fixture) => {
     /**
      * The header's top row: the groups, and any leaf that belongs to none.
      *
@@ -799,6 +947,230 @@ describe.each(FIXTURES.filter((fixture) => fixture.shape !== "flat"))(
       // A fixture whose groups stopped offering slots would pass every check
       // above in silence, which is the shape this regression would take.
       expect(moves).toBeGreaterThan(0)
+    })
+})
+
+/** The fixtures a GROUP can actually be moved in, on either surface. */
+const MOVABLE_GROUP_FIXTURES = FIXTURES.filter(
+  (fixture) => fixture.shape !== "flat" && splitGroups(fixture).length === 0,
+)
+
+/**
+ * The same promise, made by the SIDE PANEL for a header that stands for
+ * several columns.
+ *
+ * The defect: the header could pick a group up and the panel could not, so
+ * the one surface a user who cannot drag can reach offered no way to move a
+ * group at all. Now it does, and it owes the same two things the header does
+ * — the group lands where the slot was, and it arrives intact.
+ *
+ * Read at the group's own LEVEL, as the header's counterpart is, and with one
+ * extra account that only the panel can break cheaply: the stored order, which
+ * is where a torn group hides until the grouping comes off.
+ */
+describe.each(MOVABLE_GROUP_FIXTURES)(
+  "a column group keeps the slot's promise in the Columns panel in $name",
+  (fixture) => {
+    const saved: TableLayout[] = []
+    const storage: LayoutStorage = {
+      load: () => null,
+      save: (_id, layout) => void saved.push(layout),
+      clear: () => undefined,
+    }
+    const surface = SURFACES[1] as Surface
+
+    /** The leaves the panel lists under one group row, in order. */
+    const leavesUnder = (groupId: string): string[] =>
+      [...document.querySelectorAll(`li[data-group-id="${groupId}"] li.dt-panel-item`)].map(
+        (item) => item.getAttribute("data-column-id") ?? "",
+      )
+
+    /** The group rows the panel offers a grip on. */
+    const draggableGroups = (): string[] =>
+      panelDraggable().filter((id) => !LEAF_ID_SET.has(id))
+
+    beforeEach(() => {
+      localStorage.clear()
+      saved.length = 0
+      render(<Table fixture={fixture} storage={storage} />)
+      openPanel()
+    })
+
+    afterEach(() => cleanup())
+
+    it("offers a grip on exactly the groups the header does", () => {
+      const headerGroups = [
+        ...new Set(
+          [...document.querySelectorAll("th.dt-th-group[data-column-id]")]
+            .map((th) => th.getAttribute("data-column-id") ?? "")
+            .filter((id) => headerCell(id).getAttribute("draggable") === "true"),
+        ),
+      ]
+      expect(draggableGroups().sort()).toEqual(headerGroups.sort())
+      expect(draggableGroups().length).toBeGreaterThan(0)
+    })
+
+    it("lands the whole group where the slot promised, and tears none", () => {
+      const violations: string[] = []
+      let moves = 0
+      let refusals = 0
+
+      for (const draggedId of draggableGroups()) {
+        // Every row the panel lists, not only the group's own level: a group
+        // dropped on a LEAF inside another group has to be refused, and the
+        // refusal is only visible if the case is attempted.
+        for (const targetId of panelRowIds()) {
+          for (const side of SIDES) {
+            const beforeLevel = panelLevelOf(draggedId)
+            const beforeLeaves = renderedOrder()
+            const carried = leavesUnder(draggedId)
+            const writes = saved.length
+            const dataTransfer = makeDataTransfer()
+
+            fireEvent.dragStart(panelHandle(draggedId), { dataTransfer })
+            const target = panelRow(targetId)
+            pointAt(surface, "dragOver", target, side, dataTransfer)
+            const slot = surface.slot()
+            pointAt(surface, "drop", target, side, dataTransfer)
+            fireEvent.dragEnd(panelHandle(draggedId))
+
+            const afterLeaves = renderedOrder()
+            const where = `${draggedId} onto ${targetId}'s ${side}`
+            if (afterLeaves.join(" ") !== beforeLeaves.join(" ")) moves += 1
+
+            if (slot === null) {
+              refusals += 1
+              if (afterLeaves.join(" ") !== beforeLeaves.join(" ")) {
+                violations.push(`${where}: no slot, yet the order became ${afterLeaves.join(" ")}`)
+              }
+            } else {
+              const promised = beforeLevel.indexOf(slot)
+              const landed = panelLevelOf(draggedId).indexOf(draggedId)
+              if (landed !== promised) {
+                violations.push(
+                  `${where}: the slot was at ${promised} (on ${slot}), ` +
+                    `the group landed at ${landed} — ${panelLevelOf(draggedId).join(" ")}`,
+                )
+              }
+              const arrived = leavesUnder(draggedId)
+              if (arrived.join(" ") !== carried.join(" ")) {
+                violations.push(
+                  `${where}: it set out with ${carried.join(" ")} and arrived with ` +
+                    `${arrived.join(" ")}`,
+                )
+              }
+            }
+
+            // Whatever happened on screen, what was WRITTEN DOWN keeps every
+            // declared group's leaves in one run.
+            fireEvent(window, new Event("pagehide"))
+            if (saved.length > writes) {
+              const order = saved[saved.length - 1]?.columnOrder ?? []
+              const torn = tornGroups(fixture.shape, order)
+              if (torn.length > 0) {
+                violations.push(`${where}: ${torn.join(", ")} torn apart — ${order.join(" ")}`)
+              }
+            }
+
+            resetToBaseline()
+            if (renderedOrder().join(" ") !== fixture.baseline.join(" ")) {
+              violations.push(`${where}: Reset left ${renderedOrder().join(" ")}`)
+            }
+          }
+        }
+      }
+
+      expect(violations).toEqual([])
+      expect(moves).toBeGreaterThan(0)
+      // A group dropped on a leaf inside another group is one of these: the
+      // two are never in one region, so there is nothing to paint and nothing
+      // to do. Counted so the refusal half cannot go untested in silence.
+      expect(refusals).toBeGreaterThan(0)
+    })
+  },
+)
+
+/**
+ * The two surfaces, asked to do the same thing.
+ *
+ * They are separate code paths — one drags a `<th>`, the other a row of a
+ * list — and every defect this file has caught lived in the gap between them.
+ * So the last property is the plainest one: the same gesture, on either
+ * surface, leaves the same arrangement on screen AND the same order in
+ * storage.
+ *
+ * Over UNPINNED siblings only. The header declines to pick up a pinned column
+ * at all, while the panel moves one within its own frozen section — a
+ * deliberate difference, not a disagreement about a move both offer.
+ */
+describe.each(MOVABLE_GROUP_FIXTURES)(
+  "the header and the Columns panel make the same move in $name",
+  (fixture) => {
+    const saved: TableLayout[] = []
+    const storage: LayoutStorage = {
+      load: () => null,
+      save: (_id, layout) => void saved.push(layout),
+      clear: () => undefined,
+    }
+
+    /**
+     * The order a returning visit would be restored from.
+     *
+     * Emptied before each gesture, so "nothing was written" reads as an empty
+     * order on both surfaces rather than as the previous case's leftovers.
+     */
+    const storedOrder = (): string[] => {
+      fireEvent(window, new Event("pagehide"))
+      return saved[saved.length - 1]?.columnOrder ?? []
+    }
+
+    beforeEach(() => {
+      localStorage.clear()
+      saved.length = 0
+      render(<Table fixture={fixture} storage={storage} />)
+      openPanel()
+    })
+
+    afterEach(() => cleanup())
+
+    it("agrees about where a group lands, on screen and in storage", () => {
+      const violations: string[] = []
+      let compared = 0
+
+      for (const draggedId of panelDraggable().filter((id) => !LEAF_ID_SET.has(id))) {
+        for (const targetId of panelLevelOf(draggedId)) {
+          if (targetId === draggedId) continue
+          for (const side of SIDES) {
+            saved.length = 0
+            dragHeader(draggedId, targetId, side)
+            const headerRendered = renderedOrder().join(" ")
+            const headerStored = storedOrder().join(" ")
+            resetToBaseline()
+
+            saved.length = 0
+            dragPanel(draggedId, targetId, side)
+            const panelRendered = renderedOrder().join(" ")
+            const panelStored = storedOrder().join(" ")
+            resetToBaseline()
+
+            compared += 1
+            const where = `${draggedId} onto ${targetId}'s ${side}`
+            if (headerRendered !== panelRendered) {
+              violations.push(
+                `${where}: the header showed ${headerRendered}, the panel ${panelRendered}`,
+              )
+            }
+            if (headerStored !== panelStored) {
+              violations.push(
+                `${where}: the header stored ${headerStored}, the panel ${panelStored}`,
+              )
+            }
+          }
+        }
+      }
+
+      expect(violations).toEqual([])
+      expect(compared).toBeGreaterThan(0)
     })
   },
 )

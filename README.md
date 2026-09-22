@@ -1369,12 +1369,21 @@ then its children indented beneath it, to whatever depth the columns nest.
 - **Every column keeps its row, hidden or not**, and a group keeps its row even
   when every leaf under it is hidden. A row is how a hidden column is shown
   again; a list of only the visible ones is a one-way door.
+- **A group row carries a drag handle of its own**, like the header's, and
+  dragging it moves the whole group — every leaf under it, in the order it
+  already had. Pointer and keyboard both, on the same terms.
 - Dragging inside the tree still refuses to cross a group boundary, which is
   `dropRegionOf`'s rule and not the tree's — a leaf that left its group would
-  tear the group's header apart.
+  tear the group's header apart, and a group dropped into another one would
+  nest it somewhere the column definitions never put it. A drag is always a
+  move among **siblings**, so the drop slot, the keyboard's reachable run and
+  the announced "position 2 of 4" are all counted at the dragged row's own
+  level — never in leaves, because a group three columns wide does not land on
+  one-column steps.
 - A group split by pinning — TanStack draws its header twice, once over the
   pinned part and once over the rest — is listed twice, the same way, and each
-  half answers for its own run.
+  half answers for its own run. Neither half is the group, so neither offers a
+  handle: there is no honest place for it to go.
 
 `presentation` decides how the panel behaves, and it is a prop rather than
 something inferred from where the panel is mounted:
@@ -1490,11 +1499,15 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
   separate elements rather than one concatenated sentence, so a translation can put a different
   one first.
 - Reordering has a keyboard path: each row of the **Columns** panel carries a drag handle that
-  is in the `Tab` order. `Space` picks the column up, the arrow keys move the drop slot,
-  `Space` puts it down and `Escape` gives it back. The handle reports `aria-pressed`, and every
-  position — including the one a cancel returns to — is announced politely. The slot stops at a
-  group or pinning boundary, because a move across one is refused. The two strings it speaks are
-  the `reorderHint` and `reorderPosition` labels.
+  is in the `Tab` order — a group row's included, so a group is not the one thing that needs a
+  mouse. `Space` picks the row up, the arrow keys move the drop slot, `Space` puts it down and
+  `Escape` gives it back. The handle reports `aria-pressed`, and every position — including the
+  one a cancel returns to — is announced politely, counted at the row's own level, which is the
+  only run the arrows can reach. A group speaks its name through `columnGroup`, the same
+  "Document column group" its checkbox already uses, so a group and a column of one name are
+  told apart by ear. The slot stops at a group or pinning boundary, because a move across one is
+  refused. The strings it speaks are the `reorderHint`, `reorderPosition` and `columnGroup`
+  labels.
 - The cell menu is the header menu's sibling: it opens at the pointer, clamps itself into
   the viewport, takes the focus on its first item, closes on `Escape` and hands the focus back
   to the cell it opened on. A cell that cannot be edited still gets the menu, with the reason

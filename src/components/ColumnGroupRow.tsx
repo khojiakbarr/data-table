@@ -1,17 +1,32 @@
-import { useRef } from "react"
+import { useRef, type DragEventHandler, type ReactNode } from "react"
+import { classNames } from "../core/classNames"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableLabels } from "../types"
 
 /**
  * One group header inside the Columns panel's tree.
  *
- * It is not a column the table draws cells for, so it carries none of the
- * per-column controls a leaf row has — no drag handle, no pin badge, no
- * filter. What it does carry is the two things a group is: a checkbox that
- * speaks for every leaf under it, and a control that folds those leaves away.
+ * It carries none of the PER-COLUMN controls a leaf row has — no pin badge,
+ * no filter, no row-group toggle — because a group has no values of its own.
+ * What it does carry is the three things a group is: a checkbox that speaks
+ * for every leaf under it, a control that folds those leaves away, and a grip,
+ * because a group is moved as one thing in the header and must be here too.
+ *
+ * This row, and not the `<li>` around it, is the group's drag surface. The
+ * `<li>` holds the nested list as well, so a `dragover` on a child leaf would
+ * bubble into it and the enclosing group would draw a slot for a drop that is
+ * refused — the one thing a preview must never do.
  */
 
 export interface ColumnGroupRowProps {
+  /**
+   * The group column's id.
+   *
+   * Written to `data-column-id`, the attribute every drag surface in this
+   * library identifies a row by — see the note in `ColumnsTab.renderGroup`
+   * for why a group answers to it.
+   */
+  columnId: string
   /** The group's header text. */
   name: string
   /** DOM id for the checkbox, so the visible text can label it. */
@@ -26,6 +41,18 @@ export interface ColumnGroupRowProps {
   disabled: boolean
   collapsed: boolean
   labels: DataTableLabels
+  /**
+   * The grip this row is picked up by, or nothing when the group may not be
+   * moved at all — reordering off, or a group split across a pinning boundary.
+   */
+  handle?: ReactNode
+  /** This group is the one in flight. */
+  dragging?: boolean
+  /** This group stands where the drop would land. */
+  dropSlot?: boolean
+  onDragOver?: DragEventHandler<HTMLDivElement>
+  onDragLeave?: DragEventHandler<HTMLDivElement>
+  onDrop?: DragEventHandler<HTMLDivElement>
   /** Show (`true`) or hide (`false`) every leaf under the group at once. */
   onToggleVisibility: (next: boolean) => void
   onToggleCollapse: () => void
@@ -35,12 +62,13 @@ export interface ColumnGroupRowProps {
  * The row a group is represented by.
  *
  * @param props - See {@link ColumnGroupRowProps}.
- * @returns The collapse control, the group's checkbox and its name.
+ * @returns The grip, the collapse control, the group's checkbox and its name.
  *
  * @example
- * <ColumnGroupRow name="Document" checked indeterminate={false} … />
+ * <ColumnGroupRow columnId="document" name="Document" checked indeterminate={false} … />
  */
 export function ColumnGroupRow({
+  columnId,
   name,
   checkboxId,
   sublistId,
@@ -49,6 +77,12 @@ export function ColumnGroupRow({
   disabled,
   collapsed,
   labels,
+  handle,
+  dragging = false,
+  dropSlot = false,
+  onDragOver,
+  onDragLeave,
+  onDrop,
   onToggleVisibility,
   onToggleCollapse,
 }: ColumnGroupRowProps) {
@@ -66,7 +100,18 @@ export function ColumnGroupRow({
   }, [indeterminate])
 
   return (
-    <div className="dt-panel-group-head">
+    <div
+      className={classNames(
+        "dt-panel-group-head",
+        dragging && "dt-panel-dragging",
+        dropSlot && "dt-drop-slot",
+      )}
+      data-column-id={columnId}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {handle}
       <button
         type="button"
         className="dt-group-toggle"

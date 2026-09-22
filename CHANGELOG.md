@@ -5,6 +5,34 @@ releases are summarised in one line rather than reconstructed.
 
 ## Unreleased
 
+### Fixed
+
+- **A column group can be dragged from the Columns panel**, not only from the
+  header. The two surfaces disagreed about the same gesture: the header moved
+  `Document` and everything under it, and the panel — the only surface a user
+  who cannot drag can reach at all — offered no handle on a group row. It does
+  now, wired to the same `useDropSlot` lifecycle a leaf row uses, with the same
+  keyboard path: `Space` picks the group up, the arrows move the slot, `Space`
+  drops it, `Escape` gives it back.
+  - The panel now resolves a drag at the dragged row's **own level**, as the
+    header already did, instead of over one flat array of leaves. A group three
+    columns wide does not land on one-column steps, so the drop slot, the run
+    the arrows may reach and the announced position are all counted in
+    siblings. For a flat table the two readings are the same list. One knock-on
+    benefit: a top-level leaf standing beside a group can now be dragged past
+    it from the panel, which the header has always allowed.
+  - The position a group announces reuses `columnGroup` — "Document column
+    group: position 2 of 4" — so a group and a column of the same name are told
+    apart by ear. No new strings.
+  - A group row's own row, and not the `<li>` around it, is the drag surface:
+    the `<li>` holds the nested child list too, and a `dragover` on a child
+    would bubble into it and paint a slot for a drop that is then refused.
+  - Still refused, and still with no slot painted: a group dropped into another
+    group or onto one of its own leaves, a group split across a pinning
+    boundary (neither half is the group), the group column of a grouped table,
+    and the row-number column. All four are one answer — `isMovableRegion` over
+    `dropRegionOf` — asked the same way the header asks it.
+
 ### Changed
 
 - **The Columns tab shows the column tree** instead of a flat list of leaves.
@@ -26,8 +54,8 @@ releases are summarised in one line rather than reconstructed.
   boundary for every surface and no slot appears where the drop would be
   refused. The drop slot is drawn on the sibling the group will stand in place
   of, so it outlines the whole destination rather than one column of it.
-  - The Columns tab is unchanged: a group row there is still a checkbox and a
-    collapse control, with no drag handle of its own.
+  - The Columns tab carries the same handle on its group rows — see the Fixed
+    entry above, which closed the gap this bullet used to record.
   - The group column of a grouped table stays undraggable and unhideable, as
     does a group whose leaves straddle a pinning boundary — neither has a place
     of its own to be moved to.

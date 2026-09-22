@@ -1103,7 +1103,14 @@
   border-inline-start: 1px solid var(--dt-border);
 }
 
-.dt-panel-item {
+/*
+ * Both rows a drag can land on, so `.dt-drop-slot::after` has something to be
+ * absolute against. A group's band sits on its own row and not on the `<li>`
+ * around it: the `<li>` holds the nested list too, and a band drawn over the
+ * whole block would say the group is landing inside itself.
+ */
+.dt-panel-item,
+.dt-panel-group-head {
   position: relative;
 }
 
@@ -1187,7 +1194,8 @@
   outline-offset: 1px;
 }
 
-.dt-panel-item:hover .dt-drag-handle {
+.dt-panel-item:hover .dt-drag-handle,
+.dt-panel-group-head:hover > .dt-drag-handle {
   color: var(--dt-fg);
 }
 

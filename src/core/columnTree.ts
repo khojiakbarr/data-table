@@ -34,8 +34,12 @@ export interface ColumnTreeLeaf<TData extends RowData> {
   kind: "leaf"
   column: AnyColumn<TData>
   /**
-   * Where this leaf sits in the flat order the tree was built from — which is
-   * the order reordering works in, so it is carried rather than recomputed.
+   * Where this leaf sits in the flat order the tree was built from.
+   *
+   * NOT the order reordering works in, whatever this comment used to say: a
+   * drag is a move among siblings, so both surfaces resolve one against
+   * {@link siblingOrderOf}. This is the flat leaf position, for a caller that
+   * wants to line a row up against the `<colgroup>` or the rendered cells.
    */
   index: number
 }

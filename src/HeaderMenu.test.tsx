@@ -1,5 +1,5 @@
 import { createColumnHelper } from "@tanstack/react-table"
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
@@ -128,6 +128,90 @@ describe("header menu", () => {
   it("gives a group header no menu", () => {
     render(<Table grouped />)
     expect(screen.queryByRole("button", { name: /group: column actions/i })).toBeNull()
+  })
+})
+
+/**
+ * `useMenuSurface`'s ARIA-menu contract, exercised through `HeaderMenu`
+ * because it is the caller with enough items (sort, pin, resize, hide) to
+ * prove wrapping actually wraps rather than only ever landing on item 1 or 2.
+ * `CellMenu`'s own suite, unedited by this change, is what proves the same
+ * hook stays sane at n=1.
+ */
+describe("header menu keyboard navigation", () => {
+  beforeEach(() => localStorage.clear())
+
+  it("opens with the first item as the only tab stop", async () => {
+    render(<Table />)
+    await openMenuFor(/alpha: column actions/i)
+    const items = screen.getAllByRole("menuitem")
+
+    expect(items[0]).toHaveFocus()
+    expect(items[0]).toHaveAttribute("tabindex", "0")
+    for (const item of items.slice(1)) {
+      expect(item).toHaveAttribute("tabindex", "-1")
+    }
+  })
+
+  it("moves the roving focus down with ArrowDown and wraps past the last item", async () => {
+    render(<Table />)
+    const user = await openMenuFor(/alpha: column actions/i)
+    const items = screen.getAllByRole("menuitem")
+
+    for (let step = 0; step < items.length - 1; step += 1) {
+      await user.keyboard("{ArrowDown}")
+    }
+    expect(items[items.length - 1]).toHaveFocus()
+
+    await user.keyboard("{ArrowDown}")
+    expect(items[0]).toHaveFocus()
+  })
+
+  it("moves the roving focus up with ArrowUp and wraps before the first item", async () => {
+    render(<Table />)
+    const user = await openMenuFor(/alpha: column actions/i)
+    const items = screen.getAllByRole("menuitem")
+
+    await user.keyboard("{ArrowUp}")
+    expect(items[items.length - 1]).toHaveFocus()
+  })
+
+  it("jumps to the last item with End and back to the first with Home", async () => {
+    render(<Table />)
+    const user = await openMenuFor(/alpha: column actions/i)
+    const items = screen.getAllByRole("menuitem")
+
+    await user.keyboard("{ArrowDown}")
+    await user.keyboard("{End}")
+    expect(items[items.length - 1]).toHaveFocus()
+
+    await user.keyboard("{Home}")
+    expect(items[0]).toHaveFocus()
+  })
+
+  it("closes when Tab carries the focus out past the last item", async () => {
+    render(<Table />)
+    const user = await openMenuFor(/alpha: column actions/i)
+    await user.keyboard("{End}")
+
+    await user.tab()
+    expect(screen.queryByRole("menu")).toBeNull()
+  })
+
+  it("closes the instant focus is moved to something outside it, even without a pointer press", async () => {
+    render(
+      <>
+        <Table />
+        <button type="button">Elsewhere</button>
+      </>,
+    )
+    await openMenuFor(/alpha: column actions/i)
+
+    // A plain `.focus()` call, not a click: it exercises the focus-out
+    // dismissal on its own, apart from the pre-existing outside-pointerdown
+    // path this menu already had.
+    act(() => screen.getByRole("button", { name: "Elsewhere" }).focus())
+    expect(screen.queryByRole("menu")).toBeNull()
   })
 })
 

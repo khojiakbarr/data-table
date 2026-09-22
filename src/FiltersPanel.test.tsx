@@ -315,7 +315,10 @@ describe("the side panel's tabs", () => {
      */
     screen.getByRole("button", { name: "Amount: Column actions" }).focus()
     await user.keyboard("{Enter}")
-    await user.tab()
+    // Arrow, not Tab: the menu's items are one Tab stop (Defect B), roved
+    // with the arrow keys, so this is how a keyboard user reaches the
+    // second item now.
+    await user.keyboard("{ArrowDown}")
     expect(screen.getByRole("menuitem", { name: "Filter in panel…" })).toBe(document.activeElement)
     await user.keyboard("{Enter}")
 
@@ -338,7 +341,10 @@ describe("the side panel's tabs", () => {
   const openAmountFromMenu = async (user: ReturnType<typeof userEvent.setup>) => {
     screen.getByRole("button", { name: "Amount: Column actions" }).focus()
     await user.keyboard("{Enter}")
-    await user.tab()
+    // Arrow, not Tab: the menu's items are one Tab stop (Defect B), roved
+    // with the arrow keys, so this is how a keyboard user reaches the
+    // second item now.
+    await user.keyboard("{ArrowDown}")
     expect(screen.getByRole("menuitem", { name: "Filter in panel…" })).toBe(document.activeElement)
     await user.keyboard("{Enter}")
   }

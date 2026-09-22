@@ -9,7 +9,40 @@ import { useClampedPlacement, type ClampedPoint } from "./useClampedPlacement"
  * needs the same four answers, and a second copy of them is exactly how two
  * menus come to disagree about whether Escape closes them — so the copy is
  * this hook, used by both, rather than a paste.
+ *
+ * `role="menu"` (which every caller sets on its own root) is a promise the
+ * DOM tree alone does not keep: arrow keys have to rove the focus between
+ * `role="menuitem"` children, the items have to form one `Tab` stop rather
+ * than one apiece, and the whole surface has to close the moment focus lands
+ * outside it — a screen reader in application mode hands arrow keys straight
+ * to the menu, and a menu with no route out of it but Escape is a keyboard
+ * trap in every practical sense. All three live here, driven off
+ * `[role="menuitem"]` found under `ref` at call time rather than a list a
+ * caller has to hand in, which is what lets `CellMenu`'s single "Edit" item
+ * today, and `HeaderMenu`'s many, share this without either one describing
+ * its own item list to the hook.
  */
+
+/** Every `role="menuitem"` under `menu`, in DOM — i.e. visual — order. */
+function menuItems(menu: HTMLElement): HTMLElement[] {
+  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+}
+
+/**
+ * Moves the roving tab stop to `items[index]` and follows it with the focus.
+ *
+ * Setting every other item's `tabIndex` to `-1` is what makes the group a
+ * single `Tab` stop instead of one per item — the other half of the
+ * `role="menu"` contract arrow keys satisfy, and something no `<button>`
+ * gets by default, since a plain button is always in the page's Tab order on
+ * its own.
+ */
+function activate(items: HTMLElement[], index: number): void {
+  items.forEach((item, itemIndex) => {
+    item.tabIndex = itemIndex === index ? 0 : -1
+  })
+  items[index]?.focus()
+}
 
 /** How one menu behaves. */
 export interface MenuSurfaceOptions {
@@ -60,7 +93,45 @@ export function useMenuSurface(
       onDismiss()
     }
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onDismiss()
+      if (event.key === "Escape") {
+        onDismiss()
+        return
+      }
+
+      const menu = ref.current
+      const target = event.target
+      // Escape closes the menu no matter where the focus is (it is a
+      // document listener for exactly that reason), but the arrow keys are
+      // only this menu's to steer when a keypress actually originates
+      // inside it — otherwise they would hijack arrow keys meant for
+      // whatever else is focused on the page.
+      if (menu === null || !(target instanceof Node) || !menu.contains(target)) return
+
+      const items = menuItems(menu)
+      if (items.length === 0) return
+      const from = items.findIndex((item) => item === document.activeElement)
+      const currentIndex = from === -1 ? 0 : from
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault()
+          activate(items, (currentIndex + 1) % items.length)
+          break
+        case "ArrowUp":
+          event.preventDefault()
+          activate(items, (currentIndex - 1 + items.length) % items.length)
+          break
+        case "Home":
+          event.preventDefault()
+          activate(items, 0)
+          break
+        case "End":
+          event.preventDefault()
+          activate(items, items.length - 1)
+          break
+        default:
+          break
+      }
     }
     document.addEventListener("pointerdown", onPointerDown)
     document.addEventListener("keydown", onKeyDown)
@@ -70,9 +141,34 @@ export function useMenuSurface(
     }
   }, [ref, onDismiss])
 
-  // Focus the first item so the menu is usable from the keyboard.
   useEffect(() => {
-    ref.current?.querySelector<HTMLButtonElement>("button")?.focus()
+    const menu = ref.current
+    if (menu === null) return
+    const onFocusOut = (event: FocusEvent) => {
+      // `focusout` bubbles (unlike `blur`), so one listener on the menu
+      // catches every item losing the focus. `relatedTarget` is the element
+      // about to take it — still inside the menu for a roving-focus move
+      // between items, `null` when nothing will (Tab ran off the end with no
+      // next stop, or the focused item was just removed from the document).
+      // Either way, once it is not still somewhere inside this menu, the
+      // menu can no longer promise "no keyboard trap" (WCAG 2.1.2) or stay
+      // painted over the table with nothing pointing at it.
+      const next = event.relatedTarget
+      if (next instanceof Node && menu.contains(next)) return
+      onDismiss()
+    }
+    menu.addEventListener("focusout", onFocusOut)
+    return () => menu.removeEventListener("focusout", onFocusOut)
+  }, [ref, onDismiss])
+
+  // Roving tabindex to the first item, which also gives it the initial
+  // focus so the menu is usable from the keyboard the moment it opens.
+  useEffect(() => {
+    const menu = ref.current
+    if (menu === null) return
+    const items = menuItems(menu)
+    if (items.length === 0) return
+    activate(items, 0)
   }, [ref])
 
   /*

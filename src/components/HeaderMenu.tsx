@@ -1,6 +1,6 @@
 import type { Column, RowData } from "@tanstack/react-table"
-import { useEffect, useRef } from "react"
-import { useClampedPlacement } from "../core/useClampedPlacement"
+import { useRef } from "react"
+import { useMenuSurface } from "../core/useMenuSurface"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableFeatureFlags, DataTableLabels } from "../types"
 
@@ -52,27 +52,15 @@ export function HeaderMenu<TData extends RowData>({
   onClose,
 }: HeaderMenuProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
-  const placement = useClampedPlacement(ref, position)
-
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose()
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
-    }
-    document.addEventListener("pointerdown", onPointerDown)
-    document.addEventListener("keydown", onKeyDown)
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown)
-      document.removeEventListener("keydown", onKeyDown)
-    }
-  }, [onClose])
-
-  // Focus the first item so the menu is usable from the keyboard.
-  useEffect(() => {
-    ref.current?.querySelector<HTMLButtonElement>("button")?.focus()
-  }, [])
+  /*
+   * Placement, dismissal and the initial focus were all written here first and
+   * now live in `useMenuSurface`, because the cell menu needs the same four
+   * answers and a second copy of them is how two menus come to disagree about
+   * what Escape does. No behaviour changed in the move: this menu passes no
+   * `returnFocusTo`, because the control that opened it — the column's ⋮
+   * button — is still on screen and keeps the focus the shell sends it.
+   */
+  const placement = useMenuSurface(ref, { position, onDismiss: onClose })
 
   const run = (action: () => void) => () => {
     action()

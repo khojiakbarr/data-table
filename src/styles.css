@@ -1900,3 +1900,84 @@
   border-style: dashed;
   color: var(--dt-muted-fg);
 }
+
+/* ---------- the cell menu ---------- */
+
+/*
+ * A cell menu offers Edit even where it cannot be taken (§2: a menu that
+ * sometimes fails to appear teaches the user the feature is broken). The item
+ * carries `aria-disabled` rather than `disabled`, so it stays focusable and
+ * the reason on it is actually announced — which leaves these two rules as the
+ * only thing that says "not now" to a sighted user.
+ */
+.dt-menu-item[aria-disabled="true"] {
+  color: var(--dt-muted-fg);
+  cursor: default;
+}
+
+.dt-menu-item[aria-disabled="true"]:hover {
+  background: none;
+}
+
+/*
+ * Why a menu item cannot be taken, under its label. Full --dt-muted-fg rather
+ * than a dimmed --dt-fg: it clears 4.5:1 on --dt-bg in both palettes on its
+ * own (themes.test.ts, "base palette"), which an opacity fraction of another
+ * token would not, and this text is small.
+ */
+.dt-menu-note {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--dt-muted-fg);
+  white-space: normal;
+}
+
+/* ---------- the cell editor ---------- */
+
+.dt-cell-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* Fills the cell it replaced instead of sizing to its own content, so the
+     column does not jump the moment the editor opens or commits. */
+  width: 100%;
+}
+
+.dt-cell-editor .dt-filter-input,
+.dt-cell-editor .dt-select {
+  width: 100%;
+}
+
+/*
+ * Why the refusal is not red: a colour meaning "wrong" would need a
+ * --dt-danger token, and every --dt-* token has to be mapped by both shadcn
+ * presets (themes.test.ts) — an avoidable addition. The refusal is a sentence
+ * saying what is wrong, which WCAG 1.4.1 requires in any case (colour was
+ * never allowed to be the only carrier), so it is set in full-strength
+ * --dt-fg and weighted rather than tinted.
+ */
+.dt-cell-editor-error {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dt-fg);
+  animation: dt-cell-editor-error-in 120ms ease both;
+}
+
+/* transform and opacity only: the refusal arriving under a field must not
+   relayout the row it is in. */
+@keyframes dt-cell-editor-error-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The refusal still appears; it just stops moving to get there. */
+  .dt-cell-editor-error {
+    animation: none;
+  }
+}

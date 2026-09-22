@@ -1,4 +1,5 @@
 import type { DataTableLabels } from "../types"
+import type { CellEditingLabels } from "./editing"
 
 /**
  * Picks the Russian form a numeral governs.
@@ -146,4 +147,32 @@ export const ruLabels: DataTableLabels = {
   groupByColumn: (column) => `Группировать строки по столбцу «${column}»`,
   ungroupColumn: (column) => `Убрать «${column}» из группировки строк`,
   rowGroupLevel: (column, level, total) => `${column}: уровень группировки ${level} из ${total}`,
+}
+
+/**
+ * Russian strings for the cell editors and the cell menu.
+ *
+ * A second export rather than more keys on {@link ruLabels}: the editing
+ * strings are their own set until the table is wired to them — see
+ * `labels/editing.ts` for why — and they are translated here, beside the rest
+ * of the Russian, so the join is a spread and not a translation round.
+ *
+ * @example
+ * <CellMenu labels={ruCellEditingLabels} … />
+ */
+export const ruCellEditingLabels: CellEditingLabels = {
+  cellActions: "Действия с ячейкой",
+  edit: "Изменить",
+  editNotEditableColumn: "Этот столбец нельзя изменить",
+  editNotEditableRow: "Эту строку нельзя изменить",
+  editNotEditableGroup: "Группу строк нельзя изменить",
+  editUnavailable: "Изменение недоступно",
+  editValue: "Значение",
+  editHint: "Enter — сохранить, Escape — отменить",
+  invalidNumber: "Введите число",
+  invalidDate: "Введите дату в формате ГГГГ-ММ-ДД",
+  invalidChoice: "Выберите одно из предложенных значений",
+  booleanTrue: "Да",
+  booleanFalse: "Нет",
+  noValue: "(пусто)",
 }

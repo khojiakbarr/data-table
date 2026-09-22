@@ -15,6 +15,7 @@
 Nested column groups · server-side paging, filtering and row grouping · pinning, resizing
 and reordering · virtualised rows · per-user persisted layout · a token-driven theme
 
+[![npm](https://img.shields.io/npm/v/%40hojiakbar_dev%2Fdata-table?color=2f6feb&label=npm)](https://www.npmjs.com/package/@hojiakbar_dev/data-table)
 [![Playground](https://github.com/khojiakbarr/data-table/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/khojiakbarr/data-table/actions/workflows/deploy-pages.yml)
 [![Licence: MIT](https://img.shields.io/badge/licence-MIT-2f6feb.svg)](#licence)
 [![Types: included](https://img.shields.io/badge/types-included-2f6feb.svg)](#api)

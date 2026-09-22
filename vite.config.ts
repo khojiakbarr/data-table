@@ -13,6 +13,15 @@ export default defineConfig({
     }),
   ],
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+  /*
+   * `public/` belongs to the playground, not to the package. Vite copies it
+   * into the build output by default, which put `dist/assets/logo.svg` into
+   * the published tarball — harmless at 1.9kB, but a file with no reason to be
+   * there, and the kind of thing that grows. The DEMO build
+   * (`vite.demo.config.ts`) still wants it, and has its own config, so turning
+   * it off here costs the playground nothing.
+   */
+  publicDir: false,
   build: {
     lib: {
       entry: path.resolve(__dirname, "src/index.ts"),

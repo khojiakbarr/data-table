@@ -26,8 +26,13 @@ const stylesheet = readFileSync(resolve(__dirname, "../styles.css"), "utf8")
 
 /** The declarations of one rule, as `{ "--dt-bg": "#ffffff", … }`. */
 function declarationsOf(block: string): Record<string, string> {
+  // Comments first: `styles.css` documents its tokens in prose right beside
+  // them, and a sentence that happens to name a token before a colon ("the
+  // controls keep --dt-bg / --dt-fg: they are input surfaces…") otherwise
+  // parses as a declaration and shadows the real one.
+  const declarations = block.replace(/\/\*[\s\S]*?\*\//g, "")
   const out: Record<string, string> = {}
-  for (const [, name, value] of block.matchAll(/(--dt-[a-z-]+):\s*([^;]+);/g)) {
+  for (const [, name, value] of declarations.matchAll(/(--dt-[a-z-]+):\s*([^;]+);/g)) {
     // Later wins, the same way the cascade resolves a repeated declaration.
     if (name && value) out[name] = value.trim()
   }

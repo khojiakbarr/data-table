@@ -239,6 +239,20 @@ array does not. Give rows a stable `getRowId` so expansion follows records
 across pages. `instance.query` holds the same object and only changes
 identity when its contents change.
 
+**One more, optional, field on the answer: `unfilteredTotal`.** It is
+`rowCount` before `query.filters` and `query.search` narrowed it, for the
+[status bar](#status-bar)'s "X of Y" — `SELECT COUNT(*) FROM receipts` with no
+`WHERE`, run alongside the filtered count your endpoint already computes for
+`rowCount`. Wire it exactly like `rowCount`:
+
+```tsx
+unfilteredTotal: data?.unfilteredTotal, // optional; undefined reads as "state only what matched"
+```
+
+Leave it off a response and the status bar states just the matched count —
+the graceful case a backend can ship before this extra query exists, not a
+state it has to guard against.
+
 **Pagination** is on by default in server mode and off in client mode; pass
 `pagination: { pageSize: 100, pageSizeOptions: [50, 100, 500] }` to change
 either. The footer shows the total, a page-size select, the current range and
@@ -758,6 +772,74 @@ The column is **chrome, not a column of data**, and that decides the rest:
   current `rowCount` can print.
 - Its header is empty to the eye and named for a screen reader through the
   `rowNumber` label, so translate that one alongside the rest.
+
+---
+
+## Status bar
+
+Off by default, for the same reason [row numbers](#row-numbers) is: every
+other flag turns OFF something the table has always done, so `true` is what
+you already had, while this one adds a band nobody asked for.
+
+```tsx
+useDataTable({ id: "receipts", data, columns, features: { statusBar: true } })
+```
+
+**Why it is not the footer.** The footer already prints `Rows: 100 000`
+beside the page controls — that is navigation. The status bar is content: how
+many rows, whether a filter is narrowing them, what they are grouped by. A
+band that repeated a number already on screen would be worse than no band, so
+turning it on moves the row count OUT of the footer and into the bar; with it
+off the footer is exactly what it has always been. Both surfaces read the same
+`instance.flags.statusBar` to agree on which of them owns the count, so a
+shell built on `useDataTable` and `<TablePagination>` alone gets the hand-off
+for free the moment it flips the flag — no prop of its own to keep in sync.
+
+**What it says**, as separate parts rather than one sentence, so a translation
+can put a different one first:
+
+- **Total rows** — `rowCount`, formatted the same way the footer's own total
+  is, so the two never disagree about what a thousand looks like.
+- **Filtered**, instead of total, the moment a column filter or the quick
+  search is narrowing the result (`instance.filtering.isFiltered`). To say
+  "X of Y" the server has to tell you Y, because a server-side filter means
+  the client never sees the wider set — pass `unfilteredTotal` alongside
+  `rowCount`:
+
+  ```tsx
+  useDataTable({
+    mode: "server",
+    data: page.rows,
+    rowCount: page.total,
+    unfilteredTotal: page.unfilteredTotal, // optional
+    …
+  })
+  ```
+
+  **Absent is the graceful case, not a hole.** A backend that has not
+  implemented the extra count yet leaves the bar stating only how many rows
+  matched, which is the honest reading of "unknown". In client mode you never
+  need this option at all: `data` there already IS the whole set the table
+  filters, so the table reads `data.length` for itself.
+- **Grouped by**, while [row grouping](#row-grouping) is active — the columns
+  being grouped by, in order, using the same names the Row Groups chips
+  already speak.
+- **A host slot.** Pass a `ReactNode` instead of `true` to keep the band but
+  add content of your own at its end — something this library has no business
+  knowing, the way `toolbarContent` extends the toolbar. Same flag, two
+  shapes, one decision.
+
+**Deliberately not in this version:** a selected-row count, because there is
+no row-selection feature in this library for it to count, and an aggregate
+like a sum or an average, because the Values zone that would compute one
+client-side is explicitly deferred on the roadmap — and summing one SERVER
+page of a filtered result would be wrong in the exact way client-side
+grouping would have been, a partial answer presented as the whole one. Neither
+is a gap; both are their own decision, later.
+
+**Shape.** A `role="status"` region with `aria-live="polite"`: its whole job
+is to report a change you caused elsewhere, and polite is what keeps a row
+count from interrupting whatever a screen reader is already reading.
 
 ---
 
@@ -1319,7 +1401,7 @@ to a docked bar, the component did not change.
 | `columns` | `ColumnDef[]` | — | Standard TanStack column definitions. |
 | `storage` | `LayoutStorage` | none | Where layouts live. |
 | `initialLayout` | `Partial<TableLayout>` | `{}` | Applied on a user's first visit. |
-| `features` | `DataTableFeatureFlags` | all on except `rowNumbers` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `rowNumbers`. See [Row numbers](#row-numbers). |
+| `features` | `DataTableFeatureFlags` | all on except `rowNumbers`/`statusBar` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `rowNumbers` or `statusBar` (`true`, or a `ReactNode` for the bar's host slot). See [Row numbers](#row-numbers) and [Status bar](#status-bar). |
 | `defaultColumnWidth` | `number` | `160` | |
 | `minColumnWidth` | `number` | `60` | |
 | `maxColumnWidth` | `number` | `800` | |
@@ -1328,6 +1410,7 @@ to a docked bar, the component did not change.
 | `canExpand` | `(row: TData) => boolean` | all rows | Which rows may open a detail panel. |
 | `mode` | `"client" \| "server"` | `"client"` | `"server"`: `data` is one page, already sorted; the table only describes what it wants. |
 | `rowCount` | `number` | — | Total rows across all pages. Server mode only; undefined until known. |
+| `unfilteredTotal` | `number` | — | Rows before the active filter and search narrowed them, for the status bar's "X of Y". Server mode only; optional, undefined until answered. See [Status bar](#status-bar). |
 | `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
 | `filtering` | `boolean \| FilteringOptions` | on | `{ debounceMs?, persist?, searchFields?, loadValues? }`. `false` turns filtering off. |
 | `startPath` | `FilterValue[]` | `[]` | The open group the page's first row sits inside. See [Row grouping](#row-grouping). |
@@ -1401,6 +1484,11 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
   `rowNumber` label for a screen reader. The number it prints is the same quantity every row
   already announces as `aria-rowindex`, so the two can never tell a user two different things
   about where a row is.
+- The [status bar](#status-bar) is a `role="status"` region with `aria-live="polite"`: it exists
+  to report a change you caused elsewhere, and polite is what keeps a row count from interrupting
+  whatever a screen reader is already reading. Its total, filtered and grouped-by parts are
+  separate elements rather than one concatenated sentence, so a translation can put a different
+  one first.
 - Reordering has a keyboard path: each row of the **Columns** panel carries a drag handle that
   is in the `Tab` order. `Space` picks the column up, the arrow keys move the drop slot,
   `Space` puts it down and `Escape` gives it back. The handle reports `aria-pressed`, and every

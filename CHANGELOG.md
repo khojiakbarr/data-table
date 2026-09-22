@@ -101,6 +101,39 @@ releases are summarised in one line rather than reconstructed.
     goes in it.
   - The playground gains a **Row numbers** toggle.
 
+- **`features: { statusBar: true }` — a band under the table stating what the
+  result set contains.** Off by default, the same one-flag exception
+  `rowNumbers` is, for the same reason: every other flag turns OFF something
+  the table has always done, while this one adds a band nobody asked for.
+  - **The row count moves out of the footer and into the band.** The footer
+    already prints `Rows: 100 000` beside the page controls, and a band
+    repeating it would be worse than no band — so turning the flag on drops
+    the footer's own total and keeps the page-size selector, the range and
+    the page controls; with it off the footer is byte-for-byte what it always
+    was. `<TablePagination>` reads `instance.flags.statusBar` directly, so a
+    shell built on the hook alone gets the hand-off for free.
+  - **What it says**, as separate elements rather than one sentence: the
+    total, formatted the same way the footer's is; **filtered** instead of
+    total the moment a column filter or the quick search narrows the result,
+    as "X of Y" once the new, optional **`unfilteredTotal`** answers how many
+    existed before narrowing (absent states only the matched count — the
+    graceful case, not a hole); and, while grouped, the columns rows are
+    grouped by, in order, reusing the name the Row Groups chips already
+    speak.
+  - **Not in this version:** a selected-row count (there is no
+    row-selection feature to count) or an aggregate like a sum or an average
+    (the Values zone that would compute one is deferred on the roadmap, and
+    summing one server page of a filtered result would be wrong the way
+    client-side grouping would have been).
+  - A `role="status"` region with `aria-live="polite"`, because its whole job
+    is to report a change caused elsewhere and a row count must never
+    interrupt what a screen reader is already reading.
+  - May take a `ReactNode` instead of a bare `true`, rendered at the end of
+    the band, for content this library has no business knowing.
+  - `unfilteredTotal` is threaded through the fake server too, so the
+    playground's status bar shows the real "X of Y" rather than a mock.
+  - The playground gains a **Status bar** toggle.
+
 - **`muiTokens(theme)` — a Material UI bridge**, exported from the package
   root. It maps a MUI theme's palette, typography and radius onto the
   `--dt-*` tokens and returns them as a style object to spread onto the

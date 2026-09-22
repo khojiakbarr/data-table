@@ -19,8 +19,19 @@ import { THEME_CLASS } from "./playgroundState"
  * existence never does.
  */
 
-/** The fake server's own delay is 300ms; give a request room without being flaky. */
-const SERVER_TIMEOUT = 5_000
+/*
+ * How long to wait for the fake server, whose own simulated delay is 300ms.
+ *
+ * Generous on purpose, and deliberately BELOW the 20s `testTimeout` in
+ * `vite.config.ts`. That ordering is the whole point: whichever budget runs
+ * out first is the one that writes the error message, and this one says
+ * "unable to find an element with the text KR-10000" while the outer one says
+ * only "test timed out". A shared CI runner has burned through five seconds
+ * here on work that takes under a second locally — it reported the useless
+ * message first, and the informative one only after the outer budget was
+ * raised. Keep the gap.
+ */
+const SERVER_TIMEOUT = 15_000
 
 /** Waits for the first page of rows to land, which is when the skeleton gives way. */
 async function waitForRows(): Promise<void> {

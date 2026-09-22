@@ -1,14 +1,55 @@
+<div align="center">
+
+<img src="public/assets/logo.svg" width="84" alt="">
+
 # @khojiakbarr/data-table
 
-A React data table that lets people rearrange it — pin columns to either edge, drag to
-reorder, drag to resize, sort, hide — and remembers how each person left it.
+**A React data table people can rearrange — and that remembers how they left it.**
+
+Nested column groups · server-side paging, filtering and row grouping · pinning, resizing
+and reordering · virtualised rows · per-user persisted layout · a token-driven theme
+
+[![Playground](https://github.com/khojiakbarr/data-table/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/khojiakbarr/data-table/actions/workflows/deploy-pages.yml)
+[![Licence: MIT](https://img.shields.io/badge/licence-MIT-2f6feb.svg)](#licence)
+[![Types: included](https://img.shields.io/badge/types-included-2f6feb.svg)](#api)
+[![React 18 · 19](https://img.shields.io/badge/react-18%20%C2%B7%2019-2f6feb.svg)](#requirements)
+
+### [→ Open the live playground](https://khojiakbarr.github.io/data-table/)
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero.png">
+  <img src="docs/media/hero-light.png" width="880"
+       alt="A receipts table with two levels of column headers — Document over Code and Partner, Payment over Amount and Status — numbered rows, a status bar reading 100 000 rows total, and pagination.">
+</picture>
+
+</div>
+
+---
 
 Built on [TanStack Table v9](https://tanstack.com/table). Ships as a hook plus an
 optional styled shell, so you can take the behaviour and write your own markup.
 
+Every rearrangement is a **request, not a mutation**: the table asks your server for a
+page and asks your code to commit an edit. It never writes to its own data, which is what
+lets one table sit in front of a hundred thousand rows it has never seen.
+
 ```bash
 npm i @khojiakbarr/data-table @tanstack/react-table @tanstack/react-virtual
 ```
+
+<details>
+<summary><b>Contents</b></summary>
+
+- [What it does](#what-it-does)
+- [Nested columns](#nested-columns) · [Column widths](#column-widths) · [Large data](#large-data)
+- [Server-side data](#server-side-data) — [filters on the wire](#filters-on-the-wire), [row grouping](#row-grouping)
+- [Editing cells](#editing-cells) · [Row numbers](#row-numbers) · [Status bar](#status-bar)
+- [Expandable rows](#expandable-rows) · [Two tables on one page](#two-tables-on-one-page) · [Persistence](#persistence)
+- [Styling](#styling) — [shadcn/ui](#shadcnui), [Material UI](#material-ui)
+- [Headless use](#headless-use) · [API](#api) · [Accessibility](#accessibility)
+- [Development](#development) · [Requirements](#requirements) · [Licence](#licence)
+
+</details>
 
 ```tsx
 import { DataTable, useDataTable, localStorageLayout } from "@khojiakbarr/data-table"
@@ -488,6 +529,15 @@ a client-mode column trades the free counts for fixed labels, which is a real
 trade.
 
 ### Row grouping
+
+Drag a column into the **Row groups** zone in the side panel — or send it there from the
+keyboard — and the rows group by it. The grouping is computed by your server, not in the
+browser: grouping the fifty rows a pager handed you and presenting the answer as if it
+were the whole table is not merely incomplete, it is wrong in a way the user cannot see.
+
+<img src="docs/media/grouping.png" width="880"
+     alt="The same table grouped by Status. A group header reads Closed with a count of 25 000, the grouped column leads the table, and the side panel shows the column tree with a Status chip in the Row groups zone.">
+
 
 Grouping is **server-side**. The table holds one page of fifty rows out of a
 hundred thousand; grouping those fifty would present a partial answer as if it
@@ -1520,6 +1570,32 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 - `prefers-reduced-motion` disables transitions.
 
 ---
+
+## Development
+
+```bash
+pnpm install
+pnpm dev          # the playground, on http://localhost:5199
+pnpm test         # the suite
+pnpm typecheck
+pnpm build        # the library, into dist/
+pnpm build:demo   # the playground as a static site, into demo-dist/
+```
+
+The playground in `src/demo/` is not a toy: it talks to a fake server in
+`src/demo/fakeServer.ts` that implements the whole wire contract — every filter operator,
+the search, the sorting rules, the grouping and the paging — over 100 000 rows. That is
+deliberate. A fake server that fakes its answers teaches nothing, and building it first is
+what exposed the gap in the grouping contract that `startPath` now fills.
+
+`pnpm build` and `pnpm build:demo` use **different Vite configs**. The library build
+externalises React and TanStack, because a library must not bundle its host's copy; the
+demo build bundles them, because a static site has no import map to resolve them. The demo
+also carries `base: "/data-table/"`, since GitHub Pages serves it from a project subpath.
+
+Pushing to `main` deploys the playground to GitHub Pages, gated on the typecheck and the
+full suite passing first — a Pages deploy is not reviewed the way a pull request is, so
+the gate is the only thing standing between a broken commit and a broken live demo.
 
 ## Requirements
 

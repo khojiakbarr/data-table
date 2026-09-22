@@ -213,8 +213,22 @@ export interface DataTableProps<TData extends RowData> {
   stickyHeader?: boolean
   /** Hide the toolbar when the host application provides its own controls. */
   toolbar?: boolean
-  /** Extra toolbar content, rendered at the toolbar's leading edge. */
+  /** Extra toolbar content, rendered at the toolbar's LEADING edge. */
   toolbarContent?: ReactNode
+  /**
+   * Toolbar content rendered at the TRAILING edge, after the spacer.
+   *
+   * Where an Export or a "New document" button belongs: the leading edge is
+   * already the search box's neighbourhood, and a host that only wanted a
+   * button on the right previously had to turn the whole toolbar off and
+   * rebuild it — `QuickSearch` and the rest are exported for exactly that, but
+   * rebuilding a row to move one button is a poor trade.
+   *
+   * Nothing here is rendered when `toolbar` is false, the same as
+   * {@link DataTableProps.toolbarContent}: the host owns the row entirely in
+   * that case.
+   */
+  toolbarActions?: ReactNode
   /**
    * Actions for the rows that are selected, in a bar of their own above the
    * table — **rendered only while something is selected**.
@@ -448,6 +462,7 @@ export function DataTable<TData extends RowData>({
   stickyHeader = true,
   toolbar = true,
   toolbarContent,
+  toolbarActions,
   renderSelectionActions,
   totals,
   emptyState,
@@ -820,11 +835,14 @@ export function DataTable<TData extends RowData>({
               <QuickSearch instance={instance} labels={labels} loading={loading} inputRef={searchInputRef} />
             ) : null}
             {/*
-              The spacer stays although nothing follows it any more: it is
-              what pushes a host's `toolbarContent` and the search box to the
-              leading edge, and without it they would spread across the row.
+              The spacer is what makes the row have two edges: it holds the
+              search box and a host's `toolbarContent` to the leading side and
+              pushes `toolbarActions` to the trailing one. Without it they
+              would spread evenly across the row and neither would be anywhere
+              in particular.
             */}
             <span className="dt-spacer" />
+            {toolbarActions}
           </div>
         ) : null}
 

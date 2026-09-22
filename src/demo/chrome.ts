@@ -48,6 +48,14 @@ export interface ChromeStrings {
    * answered — a state a template could only render as "undefined rows".
    * `raw` is the number behind the pre-formatted `count`, for that agreement.
    */
+  /**
+   * The Export button in the toolbar's trailing slot.
+   *
+   * It exists to show `toolbarActions`, and it tells the truth about what an
+   * export is here: the demo has no endpoint to call, so it reports the query
+   * it WOULD send rather than pretending to produce a file.
+   */
+  exportAction: { label: string; sent: (summary: string) => string }
   bulk: {
     selected: (count: string | undefined, raw: number | undefined) => string
     flag: string
@@ -176,6 +184,10 @@ const en: ChromeStrings = {
     tableHeight: "Table height",
     reset: "Reset theme",
   },
+  exportAction: {
+    label: "Export",
+    sent: (summary) => `Would export: ${summary}`,
+  },
   bulk: {
     // English agrees a noun with the numeral too, in the one place it is easy
     // to forget: "1 rows selected" is the sort of thing a demo ships with.
@@ -270,6 +282,10 @@ const ru: ChromeStrings = {
     tableHeight: "Высота таблицы",
     reset: "Сбросить тему",
   },
+  exportAction: {
+    label: "Экспорт",
+    sent: (summary) => `Был бы экспортирован: ${summary}`,
+  },
   bulk: {
     selected: (count, raw) =>
       count === undefined
@@ -362,6 +378,10 @@ const uz: ChromeStrings = {
     },
     tableHeight: "Jadval balandligi",
     reset: "Mavzuni tiklash",
+  },
+  exportAction: {
+    label: "Eksport",
+    sent: (summary) => `Eksport qilinardi: ${summary}`,
   },
   bulk: {
     selected: (count) =>

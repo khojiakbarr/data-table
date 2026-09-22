@@ -79,6 +79,8 @@ export function Playground() {
    */
   const [bulkPending, setBulkPending] = useState(false)
   const [bulkDone, setBulkDone] = useState<number | null>(null)
+  /** What the Export button in the trailing toolbar slot last reported. */
+  const [exportNote, setExportNote] = useState<string | null>(null)
 
   // The switcher moves the whole document, not just the words: `lang` is what
   // a screen reader reads pronunciation from, and `index.html` can only ever
@@ -215,6 +217,14 @@ export function Playground() {
             <p className="pg-bulk-done" role="status">
               {bulkDone === null ? "" : chrome.bulk.done(formatCount(bulkDone), bulkDone)}
             </p>
+            {/*
+              Its own region rather than sharing the one above: the two report
+              unrelated events, and a single region would have each overwrite
+              the other's announcement mid-read.
+            */}
+            <p className="pg-bulk-done" role="status">
+              {exportNote ?? ""}
+            </p>
           </div>
 
           <div className="pg-stage">
@@ -225,6 +235,33 @@ export function Playground() {
               height={START_HEIGHT}
               striped={features.striped}
               toolbar={features.toolbar}
+              /*
+               * The trailing toolbar slot, which is where an Export button
+               * belongs. There is no endpoint behind it here, and rather than
+               * mime one it reports the query it WOULD post — which is the
+               * actual answer to "how do I export?": the table hands you the
+               * state, the endpoint that holds the rows does the export.
+               * A client-side CSV would have written out the fifty rows on
+               * screen and called the file "the table".
+               */
+              toolbarActions={
+                <button
+                  type="button"
+                  className="dt-menu-button"
+                  onClick={() => {
+                    const q = table.query
+                    const parts = [
+                      `${q.filters.length} filter(s)`,
+                      q.search === null ? "no search" : `search "${q.search.text}"`,
+                      q.sorting.length ? `sorted by ${q.sorting.map((s) => s.id).join(", ")}` : "unsorted",
+                      q.grouping.length ? `grouped by ${q.grouping.join(", ")}` : "ungrouped",
+                    ]
+                    setExportNote(chrome.exportAction.sent(parts.join(", ")))
+                  }}
+                >
+                  {chrome.exportAction.label}
+                </button>
+              }
               footer={features.footer}
               virtualize={features.virtualize}
               stickyHeader={features.stickyHeader}

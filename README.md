@@ -984,6 +984,56 @@ and `opacity` only, and stops animating under `prefers-reduced-motion`.
 
 ---
 
+## Your own buttons in the toolbar
+
+Two slots, one at each edge:
+
+```tsx
+<DataTable
+  instance={table}
+  toolbarContent={<ViewPicker />}                       {/* beside the search */}
+  toolbarActions={<button onClick={exportRows}>Export</button>}  {/* far right */}
+/>
+```
+
+`toolbarContent` sits at the leading edge, next to the quick search;
+`toolbarActions` sits at the trailing edge, which is where an Export or a
+"New" button usually belongs. Neither is rendered when `toolbar={false}` — the
+host owns the row entirely in that case, and `QuickSearch`, `TablePagination`,
+`StatusBar`, `TotalsFooter` and `TableSideBar` are all exported so it can be
+rebuilt piece by piece.
+
+### Exporting
+
+There is no built-in CSV or Excel export, and that is a decision rather than a
+gap. In server mode the browser holds one page; a client-side export would
+write out the fifty rows on screen and call the file "the table", which is the
+same lie that made [row grouping](#row-grouping) server-side — and the kind a
+user cannot see. Export belongs to the endpoint that holds the rows.
+
+What the table gives you is the state to send it. `instance.query` is the
+current `TableQuery` — the filters, the search, the sorting and the grouping,
+exactly as they are on screen:
+
+```tsx
+async function exportRows() {
+  const response = await fetch("/api/receipts/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // Drop `pagination`: an export wants every matching row, not this page.
+    body: JSON.stringify({ ...table.query, pagination: undefined }),
+  })
+  // …hand the response to the browser as a download
+}
+```
+
+With [row selection](#row-selection) on, send what `onSelectionChange` last
+gave you instead, and your endpoint exports exactly the rows the checkboxes
+mean — including "everything matching, except these", which no list of ids
+could have expressed.
+
+---
+
 ## Row numbers
 
 Off by default, like [row selection](#row-selection) and the
@@ -1761,6 +1811,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered at the toolbar's leading edge. |
+| `toolbarActions` | `ReactNode` | — | Rendered at the toolbar's trailing edge. |
 | `renderSelectionActions` | `(selection: SelectionSummary) => ReactNode` | — | A bulk-action bar above the table, rendered **only while rows are selected** and handed `clear()` beside the model, the query and the count. See [Row selection](#row-selection). |
 | `totals` | `Record<string, ReactNode>` | — | A row under the body, keyed by column id. Computes nothing — you answer the query for your own total. Absent renders no `<tfoot>`; `{}` still renders the row, caption only. See [Totals footer](#totals-footer). |
 | `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters and/or Clear grouping button while the table is filtered or grouped | Supplying this replaces **both** defaults, including the narrowed-empty exit — a host that wants its own art for "no data" but still wants a way out should branch on `instance.filtering.isFiltered` and `instance.grouping.isGrouped` itself. |

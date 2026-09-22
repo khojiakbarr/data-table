@@ -257,3 +257,55 @@ describe("the viewport is keyboard-scrollable", () => {
     expect(document.activeElement).toBe(viewport)
   })
 })
+
+describe("the toolbar's two edges", () => {
+  /**
+   * A toolbar with something on each side, so the ORDER can be asserted rather
+   * than mere presence — which is the whole point of the trailing slot and the
+   * only part of it a screenshot would catch and a naive test would not.
+   */
+  function TwoEdged() {
+    const instance = useDataTable({ id: "edges", data: rows, columns })
+    return (
+      <DataTable
+        instance={instance}
+        toolbarContent={<button type="button">Leading</button>}
+        toolbarActions={<button type="button">Trailing</button>}
+      />
+    )
+  }
+
+  it("puts toolbarActions after the spacer and toolbarContent before it", () => {
+    render(<TwoEdged />)
+    const toolbar = document.querySelector(".dt-toolbar") as HTMLElement
+    const spacer = toolbar.querySelector(".dt-spacer") as HTMLElement
+    const leading = screen.getByRole("button", { name: "Leading" })
+    const trailing = screen.getByRole("button", { name: "Trailing" })
+
+    // `compareDocumentPosition` reads document order, which is what the
+    // flex spacer turns into left and right.
+    const before = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    expect(before(leading, spacer)).toBe(true)
+    expect(before(spacer, trailing)).toBe(true)
+  })
+
+  it("renders neither slot when the host owns the toolbar", () => {
+    function NoToolbar() {
+      const instance = useDataTable({ id: "no-toolbar", data: rows, columns })
+      return (
+        <DataTable
+          instance={instance}
+          toolbar={false}
+          toolbarContent={<button type="button">Leading</button>}
+          toolbarActions={<button type="button">Trailing</button>}
+        />
+      )
+    }
+    render(<NoToolbar />)
+    expect(document.querySelector(".dt-toolbar")).toBeNull()
+    expect(screen.queryByRole("button", { name: "Leading" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Trailing" })).toBeNull()
+  })
+})

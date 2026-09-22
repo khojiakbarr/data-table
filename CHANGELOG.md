@@ -3,6 +3,17 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## Unreleased
+
+### Added
+
+- **`toolbarActions` on `<DataTable>`** — a second toolbar slot, at the
+  trailing edge, where an Export or a "New" button belongs. `toolbarContent`
+  keeps the leading edge beside the search. A host that only wanted a button on
+  the right previously had to turn the whole toolbar off and rebuild it; the
+  pieces are all exported for that, but rebuilding a row to move one button is
+  a poor trade. Neither slot renders when `toolbar={false}`.
+
 ## 0.6.0
 
 ### Added

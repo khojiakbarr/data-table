@@ -196,3 +196,52 @@ describe("DataTable", () => {
     expect(screen.getByText("No rows")).toBeInTheDocument()
   })
 })
+
+/**
+ * Defect A: with no `renderDetail`, nothing inside a row is itself
+ * focusable, so the scrolling viewport — `tabIndex={-1}` — used to be the
+ * only thing standing between the header and the footer that a keyboard
+ * user could never land on, leaving PageDown / ArrowDown / End with nothing
+ * to act on and most of the table unreachable.
+ *
+ * jsdom lays nothing out, so `scrollTop` never actually moves here — what is
+ * asserted is that the scroller is a real Tab stop and carries the
+ * attributes a browser needs to answer the scroll keys on its own.
+ */
+describe("the viewport is keyboard-scrollable", () => {
+  beforeEach(() => localStorage.clear())
+
+  it("is a real tab stop rather than tabIndex -1", () => {
+    render(<Table id="scroll" />)
+    const viewport = document.querySelector(".dt-viewport") as HTMLElement
+    expect(viewport.tabIndex).toBe(0)
+  })
+
+  it("is reachable by Tab in the default configuration", async () => {
+    const user = userEvent.setup()
+    render(<Table id="scroll" />)
+    const viewport = document.querySelector(".dt-viewport") as HTMLElement
+
+    let steps = 0
+    while (document.activeElement !== viewport && steps < 40) {
+      await user.tab()
+      steps += 1
+    }
+    expect(document.activeElement).toBe(viewport)
+  })
+
+  it("carries an accessible name, so a screen reader does not announce a blank group", () => {
+    render(<Table id="scroll" />)
+    const viewport = document.querySelector(".dt-viewport") as HTMLElement
+    expect(viewport).toHaveAccessibleName("Rows")
+  })
+
+  it("stays a legal target for the programmatic focus 'Clear filters' hands it", () => {
+    // The full handoff is NoMatches.test.tsx's; this only guards that a
+    // non-negative tabIndex is still focusable, not only Tab-reachable.
+    render(<Table id="scroll" />)
+    const viewport = document.querySelector(".dt-viewport") as HTMLElement
+    viewport.focus()
+    expect(document.activeElement).toBe(viewport)
+  })
+})

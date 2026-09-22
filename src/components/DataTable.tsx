@@ -771,12 +771,32 @@ export function DataTable<TData extends RowData>({
           data-dt-unbounded={unbounded && resolvedHeight === undefined ? "" : undefined}
           ref={viewportRef}
           /*
-           * Not part of the Tab order — `-1` keeps it out of a sighted
-           * keyboard user's normal path across the table — but a legal target
-           * for the programmatic focus the "Clear filters" button below sends
-           * here when there is no search box of ours to take it instead.
+           * A real Tab stop (Defect A): in the default configuration — no
+           * `renderDetail`, so no per-row "Expand row" button — nothing
+           * inside the body is itself focusable, and `tabIndex={-1}` used to
+           * take the whole scroller out of the Tab order with it. That left
+           * PageDown / ArrowDown / End with nothing focused to act on, so a
+           * keyboard user could not reach rows the viewport was clipping —
+           * most of them, past the first screenful. `0` restores Chrome's
+           * (and other browsers') own "keyboard-focusable scroller" default:
+           * a focused, overflowing element answers the scroll keys on its
+           * own, no handler required here.
+           *
+           * Still the same legal target the "Clear filters" button below
+           * sends the focus to programmatically when there is no search box
+           * to take it instead — `.focus()` never depended on the element
+           * being IN the Tab order, only on it being focusable at all, which
+           * a non-negative `tabIndex` still is.
+           *
+           * `cell-focus-spec.md`'s future roving-tabindex grid replaces this
+           * with per-cell tab stops — the viewport's own `tabIndex` would
+           * revert to `-1` then, because the grid's cells would be the real
+           * stops and entering one is what would scroll it into view. That
+           * is a further step, not a reason to leave the table unscrollable
+           * by keyboard until it ships.
            */
-          tabIndex={-1}
+          tabIndex={0}
+          aria-label={labels.rows}
         >
           <table
             ref={tableRef}

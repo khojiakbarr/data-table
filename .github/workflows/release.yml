@@ -1,0 +1,91 @@
+name: Release to npm
+
+# A release is a tag, so the thing published is always a named, immutable
+# point in history rather than "whatever main held at the time".
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  # `id-token: write` is what makes this publish work WITHOUT a token in a
+  # secret: npm's trusted publishing exchanges a short-lived, signed OIDC
+  # token minted for this repository and this workflow file. Nothing long-lived
+  # exists to leak or rotate, and the account's 2FA stays intact — an npm
+  # automation token that bypasses 2FA is exactly what npm is restricting.
+  id-token: write
+  contents: read
+
+concurrency:
+  # Never two publishes at once. A publish is irreversible, so a queued run
+  # waits rather than being cancelled: cancelling mid-publish could leave the
+  # registry and the tag disagreeing.
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup pnpm and Node
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        with:
+          version: 11
+          runtime: node@24
+          cache: true
+          require-lockfile: true
+
+      # Trusted publishing needs npm 11.5.1+ and Node 22.14+. An older npm does
+      # not fail loudly — it ignores the OIDC environment, falls back to
+      # looking for a token, finds none, and reports ENEEDAUTH, which sends
+      # whoever reads it hunting for a missing secret that was never the point.
+      - name: Check the toolchain can do trusted publishing
+        run: |
+          set -euo pipefail
+          npm_version="$(npm --version)"
+          node_version="$(node --version)"
+          echo "npm $npm_version, node $node_version"
+          if ! printf '11.5.1\n%s\n' "$npm_version" | sort -V -C; then
+            echo "::error::npm $npm_version is older than 11.5.1, which trusted publishing requires."
+            exit 1
+          fi
+
+      # The tag is the version people will install. If it disagrees with
+      # package.json, one of the two is a lie, and the registry keeps whichever
+      # package.json said — silently, under a tag that now points at something
+      # else. Cheaper to refuse than to explain later.
+      - name: Check the tag matches package.json
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          echo "tag $tag, package.json $pkg"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag v$tag does not match package.json version $pkg."
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # Run again even though CI already did. A tag can point at a commit CI
+      # never saw, and a publish cannot be taken back.
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm run build
+
+      # `npm publish`, not `pnpm publish`: the OIDC exchange lives in the npm
+      # CLI. `--access public` is already in package.json's publishConfig, and
+      # provenance is attached automatically on a trusted publish, so neither
+      # flag belongs here.
+      #
+      # `prepublishOnly` would rebuild and retest everything a third time, and
+      # both have already run above against this exact tree.
+      - name: Publish
+        run: npm publish --ignore-scripts

@@ -1603,6 +1603,30 @@ Pushing to `main` deploys the playground to GitHub Pages, gated on the typecheck
 full suite passing first — a Pages deploy is not reviewed the way a pull request is, so
 the gate is the only thing standing between a broken commit and a broken live demo.
 
+### Releasing
+
+A release is a tag. Bump the version, tag it, push the tag:
+
+```bash
+npm version patch          # or minor / major — writes package.json and tags
+git push --follow-tags
+```
+
+The release workflow then checks that the tag and `package.json` agree, runs the
+typecheck, the suite and the build, and publishes.
+
+**No npm token is stored anywhere.** Publishing uses npm's
+[trusted publishing](https://docs.npmjs.com/trusted-publishers/): GitHub Actions mints a
+short-lived OIDC token scoped to this repository and this workflow file, and npm trusts it
+because the package is configured to. There is no long-lived credential to leak, to
+rotate, or to hand around — and the account keeps its 2FA, which an automation token that
+bypasses 2FA would have undermined. Provenance attestations are attached automatically, so
+the published package carries a verifiable record of the commit and workflow that built
+it.
+
+Configured once, on npmjs.com → the package → Settings → Trusted publishing, naming this
+repository and `release.yml`.
+
 ## Requirements
 
 React 18 or 19, and `@tanstack/react-table` v9 and `@tanstack/react-virtual` v3

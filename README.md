@@ -962,10 +962,24 @@ and `opacity` only, and stops animating under `prefers-reduced-motion`.
   `selectAllRows(count, raw)` names the header's, including the branch with no
   count in it at all.
 - **Counting with a grouping on:** `rowCount` in a grouped server table is the
-  length of the *flattened* list, group headers included, so the header
-  checkbox's count is that rather than a count of records. Return a leaf count
-  in `rowCount` if your grouped tables need the selection count to mean
-  records, or read the count from your own answer to the bulk action.
+  length of the *flattened* list, group headers included, so it is not a count
+  of records. The selection itself is unaffected — `all-matching` means the
+  query's filters minus the exclusions, which your `WHERE` resolves to records
+  either way — but the number the header checkbox would speak is not the number
+  the user is about to act on. So it does not speak one: a grouped table says
+  "select all rows" without a count.
+
+  Pass `selectableRowCount` to say it properly:
+
+  ```tsx
+  useDataTable({
+    rowCount: page.total,             // flattened: what the pager measures
+    selectableRowCount: page.records, // records: what a selection counts
+  })
+  ```
+
+  **Do not put a leaf count in `rowCount` instead.** `pageCount` is derived from
+  it, so a smaller number there silently takes pages away from the user.
 
 ---
 

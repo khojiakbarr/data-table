@@ -60,6 +60,8 @@ interface HarnessProps {
   withRowId?: boolean
   /** `null` is the server that has not answered yet; `undefined` takes the default. */
   rowCount?: number | null
+  /** The host's own count of RECORDS, when it differs from `rowCount`. */
+  selectableRowCount?: number
   initialLayout?: Partial<TableLayout>
   storage?: LayoutStorage
   onSelectionChange?: (selection: SelectionChange) => void
@@ -79,6 +81,7 @@ function Harness({
   rowNumbers = false,
   withRowId = true,
   rowCount = 100_000,
+  selectableRowCount,
   initialLayout,
   storage,
   onSelectionChange,
@@ -92,6 +95,7 @@ function Harness({
     ...(withRowId ? { getRowId: (row: Row) => row.id } : {}),
     ...(server ? { mode: "server" as const } : {}),
     ...(rowCount === null ? {} : { rowCount }),
+    ...(selectableRowCount === undefined ? {} : { selectableRowCount }),
     ...(initialLayout === undefined ? {} : { initialLayout }),
     ...(storage === undefined ? {} : { storage }),
     onSelectionChange: (change) => {
@@ -511,6 +515,65 @@ describe("a headless host reads the same answers", () => {
     expect(latest?.selection.enabled).toBe(false)
     expect(latest?.selection.isEmpty).toBe(true)
     expect(latest?.selection.count).toBe(0)
+  })
+})
+
+describe("the count a grouped table is willing to speak", () => {
+  /*
+   * `rowCount` in a grouped server table is the length of the FLATTENED list,
+   * group headers included. Speaking it as a selection count would say "select
+   * all 84 rows" about 84 group headers — a number nobody is about to act on,
+   * attached to a model that is nonetheless correct. So the count goes quiet
+   * instead, and `labels.selectAllRows` falls back to the no-number wording it
+   * already has for the window before a server answers.
+   */
+  it("says nothing numeric while grouped, rather than counting group headers", () => {
+    render(
+      <Harness
+        data={[groupRow(["open"], 25_000), ...rows(2)]}
+        rowCount={84}
+        initialLayout={{ grouping: ["name"] }}
+      />,
+    )
+    expect(latest?.selection.rowsMatching).toBeUndefined()
+
+    act(() => latest?.selection.toggleAll(true))
+    expect(latest?.selection.model).toEqual({ mode: "all-matching", excluded: [] })
+    expect(latest?.selection.count).toBeUndefined()
+  })
+
+  it("speaks the host's own record count when it is given one", () => {
+    render(
+      <Harness
+        data={[groupRow(["open"], 25_000), ...rows(2)]}
+        rowCount={84}
+        selectableRowCount={25_000}
+        initialLayout={{ grouping: ["name"] }}
+      />,
+    )
+    expect(latest?.selection.rowsMatching).toBe(25_000)
+
+    act(() => latest?.selection.toggleAll(true))
+    expect(latest?.selection.count).toBe(25_000)
+    act(() => latest?.selection.toggleRow("r1", false))
+    expect(latest?.selection.count).toBe(24_999)
+  })
+
+  /*
+   * The pager measures the list it actually shows, so it must keep reading
+   * `rowCount` — this is the assertion that stops someone "simplifying" the
+   * two counts into one and quietly taking 499 pages away from the user.
+   */
+  it("keeps paging on the flattened count, not the record count", () => {
+    render(
+      <Harness
+        data={[groupRow(["open"], 25_000), ...rows(2)]}
+        rowCount={84}
+        selectableRowCount={25_000}
+        initialLayout={{ grouping: ["name"], pageSize: 10 }}
+      />,
+    )
+    expect(latest?.pagination.pageCount).toBe(9)
   })
 })
 

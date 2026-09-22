@@ -286,6 +286,20 @@ export interface UseDataTableOptions<TData extends RowData> {
    */
   rowCount?: number | undefined
   /**
+   * How many RECORDS the query matches, when that differs from `rowCount`.
+   *
+   * It differs in exactly one case: a grouped table, where `rowCount` is the
+   * length of the flattened list and therefore counts group headers as well as
+   * leaves. Only the selection count reads this; paging deliberately does not,
+   * because the pager measures the list it actually shows.
+   *
+   * Leave it out and a grouped table simply says "select all rows" without a
+   * number, which is true. Do NOT put a leaf count in `rowCount` instead:
+   * `rowCount` is what `pageCount` is derived from, so a smaller number there
+   * takes pages away from the user.
+   */
+  selectableRowCount?: number | undefined
+  /**
    * Rows before the active filter and the quick search narrowed them, for the
    * status bar's "X of Y" — see `DataTableFeatureFlags.statusBar`.
    *
@@ -438,6 +452,7 @@ export function useDataTable<TData extends RowData>({
   canExpand,
   mode = "client",
   rowCount,
+  selectableRowCount,
   unfilteredTotal,
   pagination,
   filtering,
@@ -1670,6 +1685,25 @@ export function useDataTable<TData extends RowData>({
   const matchingRowCount = isServer ? rowCount : table.getPrePaginatedRowModel().rows.length
 
   /*
+   * The same quantity, corrected for the one case where `rowCount` is not a
+   * count of records: a GROUPED server table, where it is the length of the
+   * flattened page list and so counts group headers alongside leaves. "Select
+   * all 84 rows" over 84 group headers is simply a wrong number, and the model
+   * underneath it is still right — `all-matching` means the query's filters
+   * minus the exclusions, which a backend resolves to records either way. Only
+   * the spoken count is at stake, so the answer is to stop speaking it rather
+   * than to speak a number that is not the one the user will act on.
+   *
+   * `selectableRowCount` is the host's way to say it properly, the way
+   * `unfilteredTotal` already lets a host say something only the server knows.
+   * Absent while grouped, the count is undefined and `labels.selectAllRows`
+   * falls back to its no-number wording, which it already has for the window
+   * before a server answers at all.
+   */
+  const selectableCount =
+    selectableRowCount ?? (grouping.length > 0 ? undefined : matchingRowCount)
+
+  /*
    * In client mode the total is whatever survived filtering, which only the
    * table knows; in server mode it is `rowCount` and the table never sees the
    * other pages. Undefined when nothing is being paged.
@@ -1747,7 +1781,7 @@ export function useDataTable<TData extends RowData>({
     id,
     enabled: flags.selection,
     query,
-    rowCount: matchingRowCount,
+    rowCount: selectableCount,
     hasRowId: getRowId !== undefined,
     onSelectionChange,
   })

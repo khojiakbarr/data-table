@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
+import type { FilterValue } from "./filters"
 import {
   groupColumnMinWidth,
   groupRowId,
+  groupValueLabel,
   isGroupRow,
   isPathExpanded,
   normaliseExpanded,
@@ -164,5 +166,32 @@ describe("groupColumnMinWidth", () => {
     // Called with 0 while a grouping is being taken apart; a negative floor,
     // or one that shrank below the base, would be nonsense.
     expect(groupColumnMinWidth(0)).toBe(groupColumnMinWidth(1))
+  })
+})
+
+describe("groupValueLabel", () => {
+  it("renders the raw value when the column declares no formatter", () => {
+    expect(groupValueLabel("closed", undefined, "(Blanks)")).toBe("closed")
+    expect(groupValueLabel(25000, undefined, "(Blanks)")).toBe("25000")
+  })
+
+  it("runs the value through the column's own formatter when it has one", () => {
+    const label = (value: FilterValue) => (value === "closed" ? "Closed" : String(value))
+    expect(groupValueLabel("closed", label, "(Blanks)")).toBe("Closed")
+  })
+
+  it("falls back to the table's blank label for an empty key with no formatter", () => {
+    expect(groupValueLabel("", undefined, "(Blanks)")).toBe("(Blanks)")
+    // `undefined` stands for a path shorter than the depth asking for it —
+    // the continuation header's own case — and collapses onto the same "".
+    expect(groupValueLabel(undefined, undefined, "(Blanks)")).toBe("(Blanks)")
+  })
+
+  it("still asks a formatter about a blank key, rather than pre-empting it", () => {
+    // A host whose column maps "" to something of its own gets to say so —
+    // the blank label is only what a FORMATTER-LESS column shows.
+    const label = (value: FilterValue) => (value === "" ? "Unassigned" : String(value))
+    expect(groupValueLabel("", label, "(Blanks)")).toBe("Unassigned")
+    expect(groupValueLabel(undefined, label, "(Blanks)")).toBe("Unassigned")
   })
 })

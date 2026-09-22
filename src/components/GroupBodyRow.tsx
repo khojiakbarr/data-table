@@ -1,7 +1,7 @@
 import type { Row, RowData } from "@tanstack/react-table"
 import { classNames, insertAt } from "../core/classNames"
 import { isSameCell } from "../core/cellEditing"
-import type { GroupRow } from "../core/grouping"
+import { groupValueLabel, type GroupRow } from "../core/grouping"
 import { pinnedStyle } from "../core/pinning"
 import type { CellEditing } from "../core/useCellEditing"
 import type { DataTableFeatures } from "../useDataTable"
@@ -17,6 +17,19 @@ interface GroupBodyRowProps<TData extends RowData> {
   position: number
   /** The column whose cell holds the chevron, the value and the count. */
   groupColumnId: string | undefined
+  /**
+   * Column ids the table is grouped by, outermost first — `instance.grouping.columns`.
+   *
+   * Not the same thing as {@link GroupBodyRowProps.groupColumnId}: that one
+   * names which CELL renders the group's text, always the same column
+   * regardless of depth, while this one says which of the host's columns a
+   * given LEVEL's value actually came from — `columnIds[depth]` — which is
+   * what a formatter has to be read off of. A table grouped by "region" then
+   * "status" shows every level in the region column's slot, but a depth-1
+   * group's key is a status, and only the status column's own
+   * `meta.groupLabel` knows what it means.
+   */
+  columnIds: readonly string[]
   expanded: boolean
   onToggle: () => void
   /** Header rows above the body, so `aria-rowindex` can count past them. */
@@ -60,6 +73,7 @@ export function GroupBodyRow<TData extends RowData>({
   group,
   position,
   groupColumnId,
+  columnIds,
   expanded,
   onToggle,
   headerRowCount,
@@ -71,12 +85,14 @@ export function GroupBodyRow<TData extends RowData>({
   const depth = Math.max(0, group.path.length - 1)
   const key = group.path[group.path.length - 1]
   /*
-   * Both shapes of blankness group under the empty string — `FilterValue`
-   * excludes `null` deliberately — so the one key that stands for "no value"
-   * is spelled with the same "(Blanks)" the filter editors use, rather than
-   * rendering as an empty cell indistinguishable from a bug.
+   * The column THIS level's key actually came from, not necessarily the one
+   * the value is rendered in (`groupColumnId`) — see `columnIds` above.
+   * `getAllCells` rather than `getVisibleCells`: every grouped column but the
+   * lead one is hidden from the body, and a hidden column's meta is exactly
+   * as good as a visible one's.
    */
-  const value = key === "" || key === undefined ? labels.blanks : String(key)
+  const valueColumn = row.getAllCells().find((cell) => cell.column.id === columnIds[depth])?.column
+  const value = groupValueLabel(key, valueColumn?.columnDef.meta?.groupLabel, labels.blanks)
   const name = labels.groupRow(value, group.count)
 
   const cells = row.getVisibleCells().map((cell, index) => {

@@ -268,3 +268,35 @@ const GROUP_COLUMN_INDENT_WIDTH = 18
 export function groupColumnMinWidth(levels: number): number {
   return GROUP_COLUMN_BASE_WIDTH + GROUP_COLUMN_INDENT_WIDTH * Math.max(0, levels - 1)
 }
+
+/**
+ * The text one group key renders as — the group row's own value, and the
+ * page-continuation header's, both going through this exact rule so the two
+ * can never say different things about the same key. See
+ * `DataTableColumnMeta.groupLabel`.
+ *
+ * @param key - The group's raw value at this level. `undefined` stands for a
+ *   path shorter than the depth asking for it — the continuation header's own
+ *   case, never the group row's — and is folded into the same blank as `""`:
+ *   the grouping contract already collapses both shapes of blankness into one
+ *   key, and a caller should not have to know that to format it.
+ * @param format - The level's own column's `meta.groupLabel`, or undefined
+ *   when it declares none. Still called for a blank key, so a host whose
+ *   column maps `""` to something of its own ("Unassigned") gets to say so.
+ * @param blankLabel - What a formatter-less column shows for a blank key —
+ *   the table's own "(Blanks)", so a group row reads the same word a list
+ *   filter already uses for the same thing.
+ * @returns The string to render, and to read as the row's accessible name.
+ *
+ * @example
+ * groupValueLabel("closed", (value) => statusLabels[String(value)], labels.blanks)
+ */
+export function groupValueLabel(
+  key: FilterValue | undefined,
+  format: ((value: FilterValue) => string) | undefined,
+  blankLabel: string,
+): string {
+  const value: FilterValue = key === undefined ? "" : key
+  if (format !== undefined) return format(value)
+  return value === "" ? blankLabel : String(value)
+}

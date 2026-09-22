@@ -1,6 +1,7 @@
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table"
 import type { DataTableFeatures } from "../useDataTable"
 import type { Language } from "./playgroundState"
+import { STATUS_LABELS } from "./statusLabels"
 import { PARTNERS, type ServerReceipt } from "./fakeServer"
 
 /** BCP-47 tag for each language, for date and number formatting. */
@@ -23,12 +24,6 @@ const GROUP_HEADERS: Record<Language, { document: string; payment: string }> = {
   en: { document: "Document", payment: "Payment" },
   ru: { document: "Документ", payment: "Оплата" },
   uz: { document: "Hujjat", payment: "Toʻlov" },
-}
-
-const STATUS_LABELS: Record<Language, Record<string, string>> = {
-  en: { open: "Open", in_process: "In process", received: "Received", closed: "Closed" },
-  ru: { open: "Открыт", in_process: "В процессе", received: "Получен", closed: "Закрыт" },
-  uz: { open: "Ochiq", in_process: "Jarayonda", received: "Qabul qilingan", closed: "Yopilgan" },
 }
 
 const FLAG_LABELS: Record<Language, [yes: string, no: string]> = {
@@ -137,7 +132,11 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
         columnHelper.accessor("status", {
           header: headers.status,
           size: 140,
-          meta: { filter: "list" },
+          // `groupLabel` mirrors the cell renderer below rather than sharing
+          // it: a cell renderer returns a `ReactNode` and this has to return a
+          // `string` — it is also the group row's accessible name, and the
+          // two must not be free to diverge.
+          meta: { filter: "list", groupLabel: (value) => statusLabels[String(value)] ?? String(value) },
           cell: (info) => statusLabels[info.getValue()] ?? info.getValue(),
         }),
       ]),

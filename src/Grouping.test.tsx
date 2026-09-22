@@ -150,12 +150,24 @@ describe("the page resets", () => {
     expect(result.current.query.pagination.pageIndex).toBe(0)
   })
 
-  it("goes back to page one when a group is opened or closed", () => {
-    // Expansion is part of the query here: opening a group makes the flattened
-    // list longer and closing one makes it shorter, so an un-reset page can
-    // point past the end.
+  it("keeps the page when a group is opened", () => {
+    // Opening a group can only LENGTHEN the flattened list, so the page the
+    // user is on still exists — resetting it would throw a page-3 user back
+    // to page 1 for opening a group they could already see. See the comment
+    // on `toggleGroup` in useDataTable.ts for why only a collapse resets.
     const { result } = renderHook(() => useHarness({ rowCount: 500 }))
     act(() => result.current.grouping.set(["status"]))
+    act(() => result.current.pagination.setPageIndex(3))
+    act(() => result.current.grouping.toggle(["open"]))
+    expect(result.current.query.pagination.pageIndex).toBe(3)
+  })
+
+  it("goes back to page one when an open group is closed", () => {
+    // Closing a group can SHORTEN the flattened list, so an un-reset page can
+    // point past its new end.
+    const { result } = renderHook(() => useHarness({ rowCount: 500 }))
+    act(() => result.current.grouping.set(["status"]))
+    act(() => result.current.grouping.toggle(["open"]))
     act(() => result.current.pagination.setPageIndex(3))
     act(() => result.current.grouping.toggle(["open"]))
     expect(result.current.query.pagination.pageIndex).toBe(0)
@@ -311,6 +323,78 @@ describe("a grouped table renders", () => {
       <Harness startPath={[]} initialLayout={{ grouping: ["status"], expanded: [["open"]] }} />,
     )
     expect(screen.queryByText(/continued/)).not.toBeInTheDocument()
+  })
+})
+
+describe("a column's own group formatter", () => {
+  // The raw server enum, mapped the way a host's `meta.groupLabel` would.
+  const statusLabel = (value: FilterValue): string => {
+    if (value === "closed") return "Closed"
+    if (value === "open") return "Open"
+    return "Unassigned"
+  }
+  const formattedColumns = [
+    helper.accessor("name", { header: "Name", size: 120 }),
+    helper.accessor("status", { header: "Status", size: 120, meta: { groupLabel: statusLabel } }),
+  ]
+
+  function FormattedHarness({
+    data = flattened,
+    initialLayout,
+    rowCount = 4,
+    startPath,
+  }: HarnessProps) {
+    const instance = useDataTable<Row>({
+      id: "grp-fmt",
+      columns: formattedColumns,
+      data,
+      mode: "server",
+      rowCount,
+      getRowId: (row) => row.id,
+      ...(initialLayout === undefined ? {} : { initialLayout }),
+      ...(startPath === undefined ? {} : { startPath }),
+    })
+    return <DataTable instance={instance} virtualize={false} />
+  }
+
+  it("renders the group row's value through the column's formatter, not the raw key", () => {
+    render(<FormattedHarness initialLayout={{ grouping: ["status"], expanded: [["open"]] }} />)
+
+    const cell = cellText(bodyRows()[0]!, "status")
+    expect(cell).toContain("Open")
+    expect(cell).not.toContain("open (")
+    // The count still comes from the group, untouched by the formatter.
+    expect(cell).toContain("(2)")
+  })
+
+  it("puts the formatted value in the row's accessible name too", () => {
+    render(<FormattedHarness initialLayout={{ grouping: ["status"], expanded: [["open"]] }} />)
+    expect(screen.getByRole("button", { name: /Open, 2 rows/ })).toBeInTheDocument()
+  })
+
+  it("still asks the formatter about a blank group, rather than pre-empting it with '(Blanks)'", () => {
+    render(
+      <FormattedHarness
+        data={[groupRow([""], 3)]}
+        rowCount={1}
+        initialLayout={{ grouping: ["status"] }}
+      />,
+    )
+    expect(cellText(bodyRows()[0]!, "status")).toContain("Unassigned")
+  })
+
+  it("runs the continuation header through the exact same formatter", () => {
+    // §B: one function for both, so the group row and the "continued" header
+    // can never say something different about the same key.
+    render(
+      <FormattedHarness
+        data={[leaf(2), leaf(3)]}
+        rowCount={40}
+        startPath={["open"]}
+        initialLayout={{ grouping: ["status"], expanded: [["open"]] }}
+      />,
+    )
+    expect(screen.getByText("Open (continued)")).toBeInTheDocument()
   })
 })
 

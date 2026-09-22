@@ -1,6 +1,6 @@
 import type { Row, RowData } from "@tanstack/react-table"
 import { useCallback, useEffect, useMemo, type ReactNode, type RefObject } from "react"
-import { isGroupRow } from "../core/grouping"
+import { groupValueLabel, isGroupRow } from "../core/grouping"
 import type { CellEditing } from "../core/useCellEditing"
 import { useRowVirtualizer } from "../core/useRowVirtualizer"
 import { displayItemKey } from "../core/virtualRows"
@@ -148,7 +148,15 @@ export function TableBody<TData extends RowData>({
    */
   const continuation =
     grouping.startPath.length > 0 && !isGroupRow(rows[0]?.original)
-      ? grouping.startPath.map((key) => (key === "" ? labels.blanks : String(key)))
+      ? grouping.startPath.map((key, index) => {
+          // Same rule the group row itself renders under — see
+          // `GroupBodyRow`'s own `columnIds`: this level's key came from
+          // `grouping.columns[index]`, not from whichever column is
+          // currently the group cell's visual slot.
+          const columnId = grouping.columns[index]
+          const column = columnId === undefined ? undefined : instance.table.getColumn(columnId)
+          return groupValueLabel(key, column?.columnDef.meta?.groupLabel, labels.blanks)
+        })
       : undefined
 
   return (
@@ -204,6 +212,7 @@ export function TableBody<TData extends RowData>({
               group={group}
               position={item.position}
               groupColumnId={grouping.columnId}
+              columnIds={grouping.columns}
               expanded={grouping.isExpanded(group.path)}
               onToggle={() => grouping.toggle(group.path)}
               headerRowCount={headerRowCount}

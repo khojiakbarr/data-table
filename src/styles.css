@@ -1646,6 +1646,79 @@
   border-start-end-radius: 0;
 }
 
+/*
+ * What an edit has to say for itself: a refused write, an editor its row left
+ * behind, a row a saved edit filtered away. The same strip as .dt-error, in
+ * the same slot, because it answers the same question ("why is the table not
+ * showing what I expected") — it differs only in carrying a way to dismiss it.
+ *
+ * No colour of its own. A --dt-danger token would have to be mapped by both
+ * shadcn presets (themes.test.ts) for a band of red behind a sentence, and
+ * WCAG 1.4.1 never allowed colour to be the only carrier of the meaning in
+ * any case: the sentence says what went wrong, and the failure is set in
+ * full-strength --dt-fg and weighted rather than tinted.
+ */
+.dt-edit-notice {
+  flex: none;
+  border-radius: inherit;
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dt-border);
+  background: var(--dt-bg);
+  color: var(--dt-fg);
+  font-size: 13px;
+  /* transform and opacity only: a strip arriving above the rows must not
+     relayout them as it does. */
+  animation: dt-edit-notice-in 150ms ease both;
+}
+
+.dt-edit-notice-error {
+  font-weight: 500;
+}
+
+/* The strip is not the first thing in the column once a toolbar is above it,
+   nor the last once anything follows — the same two joins .dt-error makes. */
+.dt-toolbar ~ .dt-edit-notice {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.dt-edit-notice ~ .dt-viewport {
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.dt-edit-notice span {
+  /* The sentence takes the room, so the Dismiss button stays at the far edge
+     rather than drifting in beside a short message. */
+  flex: 1;
+}
+
+@keyframes dt-edit-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* A pending cell, while the host's promise is in flight. Dimmed rather than
+   badged: the value on screen is the one the user asked for, and a badge in
+   the cell would push it around every time a write started or finished. */
+.dt-td[data-dt-pending] {
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The strip still appears; it just stops moving to get there. */
+  .dt-edit-notice {
+    animation: none;
+  }
+}
+
 .dt-skeleton {
   display: inline-block;
   height: 12px;

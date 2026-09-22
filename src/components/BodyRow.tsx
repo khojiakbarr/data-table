@@ -1,9 +1,12 @@
-import { flexRender, type Row, type RowData } from "@tanstack/react-table"
+import { flexRender, type CellContext, type Row, type RowData } from "@tanstack/react-table"
 import type { CSSProperties } from "react"
+import { isSameCell } from "../core/cellEditing"
 import { classNames, insertAt } from "../core/classNames"
 import { pinnedStyle } from "../core/pinning"
+import type { CellEditing } from "../core/useCellEditing"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableLabels } from "../types"
+import { CellEditor } from "./CellEditor"
 import { DepthSpacer, ExpandToggle } from "./ExpandToggle"
 
 interface BodyRowProps<TData extends RowData> {
@@ -33,6 +36,15 @@ interface BodyRowProps<TData extends RowData> {
   /** How many grouping levels a record sits under, for its indent. */
   groupDepth?: number
   onRowClick?: ((row: TData) => void) | undefined
+  /**
+   * Cell editing, or undefined for a table that has none.
+   *
+   * One object rather than eight props: every cell asks it the same four
+   * questions — is my menu open on me, is my editor, is my value standing in
+   * for the host's, and what happens when I am right-clicked — and a row that
+   * only forwards them has no business destructuring them.
+   */
+  editing?: CellEditing<TData> | undefined
 }
 
 /**
@@ -64,6 +76,7 @@ export function BodyRow<TData extends RowData>({
   groupColumnId,
   groupDepth = 0,
   onRowClick,
+  editing,
 }: BodyRowProps<TData>) {
   const cells = row.getVisibleCells()
   const expandable = row.subRows.length > 0 || hasDetail
@@ -71,6 +84,18 @@ export function BodyRow<TData extends RowData>({
 
   const rendered = cells.map((cell, index) => {
     const isGroupCell = cell.column.id === groupColumnId
+    const self = { rowId: row.id, columnId: cell.column.id }
+    const isEditing = isSameCell(editing?.editor?.cell, self)
+    /*
+     * An optimistic value, while a write is in flight or while the host's own
+     * data has not caught up with one that landed. Rendered THROUGH the
+     * column's own cell renderer rather than beside it: a number column
+     * formats its value and a status column translates it, and an optimistic
+     * value shown raw would change how the cell reads as well as what it
+     * says. Only the value the renderer is handed differs.
+     */
+    const override = isGroupCell ? undefined : editing?.overrideOf(row.id, cell.column.id, cell.getValue())
+    const context = cell.getContext()
     /*
      * A grouped column has left the body: its value is on the group header
      * above, once, instead of being repeated on every record underneath. The
@@ -78,7 +103,25 @@ export function BodyRow<TData extends RowData>({
      * the column's, not the value's — and carries the record's indent, which
      * is what lines a record up under the group it belongs to.
      */
-    const value = isGroupCell ? null : flexRender(cell.column.columnDef.cell, cell.getContext())
+    const value = isGroupCell
+      ? null
+      : flexRender(
+          cell.column.columnDef.cell,
+          override === undefined ? context : withCellValue(context, override.value),
+        )
+    const content = isEditing && editing?.editor ? (
+      <CellEditor
+        kind={editing.editor.kind}
+        value={editing.editor.previous}
+        name={editing.editor.name}
+        labels={labels}
+        choices={editing.editor.choices}
+        onCommit={editing.commit}
+        onCancel={editing.cancel}
+      />
+    ) : (
+      value
+    )
     return (
       <td
         key={cell.id}
@@ -90,7 +133,28 @@ export function BodyRow<TData extends RowData>({
         )}
         style={pinnedStyle(cell.column)}
         data-column-id={cell.column.id}
+        /*
+         * A body cell is not in the Tab order — there is no cell focus model
+         * yet — but the cell the menu was opened on has to be focusable for
+         * Escape to give the focus back to it (WCAG 2.4.3), and `-1` is how a
+         * programmatic focus target says so without joining the Tab order.
+         */
+        tabIndex={isSameCell(editing?.focusCell, self) ? -1 : undefined}
+        data-dt-pending={override?.pending === true ? "" : undefined}
+        /*
+         * Tab out of an open editor commits it and moves on to the next
+         * editable cell. Listened for here rather than in a wrapper element:
+         * the event bubbles from the field, and a wrapper would be a box
+         * inside the cell for the editor to be laid out against.
+         */
+        onKeyDown={isEditing ? editing?.onEditorKeyDown : undefined}
+        onContextMenu={
+          editing === undefined
+            ? undefined
+            : (event) => editing.onCellContextMenu(event, row, cell.column.id)
+        }
       >
+        {override?.pending === true ? <span className="dt-sr-only">{labels.editPending}</span> : null}
         {index === 0 || isGroupCell ? (
           <div className="dt-lead">
             {/*
@@ -111,10 +175,10 @@ export function BodyRow<TData extends RowData>({
                 <DepthSpacer depth={row.depth} />
               ))}
             {isGroupCell ? <DepthSpacer depth={groupDepth} /> : null}
-            <span className="dt-td-value">{value}</span>
+            <span className="dt-td-value">{content}</span>
           </div>
         ) : (
-          value
+          content
         )}
       </td>
     )
@@ -140,4 +204,27 @@ export function BodyRow<TData extends RowData>({
       )}
     </tr>
   )
+}
+
+/**
+ * One cell's render context with a different value in it.
+ *
+ * What it is for: an optimistic value has to go through the COLUMN's own cell
+ * renderer, or a number column stops formatting its value and a status column
+ * stops translating it the moment a write is in flight — the cell would change
+ * how it reads, not just what it says, and only while the server is thinking.
+ *
+ * Why it casts: TanStack types `getValue` as `Getter<TValue>`, which is a
+ * GENERIC signature (`<T = TValue>() => T`) that no concrete function can
+ * satisfy — the unsoundness is the library's own, and it is what lets a cell
+ * renderer ask for its value as whatever type it declared. The value handed
+ * back is the one this table put in, and the only caller is the renderer for
+ * the very column it came from.
+ */
+function withCellValue<TData extends RowData>(
+  context: CellContext<DataTableFeatures, TData, unknown>,
+  value: unknown,
+): CellContext<DataTableFeatures, TData, unknown> {
+  const getter = <TValue,>(): TValue => value as TValue
+  return { ...context, getValue: getter, renderValue: getter }
 }

@@ -2,6 +2,34 @@ import type { DataTableLabels } from "../types"
 import type { CellEditingLabels } from "./editing"
 
 /**
+ * Uzbek strings for the cell editors and the cell menu.
+ *
+ * A set of its own as well as part of {@link uzLabels}, which spreads it: a
+ * shell that mounts `CellEditor` or `CellMenu` without the table needs these
+ * fifteen and not the hundred the whole shell speaks. See `labels/editing.ts`.
+ * The same orthography binds them, and `editingLabels.test.ts` holds that line.
+ *
+ * @example
+ * <CellMenu labels={uzCellEditingLabels} … />
+ */
+export const uzCellEditingLabels: CellEditingLabels = {
+  cellActions: "Katak amallari",
+  edit: "Oʻzgartirish",
+  editNotEditableColumn: "Bu ustunni oʻzgartirib boʻlmaydi",
+  editNotEditableRow: "Bu qatorni oʻzgartirib boʻlmaydi",
+  editNotEditableGroup: "Guruh qatorini oʻzgartirib boʻlmaydi",
+  editUnavailable: "Oʻzgartirish imkoni yoʻq",
+  editValue: "Qiymat",
+  editHint: "Enter — saqlash, Escape — bekor qilish",
+  invalidNumber: "Son kiriting",
+  invalidDate: "Sanani YYYY-MM-DD koʻrinishida kiriting",
+  invalidChoice: "Taklif etilgan qiymatlardan birini tanlang",
+  booleanTrue: "Ha",
+  booleanFalse: "Yoʻq",
+  noValue: "(boʻsh)",
+}
+
+/**
  * Uzbek labels for the built-in shell.
  *
  * Pass as `labels={uzLabels}`, or spread to override a few:
@@ -24,6 +52,12 @@ import type { CellEditingLabels } from "./editing"
  * <DataTable instance={table} labels={uzLabels} />
  */
 export const uzLabels: DataTableLabels = {
+  ...uzCellEditingLabels,
+  editPending: "Saqlanmoqda",
+  editFailed: (column) => `«${column}» saqlanmadi`,
+  editCancelled: (column) => `«${column}» oʻzgarishi bekor qilindi: qator sahifadan chiqib ketdi`,
+  editRowFiltered: (column) => `«${column}» saqlandi. Qator endi filtrlarga mos kelmaydi`,
+  dismiss: "Yopish",
   columnsTitle: "Ustunlar",
   sideBar: "Jadvalning yon paneli",
   showAll: "Hammasini koʻrsatish",
@@ -136,33 +170,4 @@ export const uzLabels: DataTableLabels = {
   ungroupColumn: (column) => `«${column}» ustunini guruhlashdan olib tashlash`,
   rowGroupLevel: (column, level, total) =>
     `${column}: guruhlash darajasi ${level} / ${total}`,
-}
-
-/**
- * Uzbek strings for the cell editors and the cell menu.
- *
- * A second export rather than more keys on {@link uzLabels}: the editing
- * strings are their own set until the table is wired to them — see
- * `labels/editing.ts` for why — and they are translated here, beside the rest
- * of the Uzbek, so the join is a spread and not a translation round. The same
- * orthography binds them, and `editingLabels.test.ts` holds that line.
- *
- * @example
- * <CellMenu labels={uzCellEditingLabels} … />
- */
-export const uzCellEditingLabels: CellEditingLabels = {
-  cellActions: "Katak amallari",
-  edit: "Oʻzgartirish",
-  editNotEditableColumn: "Bu ustunni oʻzgartirib boʻlmaydi",
-  editNotEditableRow: "Bu qatorni oʻzgartirib boʻlmaydi",
-  editNotEditableGroup: "Guruh qatorini oʻzgartirib boʻlmaydi",
-  editUnavailable: "Oʻzgartirish imkoni yoʻq",
-  editValue: "Qiymat",
-  editHint: "Enter — saqlash, Escape — bekor qilish",
-  invalidNumber: "Son kiriting",
-  invalidDate: "Sanani YYYY-MM-DD koʻrinishida kiriting",
-  invalidChoice: "Taklif etilgan qiymatlardan birini tanlang",
-  booleanTrue: "Ha",
-  booleanFalse: "Yoʻq",
-  noValue: "(boʻsh)",
 }

@@ -11,7 +11,7 @@ import { FeatureControls } from "./FeatureControls"
 import { LanguageSwitcher } from "./LanguageSwitcher"
 import { ThemeControls } from "./ThemeControls"
 import { buildReceiptColumns, ReceiptDetail } from "./receiptColumns"
-import { fetchValues, type ServerReceipt, type ServerRow } from "./fakeServer"
+import { fetchValues, saveReceipt, type ServerReceipt, type ServerRow } from "./fakeServer"
 import {
   DEFAULT_FEATURES,
   DEFAULT_THEME,
@@ -156,6 +156,21 @@ export function Playground() {
           loading={loading}
           error={error}
           onRetry={retry}
+          onCellEdit={async ({ row, columnId, value }) => {
+            await saveReceipt({ id: row.id, columnId, value })
+            /*
+             * A write invalidates the page on screen, so the host asks for it
+             * again — which is what a server-mode host does, and what makes
+             * the round trip visible here rather than mocked at the last step.
+             * `retry` is the hook's one "run the current query again" trigger;
+             * the error banner is only its other caller.
+             *
+             * Until that answer lands the table goes on showing the value the
+             * user typed, settled rather than pending, and steps aside the
+             * moment the server's own answer replaces it.
+             */
+            retry()
+          }}
           renderDetail={features.detailPanel ? (row) => <ReceiptDetail row={row} language={language} /> : undefined}
         />
       </main>

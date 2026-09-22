@@ -3,13 +3,18 @@ import { useCallback, useRef, useState, type CSSProperties, type ReactNode } fro
 import { classNames, insertAt } from "../core/classNames"
 import { buildColumnTree, siblingOrderOf } from "../core/columnTree"
 import { fillerIndex, renderedLeafColumns } from "../core/pinning"
+import type { CellEditHandler } from "../core/cellEditing"
+import { useCellEditing } from "../core/useCellEditing"
 import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
+import { defaultCellEditingLabels } from "../labels/editing"
 import type { DataTableLabels } from "../types"
+import { CellEditNotice } from "./CellEditNotice"
+import { CellMenu } from "./CellMenu"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
 import type { PanelTab } from "./TablePanel"
 import { TableSideBar } from "./TableSideBar"
@@ -24,6 +29,14 @@ import { SkeletonRows, TableStatus } from "./TableStatus"
 
 /** English defaults; pass `labels` to translate. */
 export const defaultLabels: DataTableLabels = {
+  /* The fifteen strings `CellEditor` and `CellMenu` render, folded in so a
+     host passes one labels object rather than two. */
+  ...defaultCellEditingLabels,
+  editPending: "Saving",
+  editFailed: (column) => `Could not save ${column}`,
+  editCancelled: (column) => `The edit to ${column} was cancelled: the row left the page`,
+  editRowFiltered: (column) => `${column} was saved. The row no longer matches the filters`,
+  dismiss: "Dismiss",
   columnsTitle: "Columns",
   sideBar: "Table side bar",
   showAll: "Show all",
@@ -235,6 +248,34 @@ export interface DataTableProps<TData extends RowData> {
   error?: unknown
   /** Called by the Retry button. */
   onRetry?: (() => void) | undefined
+  /**
+   * Save one cell's edit. Without it no column can be edited.
+   *
+   * This table never writes to its own data: an edit is a request, and the
+   * rows it renders are the host's answer to one. Return a promise and the
+   * cell shows the new value while it is in flight, marked as pending; a
+   * rejection reverts the cell and says why. In server mode the host usually
+   * refetches after a successful write, and the optimistic value steps aside
+   * the moment that answer lands — including when the server normalised the
+   * value into something else.
+   *
+   * A column opts in with `meta: { editable: "number" }`, or with a predicate
+   * for a rule a row's own state decides. A column that declares `editable`
+   * with no handler here is a misconfiguration, and the table says so once in
+   * development.
+   *
+   * **Editing is pointer-only today.** A body cell cannot hold focus, so
+   * there is nothing for the ContextMenu key or Shift+F10 to open a menu on.
+   * A cell focus model is its own piece of work; until it lands, right-click
+   * is the way in.
+   *
+   * @example
+   * onCellEdit={async ({ row, columnId, value }) => {
+   *   await api.patch(`/receipts/${row.id}`, { [columnId]: value })
+   *   refetch()
+   * }}
+   */
+  onCellEdit?: CellEditHandler<TData> | undefined
 }
 
 /**
@@ -279,6 +320,7 @@ export function DataTable<TData extends RowData>({
   loading = false,
   error,
   onRetry,
+  onCellEdit,
 }: DataTableProps<TData>) {
   const { table, flags } = instance
   const [panelOpen, setPanelOpen] = useState<PanelState>({ open: false, tab: "columns" })
@@ -431,6 +473,21 @@ export function DataTable<TData extends RowData>({
    */
   const totalRowCount = instance.pagination.enabled ? instance.pagination.rowCount : rows.length
   const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
+  /*
+   * Cell editing. It is handed the rows it will be asked about and the labels
+   * it will speak, and it is `undefined` for a table no column made editable —
+   * which is what leaves the browser's own context menu alone over one (§2).
+   */
+  const cellEditing = useCellEditing({
+    instance,
+    rows,
+    labels,
+    onCellEdit,
+    // A right-click during a drag is how a user gets out of the drag, not a
+    // request for a menu on whatever cell the pointer is over.
+    busy: isResizing || drop.draggedId !== null,
+  })
+  const editing = cellEditing.enabled ? cellEditing : undefined
   const hasError = error !== undefined && error !== null
   /*
    * A server table has asked for its first page and not been answered yet.
@@ -580,6 +637,12 @@ export function DataTable<TData extends RowData>({
 
         <TableStatus loading={showProgress} error={error} onRetry={onRetry} labels={labels} />
 
+        <CellEditNotice
+          notice={cellEditing.notice}
+          labels={labels}
+          onDismiss={cellEditing.dismissNotice}
+        />
+
         <div
           className={classNames("dt-viewport", showProgress && "dt-loading")}
           data-dt-unbounded={unbounded && resolvedHeight === undefined ? "" : undefined}
@@ -700,6 +763,7 @@ export function DataTable<TData extends RowData>({
                 virtualize={virtualize}
                 renderDetail={renderDetail}
                 onRowClick={onRowClick}
+                editing={editing}
               />
             )}
           </table>
@@ -835,6 +899,19 @@ export function DataTable<TData extends RowData>({
               : undefined
           }
           onClose={() => setMenu(null)}
+        />
+      ) : null}
+
+      {cellEditing.menu ? (
+        <CellMenu
+          position={cellEditing.menu.at}
+          labels={labels}
+          notEditable={cellEditing.menu.notEditable}
+          onEdit={cellEditing.openEditor}
+          onClose={cellEditing.closeMenu}
+          /* The cell it was opened on; `BodyRow` makes exactly that one
+             focusable while the menu is up. */
+          returnFocusTo={cellEditing.menu.anchor}
         />
       ) : null}
 

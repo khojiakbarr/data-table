@@ -1,6 +1,7 @@
 import type { Row, RowData } from "@tanstack/react-table"
-import { useCallback, useMemo, type ReactNode, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, type ReactNode, type RefObject } from "react"
 import { isGroupRow } from "../core/grouping"
+import type { CellEditing } from "../core/useCellEditing"
 import { useRowVirtualizer } from "../core/useRowVirtualizer"
 import { displayItemKey } from "../core/virtualRows"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
@@ -28,6 +29,8 @@ interface TableBodyProps<TData extends RowData> {
   virtualize: boolean
   renderDetail?: ((row: TData) => ReactNode) | undefined
   onRowClick?: ((row: TData) => void) | undefined
+  /** Cell editing, or undefined for a table that has none. */
+  editing?: CellEditing<TData> | undefined
 }
 
 /**
@@ -53,6 +56,7 @@ export function TableBody<TData extends RowData>({
   virtualize,
   renderDetail,
   onRowClick,
+  editing,
 }: TableBodyProps<TData>) {
   const { rowHeight, getRowHeight, heightVersion, expanded, pagination, grouping } = instance
   const hasDetail = renderDetail !== undefined
@@ -102,6 +106,29 @@ export function TableBody<TData extends RowData>({
      */
     ...(pagination.enabled ? { unmeasuredFloor: pagination.pageSize } : {}),
   })
+
+  /*
+   * An open editor whose row is no longer rendered: the user scrolled it out
+   * of the virtualised window, or a refetch took the row off the page. §4
+   * rules out losing the typed value in silence, so the edit is abandoned and
+   * said out loud rather than left open on a row nobody can see.
+   *
+   * Asked of the rendered window rather than answered from the editor's own
+   * unmount, because an unmount is not a reliable signal: React runs a
+   * component's cleanup and effect a second time in development, and an
+   * editor that cancelled itself on that simulated teardown would be
+   * unusable there. This runs on every commit and is idempotent — the row is
+   * in the window or it is not.
+   */
+  useEffect(() => {
+    if (editing === undefined) return
+    const open = editing.editor
+    if (open === null) return
+    const rendered = items.some(
+      (entry) => entry.item.kind !== "detail" && entry.item.row.id === open.cell.rowId,
+    )
+    if (!rendered) editing.abandon(open.cell)
+  }, [items, editing])
 
   /*
    * A page that starts INSIDE an open group, whose header was on the page
@@ -183,6 +210,7 @@ export function TableBody<TData extends RowData>({
               rowIndexOffset={rowIndexOffset}
               fillerAt={fillerAt}
               labels={labels}
+              editing={editing}
             />
           )
         }
@@ -200,6 +228,7 @@ export function TableBody<TData extends RowData>({
             groupColumnId={grouping.columnId}
             groupDepth={grouping.columns.length}
             onRowClick={onRowClick}
+            editing={editing}
           />
         )
       })}

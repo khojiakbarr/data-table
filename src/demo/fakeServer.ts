@@ -32,7 +32,15 @@ export interface ServerReceipt {
   flagged: boolean
 }
 
-const PARTNERS = ["Oʻzbekiston Temir Yoʻllari", "Gʻallaorol Agro MChJ", "ООО «Северный Путь»", "Toshkent Kimyo Zavodi"]
+/**
+ * The partners the generated rows are spread across.
+ *
+ * Exported because the playground's `partner` column edits as a LIST, and a
+ * list editor's choices come from `meta.values` — the only source it has. A
+ * facet endpoint answers the filter's question ("which values exist, and how
+ * many rows have each"), not the editor's ("which values may I write").
+ */
+export const PARTNERS = ["Oʻzbekiston Temir Yoʻllari", "Gʻallaorol Agro MChJ", "ООО «Северный Путь»", "Toshkent Kimyo Zavodi"]
 const STATUSES = ["open", "in_process", "received", "closed"]
 
 /**
@@ -632,4 +640,105 @@ export function fetchValues(
     }, VALUES_DELAY_MS)
     options.signal.addEventListener("abort", onAbort, { once: true })
   })
+}
+
+
+/** How long a write takes, separately from a read. */
+const WRITE_DELAY_MS = 400
+
+/** One cell's write, as the endpoint receives it. */
+export interface ReceiptWrite {
+  /** The row's id, which is what a real endpoint would have in its path. */
+  id: string
+  /** The column being written, which a backend maps to one of its own. */
+  columnId: string
+  /** The new value. `null` empties the column. */
+  value: unknown
+}
+
+/**
+ * Validate and apply one cell's write, the way a real endpoint would.
+ *
+ * It rejects, and that is the point: a server that accepts everything makes an
+ * optimistic table look correct when it is not. The rules here are the small
+ * set a receipts table would really have — a receipt must have a code, an
+ * amount cannot be negative, a status must be one the system knows — and each
+ * is reachable from the playground by typing the wrong thing into a cell.
+ *
+ * The store is written by REPLACING the row rather than assigning into it:
+ * every reader of `ALL` holds row objects, and mutating one in place would
+ * change a row a page had already been built from.
+ *
+ * @param write - Which row, which column, what value.
+ * @param options - `delayMs` simulates latency.
+ * @returns The stored row, as the endpoint would echo it back.
+ * @throws When the row, the column or the value is refused. The message is
+ *   what the table puts after "Could not save …".
+ *
+ * @example
+ * await saveReceipt({ id: "rc-3", columnId: "amount", value: 120_000 })
+ */
+export function saveReceipt(
+  write: ReceiptWrite,
+  options: { delayMs?: number } = {},
+): Promise<ServerReceipt> {
+  const { delayMs = WRITE_DELAY_MS } = options
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      const index = ALL.findIndex((row) => row.id === write.id)
+      const current = ALL[index]
+      if (current === undefined) {
+        reject(new Error(`No receipt ${write.id}`))
+        return
+      }
+      const validate = FIELD_WRITERS[write.columnId]
+      if (validate === undefined) {
+        reject(new Error(`${write.columnId} cannot be written`))
+        return
+      }
+      const checked = validate(write.value)
+      if (typeof checked === "string") {
+        reject(new Error(checked))
+        return
+      }
+      const stored = { ...current, ...checked.row }
+      ALL[index] = stored
+      resolve(stored)
+    }, delayMs)
+  })
+}
+
+/** A validated write, or the sentence explaining the refusal. */
+type WriteResult = { row: Partial<ServerReceipt> } | string
+
+/**
+ * One validator per writable column.
+ *
+ * The same shape as {@link FIELD_READERS} and for the same reason: a write
+ * carries a column id, and something has to turn that into a column — and
+ * into the rule that column enforces. `status` and `date` are deliberately
+ * absent: this endpoint does not accept them, and a table that offers to edit
+ * a column the server will not take is a table that lies.
+ */
+const FIELD_WRITERS: Record<string, (value: unknown) => WriteResult> = {
+  code: (value) => {
+    if (typeof value !== "string" || value.trim() === "") return "A receipt must have a code"
+    return { row: { code: value } }
+  },
+  partner: (value) => {
+    if (value === null) return { row: { partner: null } }
+    if (typeof value !== "string") return "A partner is a name"
+    return { row: { partner: value } }
+  },
+  amount: (value) => {
+    if (value === null) return { row: { amount: null } }
+    if (typeof value !== "number" || !Number.isFinite(value)) return "An amount is a number"
+    if (value < 0) return "An amount cannot be negative"
+    return { row: { amount: value } }
+  },
+  flagged: (value) => {
+    if (value === null) return { row: { flagged: false } }
+    if (typeof value !== "boolean") return "Flagged is yes or no"
+    return { row: { flagged: value } }
+  },
 }

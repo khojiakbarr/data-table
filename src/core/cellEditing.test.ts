@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest"
 import {
+  cellEditKey,
   cellEditability,
   draftFromValue,
+  isSameCell,
   isUnchanged,
+  nextEditableCell,
   notEditableLabelKey,
   parseDraft,
+  resolveEditable,
 } from "./cellEditing"
 import { defaultCellEditingLabels } from "../labels/editing"
 
@@ -171,5 +175,127 @@ describe("isUnchanged", () => {
     expect(isUnchanged("Ada", null, "text")).toBe(false)
     expect(isUnchanged(true, false, "boolean")).toBe(false)
     expect(isUnchanged(new Date(2026, 0, 31), "2026-02-01", "date")).toBe(false)
+  })
+})
+
+
+describe("resolveEditable", () => {
+  it("passes a declared kind straight through, with the row allowing it", () => {
+    expect(resolveEditable("date", { row: {}, filterKind: "text" })).toEqual({
+      declared: "date",
+      rowAllows: true,
+    })
+  })
+
+  it("keeps `false` and silence apart, so the reason given differs", () => {
+    expect(resolveEditable(false, { row: {}, filterKind: "text" }).declared).toBe(false)
+    expect(resolveEditable(undefined, { row: {}, filterKind: "text" }).declared).toBeUndefined()
+  })
+
+  it("takes a predicate's kind from the column's filter kind — one vocabulary, both features", () => {
+    const resolved = resolveEditable(() => true, { row: { amount: 5 }, filterKind: "number" })
+    expect(resolved).toEqual({ declared: "number", rowAllows: true })
+  })
+
+  it("reports a refusing predicate as the ROW's, not the column's", () => {
+    // The column still declared an editor, which is what makes "this row
+    // cannot be edited" the honest reason rather than "this column cannot be".
+    const resolved = resolveEditable((row: { status: string }) => row.status !== "closed", {
+      row: { status: "closed" },
+      filterKind: "number",
+    })
+    expect(resolved).toEqual({ declared: "number", rowAllows: false })
+    expect(cellEditability({ ...resolved, hasHandler: true })).toEqual({
+      editable: false,
+      reason: "row",
+    })
+  })
+
+  it("edits as text when the column has no filter kind to borrow", () => {
+    // `filter: false` turns FILTERING off for a column and says nothing about
+    // editing, and a page of nothing but nulls resolves no kind at all. Text
+    // is the kind that can carry whatever the user types.
+    expect(resolveEditable(() => true, { row: {}, filterKind: false }).declared).toBe("text")
+    expect(resolveEditable(() => true, { row: {}, filterKind: undefined }).declared).toBe("text")
+  })
+
+  it("treats a predicate that returns something other than true as a refusal", () => {
+    // Host code, and `(row) => row.editable` on a row with no such field
+    // returns undefined. A truthy-ish answer is not consent to a write.
+    const loose = (): boolean => undefined as unknown as boolean
+    expect(resolveEditable(loose, { row: {}, filterKind: "text" }).rowAllows).toBe(false)
+  })
+})
+
+describe("cellEditKey and isSameCell", () => {
+  it("keeps two cells apart even when their ids would run together", () => {
+    // A bare join would make ("a", "b|c") and ("a|b", "c") one key.
+    expect(cellEditKey({ rowId: "a", columnId: "b" })).not.toBe(
+      cellEditKey({ rowId: "a\u0000b", columnId: "" }),
+    )
+  })
+
+  it("is the same key for the same cell", () => {
+    expect(cellEditKey({ rowId: "r1", columnId: "amount" })).toBe(
+      cellEditKey({ rowId: "r1", columnId: "amount" }),
+    )
+  })
+
+  it("compares cells by value, and answers false for an absent one", () => {
+    expect(isSameCell({ rowId: "r", columnId: "c" }, { rowId: "r", columnId: "c" })).toBe(true)
+    expect(isSameCell({ rowId: "r", columnId: "c" }, { rowId: "r", columnId: "d" })).toBe(false)
+    expect(isSameCell(null, { rowId: "r", columnId: "c" })).toBe(false)
+    expect(isSameCell(undefined, undefined)).toBe(false)
+  })
+})
+
+describe("nextEditableCell", () => {
+  const grid = [
+    { rowId: "r1", columnId: "code" },
+    { rowId: "r1", columnId: "amount" },
+    { rowId: "r2", columnId: "code" },
+    { rowId: "r2", columnId: "amount" },
+  ]
+
+  it("steps to the next editable cell in the row", () => {
+    expect(nextEditableCell(grid, { rowId: "r1", columnId: "code" }, 1)).toEqual({
+      rowId: "r1",
+      columnId: "amount",
+    })
+  })
+
+  it("wraps to the next row at the end of one", () => {
+    expect(nextEditableCell(grid, { rowId: "r1", columnId: "amount" }, 1)).toEqual({
+      rowId: "r2",
+      columnId: "code",
+    })
+  })
+
+  it("wraps round at the end of the page rather than stopping dead", () => {
+    expect(nextEditableCell(grid, { rowId: "r2", columnId: "amount" }, 1)).toEqual({
+      rowId: "r1",
+      columnId: "code",
+    })
+  })
+
+  it("steps backwards for Shift+Tab, wrapping the other way", () => {
+    expect(nextEditableCell(grid, { rowId: "r2", columnId: "code" }, -1)).toEqual({
+      rowId: "r1",
+      columnId: "amount",
+    })
+    // -1 % n is -1 in JavaScript, which would index nothing at all.
+    expect(nextEditableCell(grid, { rowId: "r1", columnId: "code" }, -1)).toEqual({
+      rowId: "r2",
+      columnId: "amount",
+    })
+  })
+
+  it("has nowhere to go from a cell the page no longer holds", () => {
+    // The row was refetched away while its editor was open.
+    expect(nextEditableCell(grid, { rowId: "gone", columnId: "code" }, 1)).toBeUndefined()
+  })
+
+  it("has nowhere to go when it is the only editable cell", () => {
+    expect(nextEditableCell([grid[0]!], grid[0]!, 1)).toBeUndefined()
   })
 })

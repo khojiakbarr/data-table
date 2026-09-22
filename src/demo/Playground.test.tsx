@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { defaultLabels } from "../components/DataTable"
 import { CHROME } from "./chrome"
+import { saveReceipt } from "./fakeServer"
 import { Playground } from "./Playground"
 import { THEME_CLASS } from "./playgroundState"
 
@@ -326,4 +327,68 @@ describe("playground virtualisation", () => {
     // exists to make visible.
     await waitFor(() => expect(bodyRows()).toBe(pageSize))
   })
+})
+
+describe("editing a cell in the playground", () => {
+  /*
+   * The fake server is a STORE, and these are the only tests in this file that
+   * write to it. A code left edited would outlive the test: `waitForRows`
+   * waits for KR-10000 by name, and every later test in this file would hang
+   * waiting for a row that had been renamed.
+   */
+  afterEach(async () => {
+    await saveReceipt({ id: "rc-0", columnId: "code", value: "KR-10000" }, { delayMs: 0 })
+  })
+
+  it("edits a cell and lets the fake server accept the write, end to end", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // `code` is the playground's text-editable column; KR-10000 is row zero.
+    const cell = screen.getByText("KR-10000").closest("td")
+    fireEvent.contextMenu(cell!, { clientX: 100, clientY: 100 })
+    await user.click(screen.getByRole("menuitem", { name: defaultLabels.edit }))
+
+    const field = await screen.findByRole("textbox", { name: /value/i })
+    await user.clear(field)
+    await user.type(field, "KR-EDITED{Enter}")
+
+    // Optimistic first, then the refetch the page runs after a successful
+    // write — the value that finally renders is the fake server's own.
+    expect(screen.getByText("KR-EDITED")).toBeInTheDocument()
+    await waitFor(
+      () => expect(screen.queryByText("KR-10000")).toBeNull(),
+      { timeout: SERVER_TIMEOUT },
+    )
+    expect(screen.getByText("KR-EDITED")).toBeInTheDocument()
+  })
+
+  it("refuses a write the fake server will not take, and reverts the cell", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // `amount` rejects a negative value — a business rule, not a network
+    // failure, which is the kind of refusal a real endpoint mostly makes.
+    const amount = screen.getAllByText("310,000")[0]?.closest("td")
+    fireEvent.contextMenu(amount!, { clientX: 100, clientY: 100 })
+    await user.click(screen.getByRole("menuitem", { name: defaultLabels.edit }))
+
+    const field = await screen.findByRole("textbox", { name: /value/i })
+    await user.clear(field)
+    await user.type(field, "-1{Enter}")
+
+    const notice = await waitFor(
+      () => {
+        const found = document.querySelector<HTMLElement>(".dt-edit-notice")
+        if (!found) throw new Error("no edit notice")
+        return found
+      },
+      { timeout: SERVER_TIMEOUT },
+    )
+    expect(notice).toHaveTextContent("An amount cannot be negative")
+    expect(screen.getAllByText("310,000")[0]).toBeInTheDocument()
+  })
+
 })

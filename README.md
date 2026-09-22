@@ -43,6 +43,7 @@ function Receipts({ data, columns }) {
 | **Hide columns** | From the **Columns** panel. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
 | **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. |
+| **Edit a cell** | Right-click a body cell and choose **Edit**. Text, number, date, boolean and single-choice list editors. The edit is a request to your `onCellEdit` — the table never writes to its own data. |
 | **Remember all of it** | Per table, per user, wherever you choose to put it. |
 
 ---
@@ -625,6 +626,93 @@ travels as key paths.
 
 ---
 
+## Editing cells
+
+Right-click a body cell; the first item in the menu is **Edit**. The cell becomes
+an editor with its value selected, **Enter** or a click away saves, **Escape**
+cancels, and **Tab** saves and moves to the next editable cell in the row,
+wrapping to the next row at the end.
+
+A column opts in through `meta.editable`, and the table sends every commit to
+`onCellEdit`. Both are required: a column that declares one without the other
+is a misconfiguration, and the table says so once in development and leaves
+Edit disabled.
+
+```tsx
+const col = createColumnHelper<DataTableFeatures, Receipt>()
+
+const columns = [
+  col.accessor("code", { header: "Code", meta: { editable: "text" } }),
+  col.accessor("date", { header: "Date", meta: { editable: "date" } }),
+  col.accessor("partner", {
+    header: "Partner",
+    // A single-choice list. Its options are `meta.values` — the same list a
+    // list FILTER uses, because "which values may I write" and "which values
+    // exist" are usually the same question asked twice.
+    meta: { editable: "list", values: PARTNERS.map((value) => ({ value })) },
+  }),
+  col.accessor("amount", {
+    header: "Amount",
+    // The predicate form: the column offers an editor, and this row's own
+    // state takes it away. Edit is then disabled saying the ROW refused it,
+    // not the column.
+    meta: { editable: (row: Receipt) => row.status !== "closed" },
+  }),
+]
+
+<DataTable
+  instance={table}
+  onCellEdit={async ({ row, columnId, value, previous }) => {
+    await api.patch(`/receipts/${row.id}`, { [columnId]: value })
+    refetch()
+  }}
+/>
+```
+
+The five kinds are the filter kinds, deliberately: a column that filters as a
+date edits as a date. A **predicate** names no kind, so the kind is inferred the
+way the filter's is — from `meta.filter` when it is set, otherwise from the
+values. Declare the kind outright wherever it matters.
+
+**Optimism.** The new value shows while your promise is in flight, marked as
+pending; the cell keeps its own renderer, so a formatted column stays
+formatted. A rejection reverts it and puts the reason in a notice that stays
+until it is dismissed — there is no timer, because a notice that removes itself
+removes itself while somebody is reading it.
+
+After a successful write a server-mode host usually refetches. The optimistic
+value stands until that answer arrives and then steps aside for it, whatever it
+says — including a value the server normalised into something else. Nothing
+fights.
+
+`previous` is the value the cell held **when the editor opened**, not one read
+back at commit time, so a refetch in between cannot rewrite what the edit was
+from.
+
+**What it will not edit.** A group row and the grouped column have no value of
+their own; both offer the menu with Edit disabled, saying so. A cell whose
+column declared nothing does the same. A menu that sometimes fails to appear
+teaches people the feature is broken, so it always appears — and the browser's
+own context menu is left alone over a table that no column made editable.
+
+**An edit can make its row vanish.** Change a cell a filter or the search is
+looking at and the next refetch will not return that row. That is correct, and
+it looks exactly like a bug, so the table says what happened. The same notice
+covers an editor whose row left the page underneath it — scrolled out of a
+virtualised body, or refetched away: the edit is abandoned rather than written,
+and never in silence.
+
+> ### Editing is pointer-only for now
+>
+> There is no focused-cell model in this library yet, so there is nothing for
+> the **ContextMenu** key or **Shift+F10** to anchor a menu to, and no way to
+> reach an editor without a pointer. Roving `tabindex` across body cells is the
+> conventional answer and it is a bigger change than it looks; it is its own
+> piece of work. Until it lands, do not ship cell editing as the only route to
+> something a keyboard user must be able to do.
+
+---
+
 ## Expandable rows
 
 Two shapes, one mechanism. Use either, or both together.
@@ -1173,6 +1261,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `loading` | `boolean` | `false` | Rows are on their way. Skeleton rows with none yet, a progress bar once some are on screen. |
 | `error` | `unknown` | — | Loading failed. Shown as a banner with a Retry button when `onRetry` is given. |
 | `onRetry` | `() => void` | — | Called by the Retry button. |
+| `onCellEdit` | `(edit: { row, columnId, value, previous }) => void \| Promise<void>` | — | Save one cell's edit. Without it no column can be edited. See [Editing cells](#editing-cells). |
 
 ---
 
@@ -1212,6 +1301,15 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
   position — including the one a cancel returns to — is announced politely. The slot stops at a
   group or pinning boundary, because a move across one is refused. The two strings it speaks are
   the `reorderHint` and `reorderPosition` labels.
+- The cell menu is the header menu's sibling: it opens at the pointer, clamps itself into
+  the viewport, takes the focus on its first item, closes on `Escape` and hands the focus back
+  to the cell it opened on. A cell that cannot be edited still gets the menu, with the reason
+  written into Edit's own accessible name rather than hidden in a tooltip. A pending cell is
+  dimmed **and** says "Saving" to a screen reader; an edit notice is a live region, assertive
+  for a refusal and polite otherwise.
+- **Cell editing is reachable by pointer only.** A body cell cannot hold focus yet, so there is
+  no cell for the ContextMenu key or `Shift+F10` to open a menu on. See
+  [Editing cells](#editing-cells).
 - `prefers-reduced-motion` disables transitions.
 
 ---

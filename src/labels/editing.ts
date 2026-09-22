@@ -1,18 +1,18 @@
 /**
  * Every string the cell editors and the cell menu speak.
  *
- * A set of its own rather than more keys on `DataTableLabels`, for one
- * reason: `defaultLabels` — the English set every other locale is checked
- * against — lives inside `DataTable.tsx`, the shell that will wire editing up
- * in the task after this one. Editors and a menu that nothing renders yet must
- * not force a key into an interface whose only default value sits in a file
- * they have no business editing.
- *
- * The join is one line when the wiring lands: `DataTableLabels` extends
- * {@link CellEditingLabels}, `defaultLabels` spreads
+ * A set of its own, and `DataTableLabels` extends it: `CellEditor` and
+ * `CellMenu` are mountable on their own by a shell that wants the editors
+ * without the table, and they should ask for the fifteen strings they render
+ * rather than for the hundred the whole shell speaks. A host that mounts the
+ * whole shell passes one object all the same — `defaultLabels` spreads
  * {@link defaultCellEditingLabels}, and `ruLabels`/`uzLabels` spread the two
- * translations that already sit beside them in `ru.ts` and `uz.ts`. Nothing
- * here has to be translated twice for that to happen.
+ * translations that sit beside them in `ru.ts` and `uz.ts`.
+ *
+ * Every string here is a plain string, and `editingLabels.test.ts` holds that
+ * line. A label that interpolates something — a column's name, a count —
+ * belongs on `DataTableLabels`, where `labels.test.ts` already calls every
+ * function-shaped label before checking its text.
  */
 
 /** The strings {@link CellEditor} and {@link CellMenu} render. */

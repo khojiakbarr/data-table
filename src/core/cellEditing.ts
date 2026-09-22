@@ -214,3 +214,180 @@ export function parseDraft(
 export function isUnchanged(previous: unknown, next: FilterValue | null, kind: EditableKind): boolean {
   return draftFromValue(previous, kind) === draftFromValue(next, kind)
 }
+
+/**
+ * A per-row rule that can forbid an edit the column otherwise allows.
+ *
+ * The row arrives untyped, and that is not an oversight. `meta` reaches a host
+ * through TanStack's `columnMeta` slot, which is ONE concrete type for the
+ * whole feature set (`tableFeatures({ columnMeta: … })`) — it is not generic
+ * over the row, so the host's own row type has nowhere to enter from.
+ * `unknown` would be worse here rather than better: under
+ * `strictFunctionTypes` a host's `(row: Receipt) => boolean` is not assignable
+ * to `(row: unknown) => boolean`, so every call site would need the `as` cast
+ * this repository forbids. With `any` the parameter is contextually typed at
+ * the call site instead — annotate it (`(row: Receipt) => …`) and the body is
+ * fully checked.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see the docblock above
+export type EditableRowPredicate = (row: any) => boolean
+
+/**
+ * What a column declares about editing its cells.
+ *
+ * A kind names the editor outright. A predicate says "editable, when this row
+ * allows it" and leaves the kind to the one inference rule §1 shares with the
+ * filters — see {@link resolveEditable}. `false` and silence both mean no
+ * editor; they differ only in the reason the user is given.
+ */
+export type EditableDeclaration = EditableKind | false | EditableRowPredicate
+
+/**
+ * One cell's edit, as the host receives it.
+ *
+ * `previous` is the value the cell held when the EDITOR OPENED, never one read
+ * back at commit time: a refetch in between would otherwise rewrite history
+ * and hand the host an undo target that was never on screen.
+ */
+export interface CellEdit<TData> {
+  /** The row the edited cell belongs to. Never a group row. */
+  row: TData
+  /** The edited column's id. */
+  columnId: string
+  /** The value to write. `null` empties the cell. */
+  value: unknown
+  /** What the cell held when the editor opened. */
+  previous: unknown
+}
+
+/**
+ * What a host does with a committed edit.
+ *
+ * Returning a promise is what buys the optimistic render: the new value shows
+ * while it is in flight, and a rejection reverts the cell and says why.
+ */
+export type CellEditHandler<TData> = (edit: CellEdit<TData>) => void | Promise<void>
+
+/** What {@link resolveEditable} reads besides the declaration itself. */
+export interface EditableFacts {
+  /** The row the predicate is asked about. */
+  row: unknown
+  /**
+   * The column's resolved FILTER kind, from `instance.filtering.kinds`.
+   *
+   * The vocabulary is shared on purpose (§1): a column that filters as a date
+   * edits as a date. `false` — a column whose filtering the host turned off —
+   * is not a statement about editing, so it falls through to the default
+   * rather than cancelling the editor.
+   */
+  filterKind: EditableKind | false | undefined
+}
+
+/**
+ * The editor a column offers this row, and whether the row allows it.
+ *
+ * Splits one `meta.editable` into the two facts {@link cellEditability} asks
+ * for. The split is what lets a refused predicate be reported as "this row
+ * cannot be edited" rather than as "this column cannot be edited": the column
+ * DID offer an editor, and something about this row took it away.
+ *
+ * @param declared - The column's `meta.editable`.
+ * @param facts - The row, and the column's resolved filter kind.
+ * @returns The column-level kind (or the absence of one) and the row's verdict.
+ *
+ * @example
+ * resolveEditable((row) => row.status !== "closed", { row, filterKind: "number" })
+ * // { declared: "number", rowAllows: true }
+ */
+export function resolveEditable(
+  declared: EditableDeclaration | undefined,
+  facts: EditableFacts,
+): { declared: EditableKind | false | undefined; rowAllows: boolean } {
+  if (declared === undefined || declared === false) return { declared, rowAllows: true }
+  if (typeof declared === "function") {
+    return {
+      /*
+       * A predicate names no editor, so the kind comes from the one rule the
+       * filters already resolved. A column with no filter kind either —
+       * filtering turned off for it, or a page of nothing but nulls to infer
+       * from — edits as text, which is the kind that can carry anything the
+       * user can type.
+       */
+      declared:
+        facts.filterKind === false || facts.filterKind === undefined ? "text" : facts.filterKind,
+      rowAllows: declared(facts.row) === true,
+    }
+  }
+  return { declared, rowAllows: true }
+}
+
+/** One cell, as the editing feature addresses it. */
+export interface CellRef {
+  rowId: string
+  columnId: string
+}
+
+/**
+ * Whether two cell references name the same cell.
+ *
+ * @param a - One reference, or null.
+ * @param b - The other reference, or null.
+ * @returns True only when both are present and name the same cell.
+ *
+ * @example
+ * isSameCell(editing, { rowId: row.id, columnId: cell.column.id })
+ */
+export function isSameCell(a: CellRef | null | undefined, b: CellRef | null | undefined): boolean {
+  if (!a || !b) return false
+  return a.rowId === b.rowId && a.columnId === b.columnId
+}
+
+/**
+ * The key one cell's pending edit is filed under.
+ *
+ * A row id and a column id are both host-supplied strings, so they are joined
+ * on a character neither can plausibly contain — a NUL is not legal in a
+ * JavaScript identifier, a SQL identifier or a URL path segment, and an id
+ * carrying one would have larger problems than this map.
+ *
+ * @param cell - The row and column.
+ * @returns The map key.
+ *
+ * @example
+ * cellEditKey({ rowId: "rc-3", columnId: "amount" })
+ */
+export function cellEditKey(cell: CellRef): string {
+  return `${cell.rowId} ${cell.columnId}`
+}
+
+/**
+ * Where Tab goes from an open editor.
+ *
+ * `grid` holds only the EDITABLE cells, in render order — row by row, and
+ * within a row in the order the columns are rendered. "The next editable cell
+ * in the row, wrapping to the next row at the end" (§3) is then a single step
+ * along that list, and the wrap at the very end is the wrap back to the start:
+ * a user tabbing through a page of edits arrives back where they began rather
+ * than at a dead stop with the focus nowhere.
+ *
+ * @param grid - Every editable cell on the page, in render order.
+ * @param from - The cell the editor is open on.
+ * @param direction - 1 for Tab, -1 for Shift+Tab.
+ * @returns The cell to open next, or undefined when `from` is not in the grid
+ *   — a row refetched away mid-edit — or when it is the only editable cell.
+ *
+ * @example
+ * nextEditableCell(grid, { rowId: "rc-1", columnId: "code" }, 1)
+ */
+export function nextEditableCell(
+  grid: readonly CellRef[],
+  from: CellRef,
+  direction: 1 | -1,
+): CellRef | undefined {
+  if (grid.length < 2) return undefined
+  const at = grid.findIndex((cell) => isSameCell(cell, from))
+  if (at === -1) return undefined
+  // `+ grid.length` before the modulo: JavaScript's `%` keeps the sign of the
+  // dividend, so -1 % n is -1 rather than n - 1.
+  return grid[(at + direction + grid.length) % grid.length]
+}

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { defaultLabels } from "../components/DataTable"
 import { CHROME } from "./chrome"
-import { saveReceipt } from "./fakeServer"
+import { fetchReceipts, saveReceipt } from "./fakeServer"
 import { Playground } from "./Playground"
 import { THEME_CLASS } from "./playgroundState"
 
@@ -312,6 +312,38 @@ describe("playground", () => {
     // its own count off, not duplicated it.
     expect(document.querySelector(".dt-status-bar-rows")?.textContent).toContain("100 000")
     expect(document.querySelector(".dt-footer-rows")).toBeNull()
+  })
+
+  it("shows a totals row with the fake server's real sum when Totals row is ticked", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // Off by default, the same reasoning as Row numbers and Status bar above.
+    expect(document.querySelector("tfoot")).toBeNull()
+
+    await user.click(hintedToggle(CHROME.en.features.hints.totals))
+
+    // The default query — no filter, no search, unsorted, page one — is
+    // exactly what the fake server already answered to fill the table, so its
+    // own `amountTotal` for that same query is what the footer must show.
+    const expected = await fetchReceipts(
+      {
+        sorting: [],
+        filters: [],
+        search: null,
+        grouping: [],
+        expanded: [],
+        pagination: { pageIndex: 0, pageSize: 50 },
+      },
+      { delayMs: 0 },
+    )
+    const formatted = new Intl.NumberFormat("en-US").format(expected.amountTotal)
+
+    await waitFor(() => expect(document.querySelector("tfoot")).not.toBeNull())
+    // Not a constant typed into the demo: this is the same number a second,
+    // independent call to the fake server answers for the identical query.
+    expect(document.querySelector("tfoot")?.textContent).toContain(formatted)
   })
 
   it("switches the table labels and the page chrome together", async () => {

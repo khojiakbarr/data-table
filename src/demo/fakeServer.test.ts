@@ -341,6 +341,52 @@ describe("fetchReceipts — unfilteredTotal", () => {
   })
 })
 
+describe("fetchReceipts — amountTotal", () => {
+  // The ten SCOPE rows' own `amount` column, summed by hand from the table in
+  // this file's docblock: 310000 + 1228233 + 2146466 + 3064699 + 3982932 +
+  // 4901165 + 5819398 + 6737631 + 0 (KR-10008's null) + 8574097.
+  const SCOPE_AMOUNT_SUM = 36_764_621
+
+  it("sums amount over every row the query matches, not the page it returns", async () => {
+    const page = await fetchReceipts(query([SCOPE], { pagination: { pageIndex: 0, pageSize: 3 } }), {
+      delayMs: 0,
+    })
+    // Proves the two are actually independent: three rows came back, but the
+    // sum is still over all ten the query matched.
+    expect(page.rows).toHaveLength(3)
+    expect(page.total).toBe(10)
+    expect(page.amountTotal).toBe(SCOPE_AMOUNT_SUM)
+  })
+
+  it("treats a null amount as zero rather than excluding that row", async () => {
+    const nullAmountOnly: FilterCondition = {
+      kind: "list",
+      field: "code",
+      op: "in",
+      values: BLANK_AMOUNT,
+    }
+    const page = await fetchReceipts(query([nullAmountOnly]), { delayMs: 0 })
+    expect(page.total).toBe(1)
+    expect(page.amountTotal).toBe(0)
+  })
+
+  it("narrows with the query's filters, the same rows total counts", async () => {
+    const openOnly: FilterCondition = { kind: "text", field: "status", op: "equals", value: "open" }
+    const page = await fetchReceipts(query([SCOPE, openOnly]), { delayMs: 0 })
+    // KR-10000 (310000), KR-10004 (3982932) and KR-10008 (null → 0) are the
+    // scope's three "open" rows.
+    expect(codes(page.rows).sort()).toEqual(["KR-10000", "KR-10004", "KR-10008"])
+    expect(page.amountTotal).toBe(310_000 + 3_982_932)
+  })
+
+  it("does not fold in the grouping or the pagination, the same as the SQL it stands for", async () => {
+    const grouped = await fetchReceipts(query([SCOPE], { grouping: ["status"] }), { delayMs: 0 })
+    const flat = await fetchReceipts(query([SCOPE]), { delayMs: 0 })
+    expect(grouped.amountTotal).toBe(flat.amountTotal)
+    expect(grouped.amountTotal).toBe(SCOPE_AMOUNT_SUM)
+  })
+})
+
 describe("fetchReceipts — the injected failure", () => {
   it("rejects instead of resolving when fail is requested", async () => {
     await expect(fetchReceipts(query([SCOPE]), { fail: true, delayMs: 0 })).rejects.toThrow(

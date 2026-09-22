@@ -52,6 +52,8 @@ const pageOf = (code: string): ServerPage => ({
   // Ungrouped, so the first row sits inside no group.
   startPath: [],
   unfilteredTotal: 100,
+  // This row's own `amount` is null; the fixture is not exercising totals.
+  amountTotal: 0,
 })
 
 /** The request the hook has open for that page, once its effect has run. */

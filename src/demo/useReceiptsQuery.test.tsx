@@ -51,6 +51,7 @@ const pageOf = (code: string): ServerPage => ({
   total: 100,
   // Ungrouped, so the first row sits inside no group.
   startPath: [],
+  unfilteredTotal: 100,
 })
 
 /** The request the hook has open for that page, once its effect has run. */

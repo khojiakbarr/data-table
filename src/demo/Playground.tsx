@@ -75,6 +75,9 @@ export function Playground() {
     // `rowCount` stays unset — not `undefined` — until the first page
     // resolves, which is what `exactOptionalPropertyTypes` requires here.
     ...(page ? { rowCount: page.total } : {}),
+    // Same reasoning: the status bar's "X of Y" has nothing to show until a
+    // page has actually answered.
+    ...(page ? { unfilteredTotal: page.unfilteredTotal } : {}),
     // Which open group the page's first row sits inside, so the table can draw
     // a "continued" header when a page boundary falls inside a group.
     ...(page ? { startPath: page.startPath } : {}),
@@ -89,6 +92,7 @@ export function Playground() {
       pinning: features.pinning,
       hiding: features.hiding,
       rowNumbers: features.rowNumbers,
+      statusBar: features.statusBar,
     },
     pagination: features.pagination,
     // Quick search rides with filtering — turning the toggle off drops both,

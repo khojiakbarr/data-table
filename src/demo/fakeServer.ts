@@ -121,6 +121,17 @@ export interface ServerPage<TRow = ServerReceipt> {
   total: number
   /** The open group path the first row of this page sits inside; `[]` at the top level. */
   startPath: FilterValue[]
+  /**
+   * `total` before `query.filters` and `query.search` narrowed it, grouped
+   * the same way `total` is. Mirrors `UseDataTableOptions.unfilteredTotal` —
+   * this fake server always answers it, which is what lets the playground's
+   * status bar show the real "X of Y" rather than a value it made up.
+   *
+   * A real backend that has not implemented the extra count yet simply omits
+   * the field; the library reads its absence as "state only what matched",
+   * not as an error.
+   */
+  unfilteredTotal: number
 }
 
 /**
@@ -570,6 +581,18 @@ export function fetchReceipts(
         // context nothing else on the page can establish — see
         // {@link ServerPage.startPath}.
         startPath: page[0]?.container ?? NO_PATH,
+        // The same pipeline as `total`, minus the filter and search step —
+        // grouped the same way, so the status bar's "X of Y" compares two
+        // counts of the same KIND of row (group headers included) rather
+        // than a flattened total against a bare record count. Always
+        // answered, not only while narrowed: a real endpoint able to state
+        // this at all can state it on every response, and the status bar
+        // itself is what decides whether narrowing is happening and this
+        // number is worth showing.
+        unfilteredTotal:
+          groupBy.length === 0
+            ? ALL.length
+            : flattenGroups(buildLevel(ALL, groupBy, 0, sort), query.expanded, []).length,
       })
     }, delayMs)
     signal?.addEventListener("abort", onAbort, { once: true })

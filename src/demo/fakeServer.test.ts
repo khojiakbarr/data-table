@@ -307,6 +307,40 @@ describe("fetchReceipts — sorting and pagination", () => {
   })
 })
 
+describe("fetchReceipts — unfilteredTotal", () => {
+  it("always answers it, matching total when nothing is narrowing the result", async () => {
+    const page = await fetchReceipts(query([]), { delayMs: 0 })
+    expect(page.unfilteredTotal).toBe(page.total)
+    // The whole generated set — see `ROW_COUNT` — not a guess about it.
+    expect(page.unfilteredTotal).toBe(100_000)
+  })
+
+  it("reports the wider count once a filter narrows the result", async () => {
+    const page = await fetchReceipts(query([SCOPE]), { delayMs: 0 })
+    expect(page.total).toBe(10)
+    expect(page.unfilteredTotal).toBe(100_000)
+  })
+
+  it("groups the unfiltered count the same way total is grouped, rather than echoing ALL's raw length", async () => {
+    // No filter, so `total` already IS the grouped, unfiltered answer: one
+    // header per distinct status (four). `unfilteredTotal` has to walk the
+    // same grouping pipeline over ALL and land on the same small number —
+    // proving it, not the 100 000 raw records, is what got grouped.
+    const page = await fetchReceipts(query([], { grouping: ["status"] }), { delayMs: 0 })
+    expect(page.total).toBe(4)
+    expect(page.unfilteredTotal).toBe(4)
+  })
+
+  it("keeps reflecting the grouping once a filter also narrows the result", async () => {
+    const page = await fetchReceipts(query([SCOPE], { grouping: ["status"] }), { delayMs: 0 })
+    // The ten SCOPE rows still cover every status, so the filtered header
+    // count is four too — the meaningful assertion is that the unfiltered
+    // side is still the grouped four, not the raw 100 000.
+    expect(page.unfilteredTotal).toBe(4)
+    expect(page.unfilteredTotal).toBeLessThan(100_000)
+  })
+})
+
 describe("fetchReceipts — the injected failure", () => {
   it("rejects instead of resolving when fail is requested", async () => {
     await expect(fetchReceipts(query([SCOPE]), { fail: true, delayMs: 0 })).rejects.toThrow(

@@ -51,6 +51,7 @@ function hintedToggle(hint: string): HTMLInputElement {
 
 const paginationToggle = (): HTMLInputElement => hintedToggle(CHROME.en.features.hints.pagination)
 const rowNumbersToggle = (): HTMLInputElement => hintedToggle(CHROME.en.features.hints.rowNumbers)
+const statusBarToggle = (): HTMLInputElement => hintedToggle(CHROME.en.features.hints.statusBar)
 
 beforeEach(() => {
   // The page persists its layout under the id "playground"; a sorting or page
@@ -266,6 +267,25 @@ describe("playground", () => {
     await waitFor(() =>
       expect(document.querySelector("tbody .dt-row-number")?.textContent).toBe("51"),
     )
+  })
+
+  it("shows the status bar and hands the footer's row count to it when Status bar is ticked", async () => {
+    const user = userEvent.setup()
+    render(<Playground />)
+    await waitForRows()
+
+    // Off by default, the same reasoning as Row numbers above.
+    expect(document.querySelector(".dt-status-bar")).toBeNull()
+    expect(document.querySelector(".dt-footer-rows")).not.toBeNull()
+
+    await user.click(statusBarToggle())
+
+    await waitFor(() => expect(document.querySelector(".dt-status-bar")).not.toBeNull())
+    // The real fake server's total, 100 000 — proving the bar is reading a
+    // live `rowCount`, not a static placeholder — and the footer has handed
+    // its own count off, not duplicated it.
+    expect(document.querySelector(".dt-status-bar-rows")?.textContent).toContain("100 000")
+    expect(document.querySelector(".dt-footer-rows")).toBeNull()
   })
 
   it("switches the table labels and the page chrome together", async () => {

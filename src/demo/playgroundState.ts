@@ -25,6 +25,13 @@ export interface FeatureState {
    * install is not in.
    */
   rowNumbers: boolean
+  /**
+   * The band under the table stating what the result set contains.
+   *
+   * The other flag whose library default is FALSE, for the same reason
+   * `rowNumbers`'s is — see that field's own comment.
+   */
+  statusBar: boolean
   /* `useDataTable({ filtering, pagination })`. Quick search rides with `filtering`. */
   filtering: boolean
   pagination: boolean
@@ -46,6 +53,7 @@ export const DEFAULT_FEATURES: FeatureState = {
   hiding: true,
   // False, like the library's own default; see the field's own comment.
   rowNumbers: false,
+  statusBar: false,
   filtering: true,
   pagination: true,
   striped: true,

@@ -20,7 +20,7 @@ export interface ChromeStrings {
     groupLabel: string
     legends: Record<"interactions" | "data" | "layout", string>
     labels: Record<keyof FeatureState, string>
-    hints: Record<"filtering" | "pagination" | "rowNumbers" | "detailPanel", string>
+    hints: Record<"filtering" | "pagination" | "rowNumbers" | "statusBar" | "detailPanel", string>
   }
   theme: {
     groupLabel: string
@@ -61,6 +61,7 @@ const en: ChromeStrings = {
       pinning: "Column pinning",
       hiding: "Column hiding",
       rowNumbers: "Row numbers",
+      statusBar: "Status bar",
       filtering: "Filtering",
       pagination: "Pagination",
       striped: "Striped rows",
@@ -74,6 +75,7 @@ const en: ChromeStrings = {
       filtering: "Quick search rides with this",
       pagination: "Server mode needs paging — with it off you see one page of 50 and no way to the rest",
       rowNumbers: "Off by default, and group rows are numbered too",
+      statusBar: "Off by default; the row count then moves here from the footer",
       detailPanel: "Expand a row for more",
     },
   },
@@ -125,6 +127,7 @@ const ru: ChromeStrings = {
       pinning: "Закрепление столбцов",
       hiding: "Скрытие столбцов",
       rowNumbers: "Номера строк",
+      statusBar: "Строка статуса",
       filtering: "Фильтрация",
       pagination: "Постраничный вывод",
       striped: "Чередование строк",
@@ -140,6 +143,7 @@ const ru: ChromeStrings = {
         "Серверному режиму нужна разбивка на страницы — без неё видна одна страница из 50 строк, " +
         "а до остальных не добраться",
       rowNumbers: "По умолчанию выключены; строки групп тоже нумеруются",
+      statusBar: "По умолчанию выключена; счётчик строк переходит сюда из нижней панели",
       detailPanel: "Разверните строку, чтобы увидеть больше",
     },
   },
@@ -191,6 +195,7 @@ const uz: ChromeStrings = {
       pinning: "Ustunlarni mahkamlash",
       hiding: "Ustunlarni yashirish",
       rowNumbers: "Qator raqamlari",
+      statusBar: "Holat paneli",
       filtering: "Filtrlash",
       pagination: "Sahifalash",
       striped: "Navbatma-navbat qatorlar",
@@ -206,6 +211,7 @@ const uz: ChromeStrings = {
         "Server rejimiga sahifalash kerak — oʻchirilganda 50 qatorlik bitta sahifa koʻrinadi, " +
         "qolgan qatorlarga yoʻl boʻlmaydi",
       rowNumbers: "Sukut boʻyicha oʻchiq; guruh qatorlari ham raqamlanadi",
+      statusBar: "Sukut boʻyicha oʻchiq; qatorlar soni bu yerga pastki paneldan koʻchadi",
       detailPanel: "Batafsil koʻrish uchun qatorni yoying",
     },
   },

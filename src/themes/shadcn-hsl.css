@@ -38,6 +38,39 @@
  * deliberately left to the base sheet: re-declaring its own values here would
  * add no colour and quietly cost hosts the ability to change a height or an
  * indent with a plain `.dt-root {}` rule.
+ *
+ * Table-specific tokens. shadcn's own vocabulary stops at general roles, so a
+ * header background can only be approximated from `--muted`. Design systems
+ * built on top of shadcn routinely go further and name the table surfaces
+ * directly, so every mapping below reads the host's `--table-*` token FIRST
+ * and falls back to the shadcn variable it has always used. A host that
+ * defines none of them gets byte-identical output to before the chain
+ * existed. `--table-row-selected` is not read: this table has no
+ * row-selection feature for it to colour.
+ *
+ * The chain is shaped differently here than in `shadcn.css`, and the shape is
+ * load-bearing. The `hsl()` wrapper belongs to the SHADCN variable, not to the
+ * chain — it is what turns that host's bare channel triplet into a colour —
+ * so it goes on the FALLBACK only, and the `--table-*` token is read as a
+ * complete colour:
+ *
+ *   --dt-header-bg: var(--table-header-bg, hsl(var(--muted)));
+ *
+ * Wrapping the whole chain instead — `hsl(var(--table-header-bg,
+ * var(--muted)))` — breaks the moment a fallback is already a complete
+ * colour rather than a triplet, which `--dt-row-stripe`'s `color-mix()`
+ * below is: `hsl(color-mix(…))` is not a colour, it is nothing, and a custom
+ * property invalid at computed-value time takes the cell's background with
+ * it. One shape for every token, with the wrapper on the inside, is the only
+ * form that survives both kinds of fallback.
+ *
+ * So `--table-*` values are complete colours here — `hsl(210 40% 96%)`, not
+ * `210 40% 96%` — even though this file's shadcn variables are triplets. The
+ * triplet convention comes from shadcn's `hsl(var(--x))` idiom, and a token
+ * the host invented carries no such idiom; it reaches us the way every
+ * `--dt-*` token in the public contract does, as a colour. A host whose table
+ * group really does hold triplets maps it themselves, one rule, on
+ * `.dt-root.dt-root.dt-root` (see the override recipe above).
  */
 
 .dt-root:not([data-dt-theme]) {
@@ -47,11 +80,11 @@
   --dt-border: hsl(var(--border));
   --dt-radius: var(--radius);
 
-  --dt-header-bg: hsl(var(--muted));
-  --dt-header-fg: hsl(var(--muted-foreground));
+  --dt-header-bg: var(--table-header-bg, hsl(var(--muted)));
+  --dt-header-fg: var(--table-header-fg, hsl(var(--muted-foreground)));
 
-  --dt-row-hover: hsl(var(--accent));
-  --dt-row-stripe: color-mix(in srgb, hsl(var(--muted)) 50%, hsl(var(--background)));
+  --dt-row-hover: var(--table-row-hover, hsl(var(--accent)));
+  --dt-row-stripe: var(--table-row-stripe, color-mix(in srgb, hsl(var(--muted)) 50%, hsl(var(--background))));
 
   --dt-accent: hsl(var(--primary));
   --dt-accent-fg: hsl(var(--primary-foreground));
@@ -63,6 +96,14 @@
   --dt-resize-handle-active: hsl(var(--primary));
   --dt-drop-indicator: hsl(var(--primary));
   --dt-focus-ring: hsl(var(--ring));
+
+  /* Falls back to the surface a pinned cell painted before this token
+     existed, not to --muted, which would tint frozen columns for every
+     shadcn host that never asked for it. */
+  --dt-pinned-bg: var(--table-pinned-bg, hsl(var(--background)));
+
+  --dt-footer-bg: var(--table-footer-bg, hsl(var(--background)));
+  --dt-footer-fg: var(--table-footer-fg, hsl(var(--muted-foreground)));
 
   --dt-pin-shadow-start: 6px 0 6px -6px hsl(var(--foreground) / 0.25);
   --dt-pin-shadow-end: -6px 0 6px -6px hsl(var(--foreground) / 0.25);

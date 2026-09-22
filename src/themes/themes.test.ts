@@ -75,6 +75,35 @@ const darkTokenValue = (token: string): string => {
 }
 
 /**
+ * A token's final colour in one theme, following `var(--dt-*)` indirection.
+ *
+ * Several tokens are declared as an alias rather than a literal —
+ * `--dt-footer-bg: var(--dt-bg)` is how the footer keeps the surface colour
+ * it always had without duplicating the hex in two theme blocks — so a
+ * contrast assertion that read the declaration text alone would be comparing
+ * the string `var(--dt-bg)`, not a colour, and `luminance` would quietly
+ * return garbage for it.
+ *
+ * A token the dark block does not restate resolves against its light
+ * declaration, which is exactly what the cascade does: the dark block only
+ * overrides what actually changes. That fallback is deliberate here and
+ * deliberately absent from `darkTokenValue`, which stays strict so a token a
+ * test means to check IN dark cannot silently pass on its light value.
+ */
+const resolvedTokenValue = (token: string, theme: "light" | "dark"): string => {
+  const seen = new Set<string>()
+  let name = token
+  for (;;) {
+    if (seen.has(name)) throw new Error(`cyclic token alias: ${name}`)
+    seen.add(name)
+    const value = (theme === "dark" ? darkTokenValue(name) || baseTokenValue(name) : baseTokenValue(name)).trim()
+    const alias = value.match(/^var\(\s*(--dt-[a-z0-9-]+)\s*\)$/)
+    if (!alias?.[1]) return value
+    name = alias[1]
+  }
+}
+
+/**
  * Approximates CSS specificity for the simple selectors these theme files
  * use (classes and attribute selectors only — no ids or type selectors), by
  * counting `.class` and `[attr=value]` components, including ones nested
@@ -117,7 +146,7 @@ describe("base stylesheet token extraction", () => {
   // preset tests below passing vacuously with an empty token list.
   it("finds the base tokens", () => {
     expect(baseTokens.length).toBeGreaterThan(0)
-    expect(new Set(baseTokens).size).toBe(25)
+    expect(new Set(baseTokens).size).toBe(28)
   })
 
   it("matches digit-suffixed token names", () => {
@@ -126,6 +155,54 @@ describe("base stylesheet token extraction", () => {
     expect(matches).toEqual(["--dt-elevation-1", "--dt-accent"])
   })
 })
+
+/**
+ * The `--dt-*` tokens that read a host's own table token before falling back
+ * to a shadcn variable, and the token each one reads.
+ *
+ * The host group also carries `--table-row-selected`; it is deliberately not
+ * here, because this table has no row-selection feature and mapping it would
+ * publish a token that paints nothing.
+ */
+const TABLE_TOKEN_PREFERENCES: Record<string, string> = {
+  "--dt-header-bg": "--table-header-bg",
+  "--dt-header-fg": "--table-header-fg",
+  "--dt-row-hover": "--table-row-hover",
+  "--dt-row-stripe": "--table-row-stripe",
+  "--dt-pinned-bg": "--table-pinned-bg",
+  "--dt-footer-bg": "--table-footer-bg",
+  "--dt-footer-fg": "--table-footer-fg",
+}
+
+/**
+ * What each preferred token resolved to BEFORE the `--table-*` chain existed,
+ * i.e. what a host defining no table tokens must still get today.
+ *
+ * `--dt-pinned-bg` and the two footer tokens had no preset entry of their own
+ * then; the value recorded is the one the base sheet's rule painted for that
+ * surface (the plain `.dt-td` / `.dt-footer` background, and the footer's
+ * muted text), which is the thing that must not move.
+ */
+const PRE_CHANGE_MAPPINGS: Record<string, Record<string, string>> = {
+  "shadcn.css": {
+    "--dt-header-bg": "var(--muted)",
+    "--dt-header-fg": "var(--muted-foreground)",
+    "--dt-row-hover": "var(--accent)",
+    "--dt-row-stripe": "color-mix(in oklab, var(--muted) 50%, var(--background))",
+    "--dt-pinned-bg": "var(--background)",
+    "--dt-footer-bg": "var(--background)",
+    "--dt-footer-fg": "var(--muted-foreground)",
+  },
+  "shadcn-hsl.css": {
+    "--dt-header-bg": "hsl(var(--muted))",
+    "--dt-header-fg": "hsl(var(--muted-foreground))",
+    "--dt-row-hover": "hsl(var(--accent))",
+    "--dt-row-stripe": "color-mix(in srgb, hsl(var(--muted)) 50%, hsl(var(--background)))",
+    "--dt-pinned-bg": "hsl(var(--background))",
+    "--dt-footer-bg": "hsl(var(--background))",
+    "--dt-footer-fg": "hsl(var(--muted-foreground))",
+  },
+}
 
 describe("shadcn presets", () => {
   for (const file of ["shadcn.css", "shadcn-hsl.css"]) {
@@ -205,6 +282,32 @@ describe("shadcn presets", () => {
       // file's own header comment discusses `@media` in prose.
       const withoutComments = preset.replace(/\/\*[\s\S]*?\*\//g, "")
       expect(withoutComments).not.toMatch(/@media/)
+    })
+
+    it(`${file} prefers a host's own table token for every surface that has one`, () => {
+      const preset = readDeclarations(file)
+      // The host's `--table-*` group is more specific than anything shadcn's
+      // general vocabulary can express, so it has to be READ FIRST, with the
+      // old shadcn mapping demoted to the fallback. `--table-row-selected` is
+      // absent on purpose: there is no row-selection feature to colour.
+      for (const [dtToken, tableToken] of Object.entries(TABLE_TOKEN_PREFERENCES)) {
+        const declaration = preset.match(new RegExp(`${dtToken}:\\s*([^;]+);`))?.[1] ?? ""
+        expect(declaration.startsWith(`var(${tableToken},`)).toBe(true)
+      }
+    })
+
+    it(`${file} falls back to exactly what it mapped before the table tokens existed`, () => {
+      const preset = readDeclarations(file)
+      // The whole point of the chain is that it is additive: a host with only
+      // shadcn variables must get byte-identical output. These literals are
+      // the pre-change right-hand sides, so a fallback that drifts — to
+      // `--muted` for a pinned column, say, which would tint frozen columns
+      // for every existing host — fails here rather than in their screenshot.
+      for (const [dtToken, expected] of Object.entries(PRE_CHANGE_MAPPINGS[file] ?? {})) {
+        const declaration = preset.match(new RegExp(`${dtToken}:\\s*([^;]+);`))?.[1]?.trim() ?? ""
+        const fallback = declaration.replace(/^var\(--table-[a-z-]+,\s*/, "").replace(/\)$/, "")
+        expect(fallback).toBe(expected)
+      }
     })
 
     it(`${file} keeps the row stripe opaque instead of mixing to transparent`, () => {
@@ -424,6 +527,29 @@ describe("base palette", () => {
     // is what a per-token check above cannot catch and this one can.
     expect(contrastRatio(baseTokenValue("--dt-muted-fg"), baseTokenValue("--dt-fg"))).toBeGreaterThan(1.5)
     expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-fg"))).toBeGreaterThan(1.5)
+  })
+
+  it("prints the footer at WCAG AA in both themes", () => {
+    // --dt-footer-fg on --dt-footer-bg is the row count, the "Rows per page"
+    // label and the page-of-page text at 13px — normal-size text, so 4.5:1.
+    // It is a new pair rather than a restatement of --dt-muted-fg on --dt-bg:
+    // the two tokens can now move independently, and a host tinting the band
+    // is exactly who needs this floor to have been checked at the defaults
+    // they started from.
+    for (const theme of ["light", "dark"] as const) {
+      const ratio = contrastRatio(resolvedTokenValue("--dt-footer-fg", theme), resolvedTokenValue("--dt-footer-bg", theme))
+      expect(ratio).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it("keeps a pinned column on the body surface until a host tints it", () => {
+    // --dt-pinned-bg introduces no colour of its own: the default has to be
+    // the very fill `.dt-td` already painted, in both themes, or every
+    // existing table's frozen columns shift the day they upgrade. Checked as
+    // a resolved value, so aliasing it through --dt-bg still has to agree.
+    for (const theme of ["light", "dark"] as const) {
+      expect(resolvedTokenValue("--dt-pinned-bg", theme)).toBe(resolvedTokenValue("--dt-bg", theme))
+    }
   })
 
   it("prints the column-panel drag handle at the WCAG 1.4.11 non-text minimum in both themes", () => {

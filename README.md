@@ -861,6 +861,18 @@ tokens instead of deriving one from the other. Set both when you override the ac
 your brand colour does not itself clear 4.5:1 on `--dt-bg`, give `--dt-accent-text` a
 darkened (light mode) or lightened (dark mode) variant of it instead of the same value.
 
+**Every colour token has to be opaque, including the tints.** A registry that keeps
+opacity scalars separate from colours — `--table-row-hover` plus a hover opacity, the way
+Material UI states `action.hover` — cannot hand this table the pair. Each cell paints
+exactly one solid colour, and a pinned cell is `position: sticky`, so a see-through fill
+would show the columns scrolling underneath it rather than compositing with the row. Hand
+us a **pre-composited** colour instead: mix your tint against the surface it will sit on
+and pass the result, e.g.
+`--dt-row-hover: color-mix(in oklab, var(--accent) 8%, var(--background))`. Where two
+tints would have stacked — a pinned column over a striped, hovered row — only one can
+paint, and the row's state wins over `--dt-pinned-bg` by design; pick the composite you
+want that cell to end up with rather than expecting the layers to add.
+
 <details>
 <summary>All tokens</summary>
 
@@ -877,6 +889,8 @@ darkened (light mode) or lightened (dark mode) variant of it instead of the same
 | `--dt-resize-handle` `--dt-resize-handle-active` | Resize handle |
 | `--dt-drop-indicator` | The drop slot a dragged column will land in |
 | `--dt-pin-shadow-start` `--dt-pin-shadow-end` | Pinned column seams |
+| `--dt-pinned-bg` | Resting fill of a pinned *body* cell — defaults to `--dt-bg`, set it to hold a frozen column apart from the ones scrolling under it. A pinned *header* cell stays on `--dt-header-bg`. The row's own state wins: a striped, hovered, expanded or group row paints its cells its own colour, tint or no tint |
+| `--dt-footer-bg` `--dt-footer-fg` | The pagination band — default to `--dt-bg` / `--dt-muted-fg`. Set as a pair: the text is 13px, so a tinted band needs its foreground re-picked to stay at 4.5:1 |
 | `--dt-indent` `--dt-detail-bg` | Nested rows and detail panels |
 | `--dt-viewport-max-height` | Fallback height for a table nobody bounded; see [Large data](#large-data) |
 | `--dt-font` `--dt-font-size` | Typography |
@@ -904,6 +918,36 @@ Pick by how your shadcn variables are written. A complete colour such as
 `221 83% 53%`, read by the host as `hsl(var(--primary))`, needs
 `shadcn-hsl.css`. The wrong file produces no colour at all rather than a
 warning, so check one variable before deciding.
+
+#### Your own table tokens win
+
+shadcn's vocabulary stops at general roles, so a table header can only be
+approximated — from `--muted`, which is rarely the colour a design system
+actually intends for one. If yours has gone further and named the table
+surfaces itself, both presets read **your** token first and fall back to the
+shadcn variable they have always used:
+
+| Your token | Sets |
+|---|---|
+| `--table-header-bg` `--table-header-fg` | The header row, instead of `--muted` / `--muted-foreground` |
+| `--table-row-hover` | The hover fill, instead of `--accent` |
+| `--table-row-stripe` | The stripe, instead of a mix of `--muted` and `--background` |
+| `--table-pinned-bg` | The resting fill of a pinned body cell, instead of `--background` |
+| `--table-footer-bg` `--table-footer-fg` | The pagination band, instead of `--background` / `--muted-foreground` |
+
+Define none of them and nothing changes — every fallback fires and the output
+is what it was before these existed. Define some and only those move. There is
+no second import and no flag.
+
+`--table-row-selected` is not read: this table has no row-selection feature for
+it to colour, so mapping it would publish a token that paints nothing.
+
+**In `shadcn-hsl.css`, a `--table-*` value is a complete colour, not a channel
+triplet** — `hsl(210 40% 96%)`, not `210 40% 96%`. The `hsl()` wrapper in that
+file belongs to the *shadcn* variable, which is what makes a bare triplet a
+colour; your table token carries no such convention and reaches the table the
+way every `--dt-*` token does. If your table group really does hold triplets,
+map it yourself in one rule at `.dt-root.dt-root.dt-root`, as below.
 
 Only tokens shadcn has an equivalent for are mapped. Sizes stay with the base
 sheet, so `--dt-header-height`, `--dt-indent` and `--dt-font-size` are still

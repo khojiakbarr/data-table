@@ -37,6 +37,24 @@
  * deliberately left to the base sheet: re-declaring its own values here would
  * add no colour and quietly cost hosts the ability to change a height or an
  * indent with a plain `.dt-root {}` rule.
+ *
+ * Table-specific tokens. shadcn's own vocabulary stops at general roles, so a
+ * header background can only be approximated from `--muted`. Design systems
+ * built on top of shadcn routinely go further and name the table surfaces
+ * directly, and those names are more specific than anything this file could
+ * infer — so every mapping below reads the host's `--table-*` token FIRST and
+ * falls back to the shadcn variable it has always used:
+ *
+ *   --dt-header-bg: var(--table-header-bg, var(--muted));
+ *
+ * That makes the preference strictly additive. A host with only shadcn
+ * variables defines no `--table-*`, every fallback fires, and the output is
+ * byte-identical to what this file produced before the chain existed. A host
+ * that also designed a table group gets the finer mapping with no second
+ * import and no new decision to make.
+ *
+ * `--table-row-selected` is not read: this table has no row-selection feature
+ * for it to colour, and mapping it would publish a token that paints nothing.
  */
 
 .dt-root:not([data-dt-theme]) {
@@ -46,11 +64,11 @@
   --dt-border: var(--border);
   --dt-radius: var(--radius);
 
-  --dt-header-bg: var(--muted);
-  --dt-header-fg: var(--muted-foreground);
+  --dt-header-bg: var(--table-header-bg, var(--muted));
+  --dt-header-fg: var(--table-header-fg, var(--muted-foreground));
 
-  --dt-row-hover: var(--accent);
-  --dt-row-stripe: color-mix(in oklab, var(--muted) 50%, var(--background));
+  --dt-row-hover: var(--table-row-hover, var(--accent));
+  --dt-row-stripe: var(--table-row-stripe, color-mix(in oklab, var(--muted) 50%, var(--background)));
 
   --dt-accent: var(--primary);
   --dt-accent-fg: var(--primary-foreground);
@@ -62,6 +80,14 @@
   --dt-resize-handle-active: var(--primary);
   --dt-drop-indicator: var(--primary);
   --dt-focus-ring: var(--ring);
+
+  /* Falls back to --background, the surface a pinned cell painted before this
+     token existed — not to --muted, which would tint frozen columns for every
+     shadcn host that never asked for it. */
+  --dt-pinned-bg: var(--table-pinned-bg, var(--background));
+
+  --dt-footer-bg: var(--table-footer-bg, var(--background));
+  --dt-footer-fg: var(--table-footer-fg, var(--muted-foreground));
 
   --dt-pin-shadow-start: 6px 0 6px -6px color-mix(in oklab, var(--foreground) 25%, transparent);
   --dt-pin-shadow-end: -6px 0 6px -6px color-mix(in oklab, var(--foreground) 25%, transparent);

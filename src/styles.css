@@ -60,12 +60,49 @@
   --dt-drop-indicator: var(--dt-accent);
   --dt-focus-ring: var(--dt-accent);
 
+  /* pinned columns */
+  /*
+   * The resting fill of a pinned BODY cell. Defaults to the surface, so a
+   * table nobody tinted looks exactly as it did before this token existed;
+   * set it to hold a frozen column visibly apart from the ones that scroll
+   * under it, which is what a dense grid usually wants. A pinned HEADER cell
+   * is not covered — it stays on --dt-header-bg, because the header is its
+   * own surface and a pinned header cell has to keep matching the rest of
+   * the header row it sits in.
+   *
+   * A row's own state still wins: the stripe, the hover, an expanded row and
+   * a group row all paint their cells from more specific rules, so a pinned
+   * cell in one of those rows shows the row's colour rather than this tint.
+   * That is deliberate — every cell here paints exactly ONE opaque colour
+   * (a pinned cell is `position: sticky` and would otherwise show the
+   * columns scrolling beneath it), so a tint cannot be layered over a stripe
+   * the way a translucent one would be, and where the two disagree the row's
+   * state is the more urgent signal. See the README's Styling section for
+   * what a host with alpha-based tints has to hand us instead.
+   */
+  --dt-pinned-bg: var(--dt-bg);
+
   /* pinned column edge shadow */
   --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.18);
   --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.18);
 
   --dt-indent: 18px;
   --dt-detail-bg: #f8f8fa;
+
+  /* footer */
+  /*
+   * The pagination band under the table. Defaults to the surface and the
+   * muted text colour — the two the footer read literally before these
+   * tokens existed — so nothing changes for a host that ignores them. They
+   * come as a PAIR on purpose: tinting the band without being able to
+   * re-pick its text would let a host push 13px footer text under WCAG AA
+   * against their own background, which the base palette cannot check for
+   * them. The controls inside the band (the page-size select, the page
+   * input, the nav buttons) keep `--dt-bg` and `--dt-fg` — they are input
+   * surfaces sitting ON the band, not part of it.
+   */
+  --dt-footer-bg: var(--dt-bg);
+  --dt-footer-fg: var(--dt-muted-fg);
 
   /*
    * Fallback height for a table nobody gave one. Applied only to a viewport
@@ -403,6 +440,18 @@
 .dt-pinned {
   position: sticky;
   z-index: 2;
+}
+
+/*
+ * Body only, and deliberately at (0,2,0) — below the stripe (0,4,0), the
+ * hover (0,3,0) and the expanded/group row rules that follow later in this
+ * file at the same (0,2,0) but win on source order. That ordering is what
+ * keeps the default `var(--dt-bg)` pixel-identical to the plain `.dt-td`
+ * fill it replaces in every one of those states; see --dt-pinned-bg above
+ * for why a row's state outranks the tint rather than compositing with it.
+ */
+.dt-td.dt-pinned {
+  background: var(--dt-pinned-bg);
 }
 
 .dt-th.dt-pinned {
@@ -1490,9 +1539,9 @@
   flex: none;
   padding: 6px 10px;
   border-top: 1px solid var(--dt-border);
-  background: var(--dt-bg);
+  background: var(--dt-footer-bg);
   font-size: 13px;
-  color: var(--dt-muted-fg);
+  color: var(--dt-footer-fg);
   border-radius: inherit;
   border-start-start-radius: 0;
   border-start-end-radius: 0;

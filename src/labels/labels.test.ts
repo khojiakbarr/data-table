@@ -108,6 +108,27 @@ describe("function-shaped labels return sensible text", () => {
       expect(announced).toContain("3")
       expect(announced).toContain("7")
     })
+
+    it(`${name}Labels.statusBarRows shows the count and survives an unknown one`, () => {
+      expect(labels.statusBarRows("1 000", 1000)).toContain("1 000")
+      // The loading state — no server answer yet — must not print "undefined".
+      expect(labels.statusBarRows("…", undefined)).not.toContain("undefined")
+    })
+
+    it(`${name}Labels.statusBarFiltered states the count alone, then "X of Y" once a total is known`, () => {
+      expect(labels.statusBarFiltered("253", 253, undefined)).toContain("253")
+      expect(labels.statusBarFiltered("253", 253, undefined)).not.toContain("undefined")
+      const withTotal = labels.statusBarFiltered("253", 253, "1 000")
+      expect(withTotal).toContain("253")
+      expect(withTotal).toContain("1 000")
+    })
+
+    it(`${name}Labels.statusBarGroupedBy names every grouped column, in order`, () => {
+      const said = labels.statusBarGroupedBy(["Holat", "Hamkor"])
+      expect(said).toContain("Holat")
+      expect(said).toContain("Hamkor")
+      expect(said.indexOf("Holat")).toBeLessThan(said.indexOf("Hamkor"))
+    })
   }
 })
 
@@ -148,11 +169,39 @@ describe("Russian plural agreement in searchResults", () => {
   })
 })
 
+describe("Russian plural agreement in the status bar", () => {
+  // Every count the bar speaks goes through `plural`, statusBarRows and
+  // statusBarFiltered included — not only searchResults, which was the one
+  // label already exercising it before this feature.
+  it("agrees statusBarRows with its raw count", () => {
+    expect(ruLabels.statusBarRows("21", 21)).toBe("Всего 21 строка")
+    expect(ruLabels.statusBarRows("3", 3)).toBe("Всего 3 строки")
+    expect(ruLabels.statusBarRows("11", 11)).toBe("Всего 11 строк")
+  })
+
+  it("agrees statusBarFiltered with its raw count, with and without a total", () => {
+    expect(ruLabels.statusBarFiltered("21", 21, undefined)).toBe("Отфильтровано: 21 строка")
+    expect(ruLabels.statusBarFiltered("3", 3, "1 000")).toBe("Отфильтровано: 3 строки из 1 000")
+    expect(ruLabels.statusBarFiltered("11", 11, "1 000")).toBe("Отфильтровано: 11 строк из 1 000")
+  })
+
+  it("falls back to the many-form while the raw count is still unknown", () => {
+    // The visible count reads "…"; the word it sits beside still has to pick
+    // some form, and "many" (0's own form) is the closest honest default.
+    expect(ruLabels.statusBarRows("…", undefined)).toBe("Всего … строк")
+  })
+})
+
 describe("Uzbek has no plural agreement after a numeral", () => {
   it("keeps the bare noun for every count", () => {
     expect(uzLabels.searchResults(1)).toBe("1 ta qator topildi")
     expect(uzLabels.searchResults(5)).toBe("5 ta qator topildi")
     expect(uzLabels.searchResults(11)).toBe("11 ta qator topildi")
+  })
+
+  it("keeps the bare noun in the status bar too", () => {
+    expect(uzLabels.statusBarRows("1", 1)).toBe("Jami 1 ta qator")
+    expect(uzLabels.statusBarRows("11", 11)).toBe("Jami 11 ta qator")
   })
 })
 
@@ -184,6 +233,11 @@ describe("Uzbek orthography", () => {
     uzLabels.editFailed("Summa"),
     uzLabels.editCancelled("Summa"),
     uzLabels.editRowFiltered("Summa"),
+    uzLabels.statusBarRows("1 000", 1000),
+    uzLabels.statusBarRows("…", undefined),
+    uzLabels.statusBarFiltered("253", 253, undefined),
+    uzLabels.statusBarFiltered("253", 253, "1 000"),
+    uzLabels.statusBarGroupedBy(["Holat", "Hamkor"]),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -222,6 +276,9 @@ describe("Uzbek orthography", () => {
       "reorderPosition",
       "rowGroupLevel",
       "searchResults",
+      "statusBarFiltered",
+      "statusBarGroupedBy",
+      "statusBarRows",
       "tableHeight",
       "ungroupColumn",
     ])

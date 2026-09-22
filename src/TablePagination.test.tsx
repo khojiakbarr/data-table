@@ -13,9 +13,12 @@ const rows = (count: number): Row[] => Array.from({ length: count }, (_, i) => (
 
 let latest: DataTableInstance<Row> | null = null
 
-function Table({ count = 1000, pageSize = 50 }: { count?: number; pageSize?: number }) {
+function Table({
+  count = 1000, pageSize = 50, statusBar = false,
+}: { count?: number; pageSize?: number; statusBar?: boolean }) {
   const instance = useDataTable<Row>({
     id: "pg", columns, data: rows(count), pagination: { pageSize }, getRowId: (r) => r.id,
+    features: { statusBar },
   })
   latest = instance
   return <DataTable instance={instance} virtualize={false} />
@@ -214,5 +217,23 @@ describe("pagination and row-count accessibility", () => {
     // Page index 2, page size 50: offset 100, plus header, plus 1-based index.
     expect(dataRows()[0]?.getAttribute("aria-rowindex")).toBe("102")
     expect(dataRows()[0]).toHaveTextContent("Row 100")
+  })
+})
+
+describe("the status-bar hand-off", () => {
+  beforeEach(() => localStorage.clear())
+
+  it("prints the row count itself with the status bar off — today's shape, unchanged", () => {
+    render(<Table statusBar={false} />)
+    expect(screen.getByText(/^Rows:/).textContent).toBe("Rows: 1 000")
+  })
+
+  it("drops the row count once the status bar is on, keeping the rest of the footer", () => {
+    render(<Table statusBar />)
+    expect(screen.queryByText(/^Rows:/)).toBeNull()
+    // The page-size selector, the range and the page controls all survive.
+    expect(screen.getByText("1–50 of 1 000")).toBeInTheDocument()
+    expect(screen.getByText("Page 1 of 20")).toBeInTheDocument()
+    expect(screen.getByRole("navigation", { name: /pagination/i })).toBeInTheDocument()
   })
 })

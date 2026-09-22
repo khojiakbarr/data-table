@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { formatCount } from "../core/formatCount"
 import { DataTable, defaultLabels } from "../components/DataTable"
 import { localStorageLayout } from "../core/persistence"
 import type { TableQuery } from "../core/query"
@@ -11,7 +12,13 @@ import { FeatureControls } from "./FeatureControls"
 import { PlaygroundHeader } from "./PlaygroundHeader"
 import { ThemeControls } from "./ThemeControls"
 import { buildReceiptColumns, ReceiptDetail } from "./receiptColumns"
-import { fetchValues, saveReceipt, type ServerReceipt, type ServerRow } from "./fakeServer"
+import {
+  fetchValues,
+  flagReceipts,
+  saveReceipt,
+  type ServerReceipt,
+  type ServerRow,
+} from "./fakeServer"
 import {
   DEFAULT_FEATURES,
   DEFAULT_THEME,
@@ -62,6 +69,16 @@ export function Playground() {
   const [features, setFeatures] = useState<FeatureState>(DEFAULT_FEATURES)
   const [theme, setTheme] = useState<ThemeTokenState>(DEFAULT_THEME)
   const [query, setQuery] = useState<TableQuery>()
+  /**
+   * The bulk write in flight, and the last one's result.
+   *
+   * Both states the 4-state rule asks for on an async surface that has no
+   * skeleton to show: the buttons go disabled and say so while the server is
+   * thinking, and what it answered — how many rows it actually changed — is
+   * said afterwards rather than assumed from the count on screen.
+   */
+  const [bulkPending, setBulkPending] = useState(false)
+  const [bulkDone, setBulkDone] = useState<number | null>(null)
 
   // The switcher moves the whole document, not just the words: `lang` is what
   // a screen reader reads pronunciation from, and `index.html` can only ever
@@ -105,7 +122,20 @@ export function Playground() {
       pinning: features.pinning,
       hiding: features.hiding,
       rowNumbers: features.rowNumbers,
+      selection: features.selection,
       statusBar: features.statusBar,
+    },
+    /*
+     * The last write's result stands until the user picks something NEW.
+     *
+     * Not until the selection is cleared: a successful write clears it itself,
+     * and that clear is announced here — so resetting on every announcement
+     * wiped the report on the very tick it was written. Cleared on a non-empty
+     * selection instead, which is the moment the number stops describing what
+     * is on screen.
+     */
+    onSelectionChange: (change) => {
+      if (change.mode === "all-matching" || (change.ids?.length ?? 0) > 0) setBulkDone(null)
     },
     pagination: features.pagination,
     // Quick search rides with filtering — turning the toggle off drops both,
@@ -172,6 +202,15 @@ export function Playground() {
               />
               {chrome.failNext}
             </label>
+            {/*
+              What the bulk write actually changed, as the SERVER counted it —
+              not the number the bar showed before it ran. Announced politely
+              because by the time it appears the bar it replaces is gone, and a
+              screen-reader user would otherwise have no report at all.
+            */}
+            <p className="pg-bulk-done" role="status">
+              {bulkDone === null ? "" : chrome.bulk.done(formatCount(bulkDone), bulkDone)}
+            </p>
           </div>
 
           <div className="pg-stage">
@@ -210,6 +249,74 @@ export function Playground() {
               }}
               renderDetail={
                 features.detailPanel ? (row) => <ReceiptDetail row={row} language={language} /> : undefined
+              }
+              /*
+               * The bulk-action bar, and a REAL round trip behind it: the
+               * whole published selection — the model and the query it is
+               * relative to — goes to the fake server, which turns it into
+               * `WHERE <the filters> AND id NOT IN (<excluded>)` and writes
+               * every matching row. Ticking the header and pressing this
+               * really does flag a hundred thousand receipts; the page is then
+               * refetched, the same way the cell editor's own write is.
+               */
+              renderSelectionActions={
+                features.selection
+                  ? ({ mode, ids, excluded, query: selectionQuery, count, clear }) => {
+                      const run = async (flagged: boolean): Promise<void> => {
+                        setBulkPending(true)
+                        try {
+                          const { changed } = await flagReceipts({
+                            mode,
+                            ...(ids ? { ids } : {}),
+                            ...(excluded ? { excluded } : {}),
+                            query: selectionQuery,
+                            flagged,
+                          })
+                          setBulkDone(changed)
+                          clear()
+                          // The rows on screen are stale the moment the write
+                          // lands, so the host asks for its page again.
+                          retry()
+                        } finally {
+                          setBulkPending(false)
+                        }
+                      }
+                      return (
+                        <>
+                          <strong className="pg-bulk-count">
+                            {chrome.bulk.selected(
+                              count === undefined ? undefined : formatCount(count),
+                              count,
+                            )}
+                          </strong>
+                          <button
+                            type="button"
+                            className="pg-button pg-button-strong"
+                            disabled={bulkPending}
+                            onClick={() => void run(true)}
+                          >
+                            {bulkPending ? chrome.bulk.working : chrome.bulk.flag}
+                          </button>
+                          <button
+                            type="button"
+                            className="pg-button"
+                            disabled={bulkPending}
+                            onClick={() => void run(false)}
+                          >
+                            {chrome.bulk.unflag}
+                          </button>
+                          <button
+                            type="button"
+                            className="pg-button"
+                            disabled={bulkPending}
+                            onClick={clear}
+                          >
+                            {chrome.bulk.cancel}
+                          </button>
+                        </>
+                      )
+                    }
+                  : undefined
               }
             />
           </div>

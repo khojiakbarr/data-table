@@ -71,7 +71,10 @@ export const defaultLabels: DataTableLabels = {
   selectRow: (row) => `Select row ${row}`,
   // With no count yet, the control says what it does and leaves the number
   // out — naming it after a wrong one would be worse than naming it after none.
-  selectAllRows: (count) => (count === undefined ? "Select all rows" : `Select all ${count} rows`),
+  // English agrees its noun with the numeral too, in the one place it is easy
+  // to forget: a one-row table must not read "Select all 1 rows".
+  selectAllRows: (count, raw) =>
+    count === undefined ? "Select all rows" : `Select all ${count} ${raw === 1 ? "row" : "rows"}`,
   expandRow: "Expand row",
   collapseRow: "Collapse row",
   columnActions: "Column actions",

@@ -14,6 +14,24 @@ import type { Language } from "./playgroundState"
 
 const LANGUAGES: Language[] = ["en", "ru", "uz"]
 
+/**
+ * Every function-shaped string in one language's copy, called.
+ *
+ * `walk` below only sees strings, so a function's text would escape both
+ * checks entirely — the same hole `labels.test.ts` closes with its own
+ * FUNCTION_OUTPUTS list. These are the three the bulk-action bar speaks, and
+ * each is called in both of its branches: with a count, and with the undefined
+ * one a server that has not answered leaves behind.
+ */
+const spokenCounts = (language: Language): [string, string][] => {
+  const { bulk } = CHROME[language]
+  return [
+    [`${language}.bulk.selected(known)`, bulk.selected("100 000", 100_000)],
+    [`${language}.bulk.selected(unknown)`, bulk.selected(undefined, undefined)],
+    [`${language}.bulk.done`, bulk.done("24 997", 24_997)],
+  ]
+}
+
 /** Every string anywhere in one language's copy, with the path that reached it. */
 function walk(value: unknown, path: string): [string, string][] {
   if (typeof value === "string") return [[path, value]]
@@ -30,17 +48,36 @@ describe("playground chrome", () => {
       // A guard on the guard: a shape that stopped recursing would make the
       // loop below pass by never running.
       expect(strings.length).toBeGreaterThan(50)
-      for (const [path, text] of strings) {
+      for (const [path, text] of [...strings, ...spokenCounts(language)]) {
         expect(text.trim(), `${path} is blank`).not.toBe("")
+        expect(text, `${path} interpolated an undefined`).not.toContain("undefined")
       }
     }
+  })
+
+  it("leaves the number out of the bulk bar until the server has answered", () => {
+    // The playground's copy of the library's own rule: naming a count nobody
+    // can stand behind is worse than naming none.
+    for (const language of LANGUAGES) {
+      const said = CHROME[language].bulk.selected(undefined, undefined)
+      expect(said, `${language} printed a digit for an unknown count`).not.toMatch(/\d/)
+    }
+  })
+
+  it("agrees the Russian bulk copy with the count it speaks", () => {
+    const { bulk } = CHROME.ru
+    expect(bulk.selected("1", 1)).toBe("Выбрано 1 строка")
+    expect(bulk.selected("3", 3)).toBe("Выбрано 3 строки")
+    expect(bulk.selected("11", 11)).toBe("Выбрано 11 строк")
+    expect(bulk.done("1", 1)).toBe("Обновлено 1 квитанция")
+    expect(bulk.done("24 997", 24_997)).toBe("Обновлено 24 997 квитанций")
   })
 
   it("writes the Uzbek copy with the modifier letters, never the ASCII apostrophe", () => {
     // Uzbek Latin writes oʻ/gʻ with U+02BB and the glottal stop with U+02BC.
     // The ASCII apostrophe draws the same in most editors, so it survives
     // review and then sits on screen one line under a correct form.
-    for (const [path, text] of walk(CHROME.uz, "uz")) {
+    for (const [path, text] of [...walk(CHROME.uz, "uz"), ...spokenCounts("uz")]) {
       expect(text, `${path} uses U+0027 — write ʻ (U+02BB) or ʼ (U+02BC)`).not.toMatch(/'/)
     }
   })

@@ -36,6 +36,10 @@ const GROUPS: Group[] = [
       // whose toggles all reach `useDataTable({ features })`, and that is
       // what this flag is.
       { key: "rowNumbers", hint: "rowNumbers" },
+      // Same reasoning again: furniture rather than an interaction, but a
+      // `useDataTable({ features })` flag — and the one that puts the
+      // bulk-action bar on screen.
+      { key: "selection", hint: "selection" },
       // Same reasoning as `rowNumbers` just above: furniture rather than an
       // interaction, but still a `useDataTable({ features })` flag.
       { key: "statusBar", hint: "statusBar" },

@@ -34,7 +34,27 @@ export interface ChromeStrings {
     groupLabel: string
     legends: Record<"interactions" | "data" | "layout", string>
     labels: Record<keyof FeatureState, string>
-    hints: Record<"filtering" | "pagination" | "rowNumbers" | "statusBar" | "detailPanel", string>
+    hints: Record<
+      "filtering" | "pagination" | "rowNumbers" | "selection" | "statusBar" | "detailPanel",
+      string
+    >
+  }
+  /**
+   * The bulk-action bar the playground renders into `renderSelectionActions`.
+   *
+   * Three of these take a count, so they are functions rather than strings
+   * with a number glued on: Russian agrees a counted noun with the numeral,
+   * and `count` can be undefined outright while the fake server has not
+   * answered — a state a template could only render as "undefined rows".
+   * `raw` is the number behind the pre-formatted `count`, for that agreement.
+   */
+  bulk: {
+    selected: (count: string | undefined, raw: number | undefined) => string
+    flag: string
+    unflag: string
+    cancel: string
+    working: string
+    done: (count: string, raw: number) => string
   }
   theme: {
     groupLabel: string
@@ -60,6 +80,30 @@ export interface ChromeStrings {
   resetAll: string
 }
 
+/**
+ * Picks the Russian form a numeral governs — the playground's own copy of the
+ * rule `labels/ru.ts` applies to the library's strings.
+ *
+ * Copied rather than imported: `src/labels/` is published surface and this
+ * file is demo furniture that is deliberately kept out of the bundle, so a
+ * shared export would have to live in one of the two and drag the other's
+ * concerns with it. Six lines is the cheaper seam.
+ *
+ * @param count - The number governing the noun.
+ * @param one - Form for 1, 21, 31 …
+ * @param few - Form for 2-4, 22-24 …
+ * @param many - Form for 0, 5-20, 25-30 …
+ * @returns The form `count` governs.
+ */
+function ruPlural(count: number, one: string, few: string, many: string): string {
+  const lastTwo = Math.abs(count) % 100
+  if (lastTwo >= 11 && lastTwo <= 14) return many
+  const last = lastTwo % 10
+  if (last === 1) return one
+  if (last >= 2 && last <= 4) return few
+  return many
+}
+
 const en: ChromeStrings = {
   header: {
     tagline:
@@ -82,6 +126,7 @@ const en: ChromeStrings = {
       pinning: "Column pinning",
       hiding: "Column hiding",
       rowNumbers: "Row numbers",
+      selection: "Row selection",
       statusBar: "Status bar",
       filtering: "Filtering",
       pagination: "Pagination",
@@ -96,6 +141,7 @@ const en: ChromeStrings = {
       filtering: "Quick search rides with this",
       pagination: "Server mode needs paging — with it off you see one page of 50 and no way to the rest",
       rowNumbers: "Off by default, and group rows are numbered too",
+      selection: "Off by default. The header box takes every matching row, not the fifty on screen",
       statusBar: "Off by default; the row count then moves here from the footer",
       detailPanel: "Expand a row for more",
     },
@@ -128,6 +174,19 @@ const en: ChromeStrings = {
     tableHeight: "Table height",
     reset: "Reset theme",
   },
+  bulk: {
+    // English agrees a noun with the numeral too, in the one place it is easy
+    // to forget: "1 rows selected" is the sort of thing a demo ships with.
+    selected: (count, raw) =>
+      count === undefined
+        ? "All matching rows selected"
+        : `${count} ${raw === 1 ? "row" : "rows"} selected`,
+    flag: "Flag these",
+    unflag: "Unflag these",
+    cancel: "Cancel",
+    working: "Working\u2026",
+    done: (count, raw) => `${count} ${raw === 1 ? "receipt" : "receipts"} updated`,
+  },
   failNext: "Fail the next request",
   resetAll: "Reset everything",
 }
@@ -155,6 +214,7 @@ const ru: ChromeStrings = {
       pinning: "Закрепление столбцов",
       hiding: "Скрытие столбцов",
       rowNumbers: "Номера строк",
+      selection: "Выбор строк",
       statusBar: "Строка статуса",
       filtering: "Фильтрация",
       pagination: "Постраничный вывод",
@@ -171,6 +231,8 @@ const ru: ChromeStrings = {
         "Серверному режиму нужна разбивка на страницы — без неё видна одна страница из 50 строк, " +
         "а до остальных не добраться",
       rowNumbers: "По умолчанию выключены; строки групп тоже нумеруются",
+      selection:
+        "По умолчанию выключен. Флажок в шапке берёт все подходящие строки, а не 50 на экране",
       statusBar: "По умолчанию выключена; счётчик строк переходит сюда из нижней панели",
       detailPanel: "Разверните строку, чтобы увидеть больше",
     },
@@ -203,6 +265,18 @@ const ru: ChromeStrings = {
     tableHeight: "Высота таблицы",
     reset: "Сбросить тему",
   },
+  bulk: {
+    selected: (count, raw) =>
+      count === undefined
+        ? "Выбраны все подходящие строки"
+        : `Выбрано ${count} ${ruPlural(raw ?? 0, "строка", "строки", "строк")}`,
+    flag: "Отметить",
+    unflag: "Снять отметку",
+    cancel: "Отменить",
+    working: "Выполняется\u2026",
+    done: (count, raw) =>
+      `Обновлено ${count} ${ruPlural(raw, "квитанция", "квитанции", "квитанций")}`,
+  },
   failNext: "Сымитировать ошибку в следующем запросе",
   resetAll: "Сбросить всё",
 }
@@ -229,6 +303,7 @@ const uz: ChromeStrings = {
       pinning: "Ustunlarni mahkamlash",
       hiding: "Ustunlarni yashirish",
       rowNumbers: "Qator raqamlari",
+      selection: "Qatorlarni tanlash",
       statusBar: "Holat paneli",
       filtering: "Filtrlash",
       pagination: "Sahifalash",
@@ -245,6 +320,8 @@ const uz: ChromeStrings = {
         "Server rejimiga sahifalash kerak — oʻchirilganda 50 qatorlik bitta sahifa koʻrinadi, " +
         "qolgan qatorlarga yoʻl boʻlmaydi",
       rowNumbers: "Sukut boʻyicha oʻchiq; guruh qatorlari ham raqamlanadi",
+      selection:
+        "Sukut boʻyicha oʻchiq. Sarlavhadagi katakcha ekrandagi 50 tasini emas, mos keluvchi barcha qatorlarni oladi",
       statusBar: "Sukut boʻyicha oʻchiq; qatorlar soni bu yerga pastki paneldan koʻchadi",
       detailPanel: "Batafsil koʻrish uchun qatorni yoying",
     },
@@ -276,6 +353,17 @@ const uz: ChromeStrings = {
     },
     tableHeight: "Jadval balandligi",
     reset: "Mavzuni tiklash",
+  },
+  bulk: {
+    selected: (count) =>
+      count === undefined
+        ? "Mos keluvchi barcha qatorlar tanlandi"
+        : `${count} ta qator tanlandi`,
+    flag: "Belgilash",
+    unflag: "Belgini olish",
+    cancel: "Bekor qilish",
+    working: "Bajarilmoqda\u2026",
+    done: (count) => `${count} ta kvitansiya yangilandi`,
   },
   failNext: "Keyingi soʻrovni xatoga uchratish",
   resetAll: "Hammasini tiklash",

@@ -566,6 +566,55 @@ body {
   min-height: 30px;
 }
 
+/*
+ * What the last bulk write changed, as the server counted it.
+ *
+ * `margin-inline-end: auto` puts it at the leading edge while the fail toggle
+ * keeps the trailing one, and the element is rendered EMPTY rather than
+ * conditionally: a live region a browser only meets when it already has text
+ * in it is not announced at all, and this one holds the only report a
+ * screen-reader user gets of a write that has already cleared the bar.
+ */
+.pg-bulk-done {
+  margin: 0 auto 0 0;
+  font-size: var(--pg-text-sm);
+  color: var(--pg-muted);
+}
+
+/*
+ * The count the bulk bar leads with, beside the table's own chrome.
+ *
+ * `nowrap` because the bar is a flex ROW: without it "84 rows selected" wraps
+ * to two lines the moment the buttons beside it want the space, and the bar
+ * grows taller the first time a row is ticked.
+ */
+.pg-bulk-count {
+  flex: none;
+  white-space: nowrap;
+  font-size: var(--pg-text-sm);
+  font-weight: 600;
+}
+
+/*
+ * The bulk bar's own buttons.
+ *
+ * `.pg-button` is a full-width rail control — the sidebar stacks them in a
+ * column — and dropped into a flex row it stretched "Flag these" across the
+ * whole bar and pushed the other two off the end. Here they are as wide as
+ * their words.
+ */
+.dt-selection-bar .pg-button {
+  width: auto;
+  font-size: var(--pg-text-sm);
+  padding: var(--pg-space-1) var(--pg-space-3);
+}
+
+/* Pending: the write is in flight, so the bar says so and refuses a second. */
+.dt-selection-bar .pg-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .pg-fail-toggle {
   display: inline-flex;
   align-items: center;

@@ -749,6 +749,82 @@ export function saveReceipt(
   })
 }
 
+/** How long a bulk write takes. Longer than one row's: it is many rows. */
+const BULK_DELAY_MS = 600
+
+/**
+ * A bulk write, as the endpoint receives it.
+ *
+ * Exactly what `onSelectionChange` publishes, minus nothing: the model AND the
+ * query it is relative to. A real endpoint receives the same two — the model
+ * names no row on its own, and the filters are what turn "everything matching"
+ * into rows.
+ */
+export interface BulkFlagRequest {
+  mode: "ids" | "all-matching"
+  ids?: readonly string[]
+  excluded?: readonly string[]
+  query: TableQuery
+  /** What to set `flagged` to on every selected row. */
+  flagged: boolean
+}
+
+/**
+ * Flag every selected receipt, the way a real bulk endpoint would.
+ *
+ * **This is the translation the README documents, executed.** An `ids`
+ * selection is `WHERE id = ANY($1)`. An `all-matching` selection is the
+ * query's own filters and search — the same predicate {@link fetchReceipts}
+ * builds its page from, reused here rather than re-derived — `AND id NOT IN
+ * (<excluded>)`. The grouping and the sort play no part: neither changes which
+ * rows match, only how they are presented, and a bulk action acts on the rows.
+ * Neither does the pagination, which is the whole point: the user ticked the
+ * header, not the fifty rows they could see.
+ *
+ * It answers with how many rows it actually changed, which is the number a
+ * host shows afterwards — and the one that catches a client-side count that
+ * had drifted from the server's.
+ *
+ * @param request - The published selection, plus the value to write.
+ * @param options - `delayMs` simulates latency.
+ * @returns How many receipts were changed.
+ *
+ * @example
+ * await flagReceipts({ ...selection, flagged: true })
+ */
+export function flagReceipts(
+  request: BulkFlagRequest,
+  options: { delayMs?: number } = {},
+): Promise<{ changed: number }> {
+  const { delayMs = BULK_DELAY_MS } = options
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const { query } = request
+      const selected =
+        request.mode === "ids"
+          ? // `WHERE id = ANY($1)` — the rows the user picked, and no predicate
+            // at all beyond them.
+            ((ids) => (row: ServerReceipt) => ids.has(row.id))(new Set(request.ids ?? []))
+          : // `WHERE <the query's filters and search> AND id NOT IN (<excluded>)`.
+            ((excluded) => (row: ServerReceipt) =>
+              !excluded.has(row.id) &&
+              query.filters.every((condition) => matchesCondition(row, condition)) &&
+              matchesSearch(row, query.search))(new Set(request.excluded ?? []))
+
+      let changed = 0
+      for (const [index, row] of ALL.entries()) {
+        if (!selected(row) || row.flagged === request.flagged) continue
+        // Replaced rather than assigned into, for `saveReceipt`'s reason: every
+        // reader of `ALL` holds row objects, and mutating one in place would
+        // change a row a page had already been built from.
+        ALL[index] = { ...row, flagged: request.flagged }
+        changed += 1
+      }
+      resolve({ changed })
+    }, delayMs)
+  })
+}
+
 /** A validated write, or the sentence explaining the refusal. */
 type WriteResult = { row: Partial<ServerReceipt> } | string
 

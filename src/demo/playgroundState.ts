@@ -26,6 +26,14 @@ export interface FeatureState {
    */
   rowNumbers: boolean
   /**
+   * Row selection, and with it the playground's bulk-action bar.
+   *
+   * Another flag whose library default is FALSE — see `rowNumbers` above —
+   * and the playground keeps that default rather than showing the table in a
+   * state a fresh install is not in.
+   */
+  selection: boolean
+  /**
    * The band under the table stating what the result set contains.
    *
    * The other flag whose library default is FALSE, for the same reason
@@ -51,8 +59,9 @@ export const DEFAULT_FEATURES: FeatureState = {
   reordering: true,
   pinning: true,
   hiding: true,
-  // False, like the library's own default; see the field's own comment.
+  // False, like the library's own default; see each field's own comment.
   rowNumbers: false,
+  selection: false,
   statusBar: false,
   filtering: true,
   pagination: true,

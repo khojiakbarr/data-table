@@ -1325,6 +1325,26 @@ export function useDataTable<TData extends RowData>({
       filterFn: "dt",
     },
     enableSorting: flags.sorting,
+    /*
+     * Ascending-first for every column, overriding TanStack's own per-column
+     * sniff (`column_getAutoSortDir`, used whenever a column declares neither
+     * `sortDescFirst` nor a `sortFn` that implies one). That sniff reads at
+     * most ten rows of `getFilteredRowModel()`, and in this table that model
+     * holds one SERVER page at an arbitrary offset — sometimes group headers
+     * (no value for the grouped column, so the sniff's `continue` loop falls
+     * through to its `desc` default), sometimes leaves, sometimes a page of
+     * numbers where non-string values also default to `desc`. A fifty-row
+     * window of a hundred-thousand-row result cannot answer "does this column
+     * sort ascending or descending first", so the answer must not depend on
+     * it — different columns sniffing different directions, or the same
+     * column flipping across pages, is what this line stops. Ascending-first
+     * is also what the header button's label has always promised on a first
+     * click; see `sortActionLabel` in HeaderCell, which now asks
+     * `getNextSortingOrder()` instead of assuming this cycle, so a column
+     * that overrides `sortDescFirst` on its own definition still gets a
+     * truthful label.
+     */
+    sortDescFirst: false,
     enableColumnResizing: flags.resizing,
     enableColumnPinning: flags.pinning,
     enableHiding: flags.hiding,

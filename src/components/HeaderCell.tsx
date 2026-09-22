@@ -1,4 +1,4 @@
-import type { Header, RowData } from "@tanstack/react-table"
+import type { Column, Header, RowData } from "@tanstack/react-table"
 import { flexRender } from "@tanstack/react-table"
 import {
   type CSSProperties,
@@ -287,7 +287,7 @@ export function HeaderCell<TData extends RowData>({
             type="button"
             className="dt-sortable"
             onClick={column.getToggleSortingHandler()}
-            aria-label={`${columnName}: ${sortActionLabel(sorted, labels)}`}
+            aria-label={`${columnName}: ${sortActionLabel(column, labels)}`}
           >
             <span className="dt-th-label">{label}</span>
             <SortIcon direction={sorted} />
@@ -364,13 +364,36 @@ export function HeaderCell<TData extends RowData>({
   )
 }
 
-function sortActionLabel(
-  sorted: false | "asc" | "desc",
+/**
+ * What clicking the sort button will do next, in words.
+ *
+ * Asks TanStack's own `column.getNextSortingOrder()` rather than predicting a
+ * none → asc → desc → none cycle by hand: nothing in this library sets
+ * `sortDescFirst`, so TanStack decides a column's first direction by sniffing
+ * up to ten sampled values (`column_getAutoSortDir`), and in a grouped,
+ * server-paged table that sniff can answer "descending" for one column and
+ * "ascending" for another — or flip for the SAME column between two pages,
+ * since a page beginning with a group row samples no value at all for the
+ * grouped column. A hard-coded cycle would promise a direction the click does
+ * not deliver. `getNextSortingOrder()` is asked with no `multi` argument,
+ * which matches a plain click: `column.getToggleSortingHandler()` only
+ * escalates to a multi-sort toggle when the configured `isMultiSortEvent`
+ * recognises the triggering event (a modifier key held), and the label is for
+ * the plain click every user sees first.
+ *
+ * This also keeps the label truthful for a column that overrides
+ * `sortDescFirst` on its own definition, or turns off `enableSortingRemoval`
+ * — both change what the next click actually does, and a label that predicted
+ * the cycle instead of asking would silently go stale for such a column.
+ */
+function sortActionLabel<TData extends RowData>(
+  column: Column<DataTableFeatures, TData, unknown>,
   labels: DataTableLabels,
 ): string {
-  if (sorted === "asc") return labels.sortDescending
-  if (sorted === "desc") return labels.clearSort
-  return labels.sortAscending
+  const next = column.getNextSortingOrder()
+  if (next === "asc") return labels.sortAscending
+  if (next === "desc") return labels.sortDescending
+  return labels.clearSort
 }
 
 function SortIcon({ direction }: { direction: false | "asc" | "desc" }) {

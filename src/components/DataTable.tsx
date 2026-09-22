@@ -64,6 +64,7 @@ export const defaultLabels: DataTableLabels = {
   resizeTable: "Resize table height",
   resizeTableHint: "Press the up and down arrows to resize, Shift for larger steps",
   tableHeight: (pixels) => `Table height ${pixels} pixels`,
+  tableBody: "Table rows",
   expandRow: "Expand row",
   collapseRow: "Collapse row",
   columnActions: "Column actions",
@@ -796,7 +797,7 @@ export function DataTable<TData extends RowData>({
            * by keyboard until it ships.
            */
           tabIndex={0}
-          aria-label={labels.rows}
+          aria-label={labels.tableBody}
         >
           <table
             ref={tableRef}
@@ -927,8 +928,8 @@ export function DataTable<TData extends RowData>({
                       search box is the natural landing spot when there is
                       one; with `toolbar={false}` there is nothing of ours
                       left on screen to hold focus, so it falls back to the
-                      viewport, which `tabIndex={-1}` makes a legal target
-                      without adding it to the Tab order.
+                      viewport, which is a legal `.focus()` target whatever
+                      its `tabIndex` happens to be.
                     */}
                     {instance.filtering.isFiltered ? (
                       <button
@@ -939,7 +940,19 @@ export function DataTable<TData extends RowData>({
                           restoreEmptyStateFocus()
                         }}
                       >
-                        {labels.clearFilters}
+                        {/*
+                          `clearAll` clears the search as well as the
+                          conditions, so one button is the whole way out
+                          either way — but it has to NAME the thing in the
+                          way, the same rule the grouping button below
+                          follows. A user who emptied the table by typing in
+                          the search box is not looking for a filter to
+                          clear, and being offered one reads as the table
+                          having misunderstood them.
+                        */}
+                        {instance.filtering.conditions.length > 0
+                          ? labels.clearFilters
+                          : labels.clearSearch}
                       </button>
                     ) : null}
                     {/*

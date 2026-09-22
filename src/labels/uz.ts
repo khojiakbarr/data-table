@@ -80,6 +80,7 @@ export const uzLabels: DataTableLabels = {
   resizeTableHint:
     "Balandlikni oʻzgartirish uchun yuqoriga va pastga strelkalar, Shift bilan katta qadam",
   tableHeight: (pixels) => `Jadval balandligi ${pixels} piksel`,
+  tableBody: "Jadval qatorlari",
   expandRow: "Qatorni ochish",
   collapseRow: "Qatorni yopish",
   columnActions: "Ustun amallari",

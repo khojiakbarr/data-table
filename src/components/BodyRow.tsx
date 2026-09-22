@@ -176,7 +176,20 @@ export function BodyRow<TData extends RowData>({
                 <ExpandToggle
                   expanded={isExpanded}
                   depth={row.depth}
-                  label={isExpanded ? labels.collapseRow : labels.expandRow}
+                  /*
+                   * Named with the row's own position, the way a GROUP row's
+                   * toggle is named with its group. Both toggles answer "which
+                   * row?" — a group row answers with its value, and a record
+                   * row has no value of its own to give, so it answers with
+                   * where it sits. `rowIndexOffset` counts the pages already
+                   * behind this one, so the number is the row's place in the
+                   * whole result and not in the fifty rows on screen. The
+                   * colon form is `GroupBodyRow`'s, kept identical so the two
+                   * read as one control rather than two.
+                   */
+                  label={`${isExpanded ? labels.collapseRow : labels.expandRow}: ${
+                    position + rowIndexOffset + 1
+                  }`}
                   onToggle={() => row.toggleExpanded()}
                 />
               ) : (

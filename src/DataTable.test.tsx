@@ -233,7 +233,19 @@ describe("the viewport is keyboard-scrollable", () => {
   it("carries an accessible name, so a screen reader does not announce a blank group", () => {
     render(<Table id="scroll" />)
     const viewport = document.querySelector(".dt-viewport") as HTMLElement
-    expect(viewport).toHaveAccessibleName("Rows")
+    expect(viewport).toHaveAccessibleName("Table rows")
+  })
+
+  /*
+   * The name is its OWN label rather than the footer's `rows`. That label is
+   * the head of a count — "Rows: 100 000", "Строк: 100 000" — and in Russian
+   * it is a genitive plural that does not stand alone, so borrowing it would
+   * have named this region with half a sentence.
+   */
+  it("names itself with a label the footer's row count does not share", () => {
+    render(<Table id="scroll" />)
+    const viewport = document.querySelector(".dt-viewport") as HTMLElement
+    expect(viewport.getAttribute("aria-label")).not.toBe("Rows")
   })
 
   it("stays a legal target for the programmatic focus 'Clear filters' hands it", () => {

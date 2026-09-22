@@ -235,6 +235,14 @@ export interface DataTableLabels extends CellEditingLabels {
   resizeTableHint: string
   /** The table's height after a keyboard step, announced politely. */
   tableHeight: (pixels: number) => string
+  /**
+   * The accessible name of the scrolling body region.
+   *
+   * It became a tab stop so the rows can be scrolled from the keyboard, and a
+   * tab stop with no name is announced as an unlabelled group — so this is
+   * what a screen reader reads on arriving there, not decoration.
+   */
+  tableBody: string
   expandRow: string
   collapseRow: string
   columnActions: string

@@ -95,6 +95,7 @@ export const ruLabels: DataTableLabels = {
   resizeTableHint: "Стрелки вверх и вниз меняют высоту, Shift — крупный шаг",
   tableHeight: (pixels) =>
     `Высота таблицы ${pixels} ${plural(pixels, "пиксель", "пикселя", "пикселей")}`,
+  tableBody: "Строки таблицы",
   expandRow: "Развернуть строку",
   collapseRow: "Свернуть строку",
   columnActions: "Действия со столбцом",

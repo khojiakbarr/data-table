@@ -71,6 +71,36 @@ releases are summarised in one line rather than reconstructed.
 
 ### Added
 
+- **`features: { rowNumbers: true }` — a leading column numbering the rows.**
+  Off by default, and the only flag that is: every other one turns OFF
+  something the table has always done, so `true` preserves what a host had,
+  while this one adds a column — and a table that grew one on a minor upgrade
+  would be a breaking change dressed as a small one. The number is the row's
+  1-based place in the **whole result set** (`pageIndex * pageSize +
+  indexOnPage + 1`), not in the page, and it is the same quantity every row
+  already announces as `aria-rowindex`, so the printed number and the
+  announced position cannot drift apart.
+  - **Group headers are numbered too**, unlike AG Grid's. Numbering only the
+    records would need a count of the group rows before this page, which no
+    field on the wire carries; numbering every flattened row is computable
+    from the page offset alone. The one row with no number is the "continued"
+    header the table draws itself from `startPath` — it was never in the
+    server's answer, so a number there would put every row after a page
+    boundary out by one. Its cell is kept and left empty.
+  - The column is **chrome rather than data**: it leads everything (the
+    grouped column included), is pinned to the start and not unpinnable, is
+    not sortable, filterable, groupable, editable, hideable or reorderable,
+    and is absent from the Columns panel — a tick that could remove it would
+    contradict the flag that put it there. It is resizable, and the width a
+    user drags it to is saved in the layout like any other. Its header is
+    empty to the eye and carries the new **`rowNumber`** label for a screen
+    reader, translated in all three shipped label sets.
+  - `ROW_NUMBER_COLUMN_ID`, `isRowNumberColumn` and `rowNumberAt` are
+    exported for a shell of your own, which has to answer the same two
+    questions the built-in body does: which cell is the number's, and what
+    goes in it.
+  - The playground gains a **Row numbers** toggle.
+
 - **`muiTokens(theme)` — a Material UI bridge**, exported from the package
   root. It maps a MUI theme's palette, typography and radius onto the
   `--dt-*` tokens and returns them as a style object to spread onto the

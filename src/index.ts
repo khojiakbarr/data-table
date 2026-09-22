@@ -172,6 +172,15 @@ export {
 } from "./core/grouping"
 export type { GroupRow } from "./core/grouping"
 
+/*
+ * The row-number column, for a shell of your own. `BodyRow` and
+ * `GroupBodyRow` draw the number rather than a cell renderer, because the
+ * number is a property of the ROW — where it sits on the page, plus the pages
+ * before it — so a body written from scratch needs the same two answers:
+ * which cell is the number's, and what goes in it.
+ */
+export { ROW_NUMBER_COLUMN_ID, isRowNumberColumn, rowNumberAt } from "./core/rowNumbers"
+
 export { filterFn_dt, isBlankValue, resolveCondition } from "./core/filterFn"
 export type { ResolvedCondition } from "./core/filterFn"
 export { collectColumnFacts, collectFilterKinds, resolveFilterKind } from "./core/filterKinds"

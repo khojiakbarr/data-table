@@ -3,7 +3,7 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
-## Unreleased
+## 0.6.0
 
 ### Added
 
@@ -48,6 +48,14 @@ releases are summarised in one line rather than reconstructed.
     write: `flagReceipts` turns the published selection into
     `WHERE <the filters> AND id NOT IN (<excluded>)` and answers with how many
     rows it actually changed.
+- **`selectableRowCount`** on `useDataTable`, for the one case where `rowCount`
+  is not a count of records: a grouped table, where it is the length of the
+  flattened list and so counts group headers alongside leaves. Only the
+  selection count reads it; paging deliberately does not, because the pager
+  measures the list it actually shows. Left out, a grouped table says "select
+  all rows" without a number — true, where counting group headers would not
+  have been. Do not put a leaf count in `rowCount` instead: `pageCount` is
+  derived from it, so a smaller number there takes pages away from the user.
 - **A totals footer**, via the new `<DataTable totals>` prop — a row under the
   body, aligned with the columns, holding whatever you put under each column
   id and nothing under the rest.
@@ -79,6 +87,13 @@ releases are summarised in one line rather than reconstructed.
   - The playground's Totals row toggle sums the Amount column over a real
     fake-server round trip — every row the current query matches, not the
     page, and not client-side.
+
+## 0.5.0
+
+The first release on npm. It carries everything below, including the work
+that sat under "Unreleased" while the package had no published version to
+compare against — cut here rather than attributed to 0.6.0, which would have
+credited this release's features to the next one.
 
 ### Fixed
 
@@ -368,7 +383,6 @@ releases are summarised in one line rather than reconstructed.
   shell moved to a docked bar; this component did not change, so a host
   rendering it needs to do nothing.
 
-## 0.5.0
 
 ### Breaking
 

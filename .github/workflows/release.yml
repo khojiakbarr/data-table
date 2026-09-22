@@ -38,10 +38,18 @@ jobs:
           cache: true
           require-lockfile: true
 
-      # Trusted publishing needs npm 11.5.1+ and Node 22.14+. An older npm does
-      # not fail loudly — it ignores the OIDC environment, falls back to
+      # `pnpm/setup` installs the RUNTIME, not npm: the first run of this
+      # workflow got Node v24.21.0 with npm 10.9.8 on PATH, because the npm a
+      # runtime ships with lags its Node. Trusted publishing needs 11.5.1+, so
+      # install it explicitly rather than inheriting whatever came along.
+      - name: Install an npm that can do trusted publishing
+        run: npm install -g npm@^11.5.1
+
+      # Kept even though the step above should make it impossible: an older npm
+      # does not fail loudly — it ignores the OIDC environment, falls back to
       # looking for a token, finds none, and reports ENEEDAUTH, which sends
       # whoever reads it hunting for a missing secret that was never the point.
+      # This is what turned that into one readable line on the first attempt.
       - name: Check the toolchain can do trusted publishing
         run: |
           set -euo pipefail

@@ -50,7 +50,7 @@ npm i @hojiakbar_dev/data-table @tanstack/react-table @tanstack/react-virtual
 - [What it does](#what-it-does)
 - [Nested columns](#nested-columns) · [Column widths](#column-widths) · [Large data](#large-data)
 - [Server-side data](#server-side-data) — [filters on the wire](#filters-on-the-wire), [row grouping](#row-grouping)
-- [Editing cells](#editing-cells) · [Row numbers](#row-numbers) · [Status bar](#status-bar)
+- [Editing cells](#editing-cells) · [Row selection](#row-selection) · [Row numbers](#row-numbers) · [Status bar](#status-bar)
 - [Expandable rows](#expandable-rows) · [Two tables on one page](#two-tables-on-one-page) · [Persistence](#persistence)
 - [Styling](#styling) — [shadcn/ui](#shadcnui), [Material UI](#material-ui)
 - [Headless use](#headless-use) · [API](#api) · [Accessibility](#accessibility)
@@ -89,6 +89,7 @@ function Receipts({ data, columns }) {
 | **Quick search** | One box over every searchable column. Every token must appear somewhere on the row; different tokens may match different columns. |
 | **Filter columns** | Text, number, date, boolean and values-list filters, from the header menu or the side panel's Filters tab. Each one is published as an explicit operator a backend can translate. |
 | **Hide columns** | From the **Columns** panel. |
+| **Select rows** | A leading column of checkboxes whose header takes **everything the current query matches**, not the page on screen — so approving 25 000 receipts is one click, not 500 screens. Off by default. |
 | **Number the rows** | An optional leading column carrying each row's place in the whole result set — not in the page. Off by default. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
 | **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. |
@@ -789,12 +790,192 @@ and never in silence.
 
 ---
 
+## Row selection
+
+Off by default, like [row numbers](#row-numbers) and for the same reason —
+this adds a column rather than turning an interaction off — plus one of its
+own: a table that started selecting rows on a minor upgrade would put a bulk
+action in front of users you never meant to offer one to.
+
+```tsx
+useDataTable({
+  id: "receipts",
+  data,
+  columns,
+  mode: "server",
+  rowCount: page.total,
+  getRowId: (row) => row.id,          // effectively required; see below
+  features: { selection: true },
+  onSelectionChange: setSelection,
+})
+```
+
+### The header checkbox means every matching row
+
+Not the fifty on screen. A user approving 25 000 receipts must not have to
+page through 500 screens, and a table that made them would be offering a
+feature that does not do the job it exists for.
+
+That decides the shape of everything else, because 25 000 ids is not a thing
+to hold, to publish or to put in a `WHERE` clause — and the rows the user
+means are mostly rows the browser has never been sent. So a selection is not a
+list of ids. It is one of two statements **about the query**:
+
+```ts
+type SelectionModel =
+  /** Rows the user picked one at a time. The empty array is "nothing". */
+  | { mode: "ids"; ids: readonly string[] }
+  /** Everything the query matches, minus the rows the user unticked. */
+  | { mode: "all-matching"; excluded: readonly string[] }
+```
+
+**Neither mode ever converts into the other.** Untick every row of a page
+while in `all-matching` and you still have "everything except these fifty",
+which is the correct reading of what you did — not "nothing", which would
+discard a selection of 25 000 in response to fifty clicks. Tick every row of a
+page one at a time and you have those fifty, not everything: you never said
+everything.
+
+**The count.** In `ids` it is `ids.length`. In `all-matching` it is
+`rowCount - excluded.length`, and it is **undefined until your server has
+answered with a `rowCount`** — the table says so rather than showing a number
+it cannot know. The header checkbox is named "Select all rows" in that window,
+with no figure in it.
+
+### A change to the query clears the selection
+
+The filters, the search and the grouping (including which groups are open).
+Not the sorting, and not the page.
+
+This is the rule that makes the feature safe rather than dangerous.
+`all-matching` is defined relative to a query; let the query move under it and
+a selection of 25 000 silently becomes a selection of 90 000 with no gesture
+from the user — and then your bulk action runs on them. Sorting and paging
+change no row's membership, only the order and which slice is on screen, so
+clearing there would make the feature useless for the case it exists for.
+
+The cleared selection is **published**, not merely emptied: `onSelectionChange`
+fires with `{ mode: "ids", ids: [] }` and the new query. A model only the table
+knows it has dropped is the same defect one layer up.
+
+### What you receive
+
+```ts
+onSelectionChange?: (selection: {
+  mode: "ids" | "all-matching"
+  ids?: readonly string[]
+  excluded?: readonly string[]
+  /** The query the selection is relative to. Meaningless without it. */
+  query: TableQuery
+  /** Undefined until a server has answered. */
+  count: number | undefined
+}) => void
+```
+
+The query is **not optional**. `{ mode: "all-matching", excluded: [] }` names
+no row on its own; the filters it was drawn against are what turn it into
+rows. It is not called on mount — nothing is selected there, and
+`onQueryChange` has already announced the query.
+
+### The SQL
+
+An `ids` selection is the rows it names, and nothing else — not the filters as
+well. The user named those records; a filter applied since cannot un-name one.
+
+```sql
+UPDATE receipts SET flagged = true WHERE id = ANY($1)   -- $1 = ids
+```
+
+An `all-matching` selection is the query's own predicate — [the same filters
+and search](#filters-on-the-wire) the page was built from — minus what the
+user took back out:
+
+```sql
+UPDATE receipts SET flagged = true
+WHERE <the filters and the search, exactly as in "Filters on the wire">
+  AND id NOT IN (<excluded>)
+```
+
+The grouping, the sorting and the pagination play no part. None of them
+changes which rows match — only how they are presented — and a bulk action
+acts on the rows. The pagination in particular: the whole point is that the
+user ticked the header, not the page they could see.
+
+Answer with **how many rows you actually changed**, not how many were
+selected. It is the number worth showing afterwards, and it is the only thing
+that ever reveals a client-side count that had drifted from yours.
+
+### The bulk-action slot
+
+```tsx
+<DataTable
+  instance={table}
+  renderSelectionActions={({ mode, ids, excluded, query, count, clear }) => (
+    <>
+      <strong>{count === undefined ? "All matching rows" : `${count} rows`} selected</strong>
+      <button onClick={async () => {
+        await api.flag({ mode, ids, excluded, query })
+        clear()
+        refetch()
+      }}>
+        Flag these
+      </button>
+      <button onClick={clear}>Cancel</button>
+    </>
+  )}
+/>
+```
+
+Rendered **only while something is selected**, in a bar of its own above the
+table. That is the whole difference from `toolbarContent`, which is a static
+`ReactNode` and knows nothing about a selection; a bar you want on screen
+always goes there instead. `clear` rides along with the model so a Cancel
+button does not have to reach back into the instance.
+
+The bar appears once, when the first row is ticked, and goes once, when the
+last is unticked — it does not come and go as the count changes, so the table
+is not pushed down and back on every click. Its entrance animates `transform`
+and `opacity` only, and stops animating under `prefers-reduced-motion`.
+
+### The rest of it
+
+- **`getRowId` is effectively required.** Without it TanStack keys rows by
+  position, and a selection then follows the *slot* rather than the record:
+  sort the table — which deliberately does not clear the selection — and the
+  ticks stay on rows three to seven while three to seven are now different
+  records. The table says so once in development, in both modes.
+- **A selection is never written to `storage`.** `pruneLayout` is a whitelist
+  and rebuilds a stored layout from the keys it recognises, so nothing about a
+  selection can survive a reload. One restored from last week, against a query
+  that has since changed, is the query-change failure wearing a hat.
+- **Group rows are not selectable in this version.** A group stands for
+  children the browser does not hold — in server mode most of them have never
+  been sent — so a tick on one could only mean "every row under this group",
+  which is a third mode no backend could answer without a path predicate the
+  wire does not carry. Its checkbox cell is kept and left empty.
+- **The column is chrome, not data.** It leads the table, before the row
+  numbers and before the grouped column; pinned to the start and not
+  unpinnable; not sortable, filterable, groupable, editable, hideable,
+  reorderable or resizable; and absent from the Columns panel.
+- **Both new strings are `DataTableLabels`.** `selectRow(rowNumber)` names a
+  row's own box — the number is the only thing telling one from another — and
+  `selectAllRows(count, raw)` names the header's, including the branch with no
+  count in it at all.
+- **Counting with a grouping on:** `rowCount` in a grouped server table is the
+  length of the *flattened* list, group headers included, so the header
+  checkbox's count is that rather than a count of records. Return a leaf count
+  in `rowCount` if your grouped tables need the selection count to mean
+  records, or read the count from your own answer to the bulk action.
+
+---
+
 ## Row numbers
 
-Off by default — the one feature flag that is. Every other flag turns OFF
-something the table has always done, so `true` is what you already had; this
-one adds a column, and a table that grew one on a minor upgrade would be a
-breaking change dressed as a small one.
+Off by default, like [row selection](#row-selection) and the
+[status bar](#status-bar). Every other flag turns OFF something the table has
+always done, so `true` is what you already had; these add a column (or a band),
+and a table that grew one on a minor upgrade would be a breaking change dressed
+as a small one.
 
 ```tsx
 useDataTable({ id: "receipts", data, columns, features: { rowNumbers: true } })
@@ -819,7 +1000,8 @@ there and empty.
 
 The column is **chrome, not a column of data**, and that decides the rest:
 
-- It leads everything, the grouped column included.
+- It leads everything the host declared, the grouped column included — and
+  follows the [selection column](#row-selection) when both are on.
 - Pinned to the start, and not unpinnable.
 - Not sortable, filterable, groupable, editable, hideable or reorderable, and
   **absent from the Columns panel** — a tick that could remove it would
@@ -886,8 +1068,11 @@ can put a different one first:
   knowing, the way `toolbarContent` extends the toolbar. Same flag, two
   shapes, one decision.
 
-**Deliberately not in this version:** a selected-row count, because there is
-no row-selection feature in this library for it to count, and an aggregate
+**Deliberately not in this version:** a selected-row count, although
+[row selection](#row-selection) now exists — the count belongs beside the
+action it is about to be used for, and that is the bulk-action bar, in your
+own words. Repeating it down here would put the same number on screen twice,
+which is the thing this band exists to stop the footer doing. Nor an aggregate
 like a sum or an average, because the Values zone that would compute one
 client-side is explicitly deferred on the roadmap — and summing one SERVER
 page of a filtered result would be wrong in the exact way client-side
@@ -1136,8 +1321,12 @@ preset only over a complete shadcn variable set. If your design system names
 its table surfaces but not the shadcn roles, set the `--dt-*` tokens yourself
 on `.dt-root` and skip the preset entirely.
 
-`--table-row-selected` is not read: this table has no row-selection feature for
-it to colour, so mapping it would publish a token that paints nothing.
+`--table-row-selected` is not read. [Row selection](#row-selection) exists,
+but a selected row is marked by its own ticked checkbox rather than by a tint
+on the row: the header checkbox selects rows the browser has never been sent,
+so a tint could only ever colour the handful on screen and would read as "these
+are the selected ones". Mapping the token would publish a colour that paints
+nothing.
 
 **In `shadcn-hsl.css`, a `--table-*` value is a complete colour, not a channel
 triplet** — `hsl(210 40% 96%)`, not `210 40% 96%`. The `hsl()` wrapper in that
@@ -1467,7 +1656,7 @@ to a docked bar, the component did not change.
 | `columns` | `ColumnDef[]` | — | Standard TanStack column definitions. |
 | `storage` | `LayoutStorage` | none | Where layouts live. |
 | `initialLayout` | `Partial<TableLayout>` | `{}` | Applied on a user's first visit. |
-| `features` | `DataTableFeatureFlags` | all on except `rowNumbers`/`statusBar` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `rowNumbers` or `statusBar` (`true`, or a `ReactNode` for the bar's host slot). See [Row numbers](#row-numbers) and [Status bar](#status-bar). |
+| `features` | `DataTableFeatureFlags` | all on except `selection`/`rowNumbers`/`statusBar` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `selection`, `rowNumbers` or `statusBar` (`true`, or a `ReactNode` for the bar's host slot). See [Row selection](#row-selection), [Row numbers](#row-numbers) and [Status bar](#status-bar). |
 | `defaultColumnWidth` | `number` | `160` | |
 | `minColumnWidth` | `number` | `60` | |
 | `maxColumnWidth` | `number` | `800` | |
@@ -1480,15 +1669,18 @@ to a docked bar, the component did not change.
 | `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
 | `filtering` | `boolean \| FilteringOptions` | on | `{ debounceMs?, persist?, searchFields?, loadValues? }`. `false` turns filtering off. |
 | `startPath` | `FilterValue[]` | `[]` | The open group the page's first row sits inside. See [Row grouping](#row-grouping). |
-| `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages. Never called for a group header, whose id is its key path joined. |
+| `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages, and effectively required by [row selection](#row-selection) in either mode. Never called for a group header, whose id is its key path joined. |
 | `onQueryChange` | `(query: TableQuery) => void` | — | Called with the query on mount and after every change to it. |
+| `onSelectionChange` | `(selection: SelectionChange) => void` | — | Called whenever the selection changes, including when the table clears it because the query moved. Carries the model, the query it is relative to and the count. Not called on mount. See [Row selection](#row-selection). |
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
 | `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
 | `heightVersion` | `string \| number` | — | Changes when `getRowHeight` starts answering differently, for a change too narrow for the table to sample. See [Large data](#large-data). |
 
-Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, grouping, tableHeight, rowHeight, getRowHeight, heightVersion }`.
+Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, grouping, selection, tableHeight, rowHeight, getRowHeight, heightVersion }`.
 
 `grouping` is `{ enabled, columns, isGrouped, has, columnId, set, add, remove, clear, expanded, isExpanded, toggle, collapseAll, startPath }` — see [Row grouping](#row-grouping).
+
+`selection` is `{ enabled, model, count, rowsMatching, isEmpty, isRowSelected, toggleRow, toggleAll, clear, headerChecked, headerIndeterminate, summary }` — see [Row selection](#row-selection).
 
 ### `<DataTable />`
 
@@ -1499,6 +1691,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered at the toolbar's leading edge. |
+| `renderSelectionActions` | `(selection: SelectionSummary) => ReactNode` | — | A bulk-action bar above the table, rendered **only while rows are selected** and handed `clear()` beside the model, the query and the count. See [Row selection](#row-selection). |
 | `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters and/or Clear grouping button while the table is filtered or grouped | Supplying this replaces **both** defaults, including the narrowed-empty exit — a host that wants its own art for "no data" but still wants a way out should branch on `instance.filtering.isFiltered` and `instance.grouping.isGrouped` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | Ignored for any token a `style` of your own sets — see [Material UI](#material-ui). |
@@ -1546,6 +1739,14 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 - A floating panel's own two tabs are a `tablist` with arrow-key movement and a single roving tab stop, the same as the rail's.
 - An empty table says whether it has no rows or no *matching* rows, and the second offers a way out.
 - Row toggles report `aria-expanded` and name themselves.
+- Every [selection](#row-selection) checkbox is a real `<input type="checkbox">`: in the `Tab`
+  order, answering `Space`, reporting its own state, and rendering the third one. A row's box is
+  named with the row's place in the result set (`selectRow`), because otherwise every box in the
+  column is announced identically; the header's says what it will take and how many that is
+  (`selectAllRows`) — and says it with no number at all until the server has answered, rather
+  than naming the control after a figure nobody can stand behind. The header's `indeterminate`
+  is written to the DOM property, which is the only place it exists: there is no attribute for
+  it and no way to reach it from CSS.
 - The [row-number](#row-numbers) column's header is empty to the eye and carries the
   `rowNumber` label for a screen reader. The number it prints is the same quantity every row
   already announces as `aria-rowindex`, so the two can never tell a user two different things

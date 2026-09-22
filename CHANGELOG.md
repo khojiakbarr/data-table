@@ -5,6 +5,50 @@ releases are summarised in one line rather than reconstructed.
 
 ## Unreleased
 
+### Added
+
+- **Row selection**, behind a new `features: { selection: true }` flag — off by
+  default, because it adds a column rather than turning an interaction off, and
+  because a table that started selecting rows on a minor upgrade would put a
+  bulk action in front of users the host never meant to offer one to.
+  - **The header checkbox takes everything the current query matches**, not the
+    fifty rows on screen. A user approving 25 000 receipts does not page
+    through 500 screens, which means a selection cannot be a list of ids: it is
+    one of two statements about the query — `{ mode: "ids", ids }` or
+    `{ mode: "all-matching", excluded }`. Neither converts into the other, so
+    unticking every row of a page still leaves "everything except these fifty",
+    and ticking every row of a page never becomes "everything".
+  - **A change to the filters, the search or the grouping clears it; a change
+    to the sorting or the page does not.** `all-matching` is defined relative
+    to a query, and letting the query move under it turns a selection of 25 000
+    into one of 90 000 with no gesture from the user. The cleared selection is
+    *published* through `onSelectionChange`, not merely emptied — a model only
+    the table knows it has dropped is the same defect one layer up.
+  - **`onSelectionChange` carries the query the selection is relative to**, and
+    it is not optional: `all-matching` names no row on its own. The count rides
+    with it, and is `undefined` rather than a guess until a server has answered
+    with a `rowCount`.
+  - **`renderSelectionActions`** renders a bulk-action bar above the table
+    while — and only while — something is selected, handed `clear()` beside the
+    model, the query and the count. `toolbarContent` is still there for a bar
+    that should always be on screen; this slot is for the thing that appears
+    *because* rows were picked.
+  - Nothing about a selection reaches `storage`: `pruneLayout` is a whitelist,
+    so a selection cannot survive a reload against a query that has since
+    changed.
+  - Group rows are not selectable in this version — a group stands for children
+    the browser does not hold, so a tick on one could not honestly mean anything
+    yet — and their checkbox cell is kept and left empty.
+  - `getRowId` is effectively required, in both modes, and the table says so
+    once in development: without it rows are keyed by position, so a selection
+    follows the slot rather than the record and a sort moves the ticks onto
+    different rows.
+  - Two new labels, `selectRow` and `selectAllRows`, in all three sets.
+  - The playground shows all of it, with the fake server performing a real bulk
+    write: `flagReceipts` turns the published selection into
+    `WHERE <the filters> AND id NOT IN (<excluded>)` and answers with how many
+    rows it actually changed.
+
 ### Fixed
 
 - **A column group can be dragged from the Columns panel**, not only from the

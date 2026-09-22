@@ -299,3 +299,44 @@ describe("dismissal, which a docked bar does differently", () => {
     expect(panel()).not.toBeNull()
   })
 })
+
+/**
+ * Defect D: with pinning and hiding both off, the Columns tab has nothing to
+ * arrange and used to take the whole rail down with it — Filters included,
+ * even though filtering itself was still on. The header menu's own "Filter in
+ * panel…" item never knew that, so it stayed enabled and, once clicked, opened
+ * a panel that was not there to receive it.
+ */
+function TableWithoutPinningOrHiding() {
+  const instance = useDataTable<Row>({
+    id: "sidebar-no-pin-no-hide",
+    columns,
+    data,
+    getRowId: (row) => row.id,
+    features: { pinning: false, hiding: false },
+  })
+  return <DataTable instance={instance} virtualize={false} />
+}
+
+describe("the filters tab with pinning and hiding both off", () => {
+  beforeEach(() => localStorage.clear())
+
+  it("still gets a rail, offering Filters and not Columns", () => {
+    render(<TableWithoutPinningOrHiding />)
+
+    expect(rail()).toBeInTheDocument()
+    expect(railTab("Filters")).toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Columns" })).toBeNull()
+  })
+
+  it("is where the header menu's Filter in panel… item actually lands", async () => {
+    const user = userEvent.setup()
+    render(<TableWithoutPinningOrHiding />)
+
+    await user.click(screen.getByRole("button", { name: /name: column actions/i }))
+    await user.click(screen.getByRole("menuitem", { name: "Filter in panel…" }))
+
+    expect(panel()).not.toBeNull()
+    expect(railTab("Filters")).toHaveAttribute("aria-selected", "true")
+  })
+})

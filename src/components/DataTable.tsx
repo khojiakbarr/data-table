@@ -694,7 +694,13 @@ export function DataTable<TData extends RowData>({
    */
   const sideBarTabs: PanelTab[] = []
   if (flags.hiding || flags.pinning) sideBarTabs.push("columns")
-  if (sideBarTabs.length > 0 && instance.filtering.enabled) sideBarTabs.push("filters")
+  /*
+   * Independent of Columns: the header menu's "Filter in panel…" always
+   * offers this tab when a column can be filtered, whether or not hiding or
+   * pinning happen to be on, so its existence has to be independent of them
+   * too — otherwise that item opens a panel that never renders (Defect D).
+   */
+  if (instance.filtering.enabled) sideBarTabs.push("filters")
 
   /**
    * Activating a rail tab: the tab already showing closes the panel, any other

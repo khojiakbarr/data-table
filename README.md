@@ -91,6 +91,7 @@ function Receipts({ data, columns }) {
 | **Hide columns** | From the **Columns** panel. |
 | **Select rows** | A leading column of checkboxes whose header takes **everything the current query matches**, not the page on screen — so approving 25 000 receipts is one click, not 500 screens. Off by default. |
 | **Number the rows** | An optional leading column carrying each row's place in the whole result set — not in the page. Off by default. |
+| **Totals footer** | A row under the body, aligned and pinned with the columns, holding a total you supply per column. The library computes none of it. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
 | **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. |
 | **Edit a cell** | Right-click a body cell and choose **Edit**. Text, number, date, boolean and single-choice list editors. The edit is a request to your `onCellEdit` — the table never writes to its own data. |
@@ -1086,16 +1087,71 @@ can put a different one first:
 [row selection](#row-selection) now exists — the count belongs beside the
 action it is about to be used for, and that is the bulk-action bar, in your
 own words. Repeating it down here would put the same number on screen twice,
-which is the thing this band exists to stop the footer doing. Nor an aggregate
-like a sum or an average, because the Values zone that would compute one
-client-side is explicitly deferred on the roadmap — and summing one SERVER
-page of a filtered result would be wrong in the exact way client-side
-grouping would have been, a partial answer presented as the whole one. Neither
-is a gap; both are their own decision, later.
+which is the thing this band exists to stop the footer doing. Nor an
+aggregate like a sum or an average — summing one SERVER page of a filtered
+result would be wrong in the exact way client-side grouping would have been,
+a partial answer presented as the whole one. See
+[Totals footer](#totals-footer) for the honest version: you answer the query
+for your own total, and hand the finished number over.
 
 **Shape.** A `role="status"` region with `aria-live="polite"`: its whole job
 is to report a change you caused elsewhere, and polite is what keeps a row
 count from interrupting whatever a screen reader is already reading.
+
+---
+
+## Totals footer
+
+```tsx
+<DataTable instance={table} totals={{ amount: formatMoney(page.amountTotal) }} />
+```
+
+A row under the body, aligned with the columns, holding whatever you put
+under each column id — and nothing under the rest.
+
+**This library computes none of it.** Summing the fifty rows of a page and
+presenting it as the table's total is the same lie that forced
+[row grouping](#row-grouping) to be server-side: a filtered or paged result
+would print a number describing only what happens to be rendered, and it is
+a lie the user cannot see. Answer the query for your own total — the same
+query `onQueryChange` already hands you — and pass the finished `ReactNode`.
+This was the author's explicit choice over a wire field the table would fetch
+on its own: a field is one more thing every backend has to implement before
+the feature works at all, and a prop is not.
+
+**It sticks to the bottom of the viewport**, the way the header sticks to the
+top — `stickyHeader`'s own mechanism, mirrored rather than reinvented, with
+no prop of its own to turn it off: a total that scrolls out of view is a
+total nobody reads.
+
+**It respects pinning.** A total under a column pinned to either edge sticks
+with it, at the exact `column.getStart()`/`getAfter()` offset the body's own
+pinned cells use — the same `pinnedStyle` helper, not a second copy of the
+arithmetic.
+
+**It respects the column's own alignment**, so money lands under money — with
+no alignment concept of its own to get wrong. Each cell is a plain `.dt-td`,
+the same box model (padding, height) a body cell renders with, so a
+right-aligned `<span>` you already use in the Amount column's cell renderer
+comes out aligned identically here.
+
+**The leading cell carries a caption** — `labels.totalsRow`, translated in
+all three shipped sets — beside whatever total you gave that same column, if
+any. The row itself carries the same string as its `aria-label`, so a screen
+reader does not read it as one more record.
+
+**`totals={{}}` still draws the row**, with only the caption in it — `totals`
+being absent is the only thing that renders no `<tfoot>` at all. This is
+deliberate: a total that only your server can answer is not known on the
+first render, and a row that popped into existence the instant the answer
+landed would shift the body down by a row's height at an arbitrary moment.
+Pass `{}` the moment the feature is turned on and fill it in once the answer
+arrives, the way the playground's own Totals row toggle does.
+
+A `totals` key naming a column that does not exist, or one that is hidden,
+changes nothing: the row is built by walking the table's own rendered
+columns, not by walking `totals`' keys, so an unmatched entry is simply never
+read.
 
 ---
 
@@ -1706,6 +1762,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `toolbar` | `boolean` | `true` | |
 | `toolbarContent` | `ReactNode` | — | Rendered at the toolbar's leading edge. |
 | `renderSelectionActions` | `(selection: SelectionSummary) => ReactNode` | — | A bulk-action bar above the table, rendered **only while rows are selected** and handed `clear()` beside the model, the query and the count. See [Row selection](#row-selection). |
+| `totals` | `Record<string, ReactNode>` | — | A row under the body, keyed by column id. Computes nothing — you answer the query for your own total. Absent renders no `<tfoot>`; `{}` still renders the row, caption only. See [Totals footer](#totals-footer). |
 | `emptyState` | `ReactNode` | `labels.empty`, or `labels.noMatches` with a Clear filters and/or Clear grouping button while the table is filtered or grouped | Supplying this replaces **both** defaults, including the narrowed-empty exit — a host that wants its own art for "no data" but still wants a way out should branch on `instance.filtering.isFiltered` and `instance.grouping.isGrouped` itself. |
 | `labels` | `Partial<DataTableLabels>` | English | Every string, for translation. |
 | `theme` | `"light" \| "dark"` | system | Ignored for any token a `style` of your own sets — see [Material UI](#material-ui). |

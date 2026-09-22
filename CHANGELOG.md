@@ -48,6 +48,37 @@ releases are summarised in one line rather than reconstructed.
     write: `flagReceipts` turns the published selection into
     `WHERE <the filters> AND id NOT IN (<excluded>)` and answers with how many
     rows it actually changed.
+- **A totals footer**, via the new `<DataTable totals>` prop — a row under the
+  body, aligned with the columns, holding whatever you put under each column
+  id and nothing under the rest.
+  - **The library computes none of it.** Summing the rows on a page and
+    presenting that as the table's total is the same lie that forced row
+    grouping to be server-side, and it is a lie the user cannot see. You
+    answer the query for your own total and hand over the finished
+    `ReactNode` — an explicit choice over a wire field the table would fetch
+    on its own.
+  - **It sticks to the bottom of the viewport**, mirroring `stickyHeader`'s
+    own mechanism rather than a second one, with no prop of its own to turn
+    it off.
+  - **It respects pinning**, at the exact `column.getStart()`/`getAfter()`
+    offset the body's own pinned cells use — the same `pinnedStyle` helper.
+  - **It respects the column's own alignment**: each cell is a plain `.dt-td`,
+    the same box model a body cell renders with, so a right-aligned money
+    `<span>` lines up identically with no alignment concept of its own to get
+    wrong.
+  - The leading cell carries a caption — the new `totalsRow` label, in all
+    three sets — and the row is named for a screen reader with the same
+    string, so it is not read as one more record.
+  - `totals={{}}` still renders the row, caption only; `totals` being absent
+    is the only thing that renders no `<tfoot>` at all — so an asynchronous
+    total does not pop the row into existence, and shift the body down, the
+    moment it answers.
+  - A `totals` key naming a column that does not exist, or one that is
+    hidden, changes nothing: the row is built by walking the table's own
+    rendered columns, never by walking `totals`' own keys.
+  - The playground's Totals row toggle sums the Amount column over a real
+    fake-server round trip — every row the current query matches, not the
+    page, and not client-side.
 
 ### Fixed
 

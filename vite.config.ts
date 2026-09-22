@@ -29,5 +29,22 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
+    /*
+     * Vitest's 5s default is tuned for unit tests. A good part of this suite
+     * is not: `src/demo/Playground.test.tsx` mounts the entire playground
+     * against a fake server with simulated latency and drives it through
+     * `userEvent`, which types a character at a time. Measured locally the
+     * slowest of those lands at ~1.2s — comfortable, until a shared CI runner
+     * multiplies it. One did exactly that and tripped the 5s ceiling, which
+     * failed the Pages deploy while reporting a "timeout" rather than a bug,
+     * the least informative way a suite can fail.
+     *
+     * 20s is headroom, not permission to be slow: a test that genuinely hangs
+     * still fails, and the local timings above are the number to watch. If one
+     * of these starts needing seconds on a developer's own machine, that is a
+     * regression to investigate rather than a ceiling to raise again.
+     */
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 })

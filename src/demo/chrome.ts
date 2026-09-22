@@ -13,7 +13,21 @@ import type { FeatureState, FontChoiceKey, Language, ThemeColorKey, ThemeSizeKey
  * and a missing key is a compile error rather than a silent English fallback.
  */
 export interface ChromeStrings {
-  /** The paragraph under the title explaining what the page is. */
+  /** The page header: what the LIBRARY is, and where to get it. */
+  header: {
+    /**
+     * One line under the wordmark.
+     *
+     * Says what the package is, not what this page is — a visitor who has
+     * never heard of it reads this before anything else. {@link lede} is the
+     * other half of that job and describes the playground instead.
+     */
+    tagline: string
+    /** Accessible name for the links landmark, since "GitHub"/"npm" carry no language. */
+    nav: string
+    links: { github: string; npm: string }
+  }
+  /** The paragraph over the controls explaining what the page is. */
   lede: string
   language: { legend: string; groupLabel: string }
   features: {
@@ -47,6 +61,13 @@ export interface ChromeStrings {
 }
 
 const en: ChromeStrings = {
+  header: {
+    tagline:
+      "A headless-first React data table: nested column groups, server-side paging and a " +
+      "token-driven theme.",
+    nav: "Project links",
+    links: { github: "GitHub", npm: "npm" },
+  },
   lede:
     "A live playground: every toggle and every color below drives a real prop or option, nothing " +
     "is faked. The table on the right always talks to a fake server, 100 000 rows deep.",
@@ -112,6 +133,13 @@ const en: ChromeStrings = {
 }
 
 const ru: ChromeStrings = {
+  header: {
+    tagline:
+      "React-\u0442\u0430\u0431\u043b\u0438\u0446\u0430 \u0441 headless-\u044f\u0434\u0440\u043e\u043c: \u0432\u043b\u043e\u0436\u0435\u043d\u043d\u044b\u0435 \u0433\u0440\u0443\u043f\u043f\u044b \u0441\u0442\u043e\u043b\u0431\u0446\u043e\u0432, \u0441\u0435\u0440\u0432\u0435\u0440\u043d\u0430\u044f \u0440\u0430\u0437\u0431\u0438\u0432\u043a\u0430 \u043d\u0430 " +
+      "\u0441\u0442\u0440\u0430\u043d\u0438\u0446\u044b \u0438 \u0442\u0435\u043c\u0430 \u043d\u0430 \u0442\u043e\u043a\u0435\u043d\u0430\u0445.",
+    nav: "\u0421\u0441\u044b\u043b\u043a\u0438 \u043f\u0440\u043e\u0435\u043a\u0442\u0430",
+    links: { github: "GitHub", npm: "npm" },
+  },
   lede:
     "Интерактивная песочница: каждый переключатель и каждый цвет ниже меняет настоящий проп " +
     "или опцию — всё по-настоящему. Таблица справа всегда обращается к фиктивному серверу " +
@@ -180,6 +208,12 @@ const ru: ChromeStrings = {
 }
 
 const uz: ChromeStrings = {
+  header: {
+    tagline:
+      "Headless asosidagi React jadvali: ichma-ich ustun guruhlari, serverli sahifalash va tokenlarga asoslangan mavzu.",
+    nav: "Loyiha havolalari",
+    links: { github: "GitHub", npm: "npm" },
+  },
   lede:
     "Interaktiv sinov maydoni: quyidagi har bir kalit va har bir rang haqiqiy prop yoki opsiyani " +
     "boshqaradi, hech biri koʻrinish uchun emas. Oʻngdagi jadval doimo 100 000 qatorli soxta " +

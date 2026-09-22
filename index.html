@@ -3,6 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Root-absolute is correct HERE and wrong in JSX: Vite rewrites URLs in
+      HTML attributes against the site's `base` (see vite.demo.config.ts), so
+      this resolves to /data-table/assets/logo.svg once deployed. A string
+      literal in a .tsx file gets no such treatment — PlaygroundHeader builds
+      its own URL from import.meta.env.BASE_URL for exactly that reason.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/assets/logo.svg" />
+    <meta
+      name="description"
+      content="Live playground for @khojiakbarr/data-table — a headless-first React data table with nested column groups, server-side paging and a token-driven theme."
+    />
+    <meta name="color-scheme" content="light dark" />
     <title>@khojiakbarr/data-table — Playground</title>
   </head>
   <body>

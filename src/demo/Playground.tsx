@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { DataTable, defaultLabels } from "../components/DataTable"
 import { localStorageLayout } from "../core/persistence"
 import type { TableQuery } from "../core/query"
@@ -8,7 +8,7 @@ import { ruLabels } from "../labels/ru"
 import { uzLabels } from "../labels/uz"
 import { CHROME } from "./chrome"
 import { FeatureControls } from "./FeatureControls"
-import { LanguageSwitcher } from "./LanguageSwitcher"
+import { PlaygroundHeader } from "./PlaygroundHeader"
 import { ThemeControls } from "./ThemeControls"
 import { buildReceiptColumns, ReceiptDetail } from "./receiptColumns"
 import { fetchValues, saveReceipt, type ServerReceipt, type ServerRow } from "./fakeServer"
@@ -42,20 +42,33 @@ const EMPTY: ServerRow[] = []
  * two control groups — feature toggles and theme tokens — that drive real
  * `useDataTable` options and `<DataTable>` props. Replaces the old demo page.
  *
+ * Laid out as masthead / rail / stage. The table is the subject, so it gets
+ * the whole of the right-hand column and every piece of chrome around it is
+ * quieter than it is: the rail is a scroll region of its own so the knobs
+ * never push the table down the page, and the stage is a plain card with no
+ * decoration competing with the grid inside it.
+ *
  * Server mode only, on purpose: this is how the table is actually used, and a
  * client/server switch would double every control for a comparison nobody
  * asked for. There is deliberately no CSS-export button either — see
  * {@link ThemeControls}'s docblock.
  *
  * The switcher moves the page as well as the table: the table reads the
- * shipped `DataTableLabels` sets, while the sidebar reads `CHROME`, which is
- * demo furniture and so lives here rather than in `src/labels/`.
+ * shipped `DataTableLabels` sets, while the page's own chrome reads `CHROME`,
+ * which is demo furniture and so lives here rather than in `src/labels/`.
  */
 export function Playground() {
   const [language, setLanguage] = useState<Language>("en")
   const [features, setFeatures] = useState<FeatureState>(DEFAULT_FEATURES)
   const [theme, setTheme] = useState<ThemeTokenState>(DEFAULT_THEME)
   const [query, setQuery] = useState<TableQuery>()
+
+  // The switcher moves the whole document, not just the words: `lang` is what
+  // a screen reader reads pronunciation from, and `index.html` can only ever
+  // ship one value for a page with three.
+  useEffect(() => {
+    document.documentElement.lang = language
+  }, [language])
 
   const { page, loading, error, retry, failNext, setFailNext } = useReceiptsQuery(query)
   const columns = useMemo(() => buildReceiptColumns(language), [language])
@@ -106,83 +119,102 @@ export function Playground() {
 
   return (
     <div className="pg-root">
-      <aside className="pg-sidebar">
-        {/* The package name is a proper noun — it is not translated. */}
-        <h1>@khojiakbarr/data-table</h1>
-        <p className="pg-lede">{chrome.lede}</p>
-        <LanguageSwitcher value={language} onChange={setLanguage} chrome={chrome} />
-        <FeatureControls value={features} onChange={setFeatures} chrome={chrome} />
-        <ThemeControls
-          value={theme}
-          resolved={themeValues}
-          onChange={setTheme}
-          /*
-           * The field and the table's own grip are one control in two places:
-           * both read `instance.tableHeight` and both write through its
-           * setter, so neither can show a height the other has moved past.
-           * Until the first change there is no override, and the field shows
-           * the `height` prop below — the value actually on screen.
-           */
-          tableHeight={table.tableHeight.value ?? START_HEIGHT}
-          minTableHeight={table.tableHeight.min}
-          onTableHeightChange={table.tableHeight.set}
-          chrome={chrome}
-        />
+      <PlaygroundHeader language={language} onLanguageChange={setLanguage} chrome={chrome} />
 
-        <button
-          type="button"
-          className="pg-reset"
-          onClick={() => {
-            setFeatures(DEFAULT_FEATURES)
-            setTheme(DEFAULT_THEME)
-          }}
-        >
-          {chrome.resetAll}
-        </button>
-      </aside>
+      <div className="pg-body">
+        <aside className="pg-rail">
+          <p className="pg-lede">{chrome.lede}</p>
 
-      <main className="pg-main">
-        <label className="pg-fail-toggle">
-          <input type="checkbox" checked={failNext} onChange={(event) => setFailNext(event.target.checked)} />
-          {chrome.failNext}
-        </label>
+          <section className="pg-panel">
+            <h2 className="pg-panel-title">{chrome.features.groupLabel}</h2>
+            <FeatureControls value={features} onChange={setFeatures} chrome={chrome} />
+          </section>
 
-        <style>{themeStyleRule(theme)}</style>
-        <DataTable
-          instance={table}
-          className={THEME_CLASS}
-          height={START_HEIGHT}
-          striped={features.striped}
-          toolbar={features.toolbar}
-          footer={features.footer}
-          virtualize={features.virtualize}
-          stickyHeader={features.stickyHeader}
-          // `theme` has no explicit `| undefined` in its own type — under
-          // `exactOptionalPropertyTypes` the "follow the OS setting" case has
-          // to omit the prop outright rather than pass it `undefined`.
-          {...(theme.theme === "system" ? {} : { theme: theme.theme })}
-          labels={LABELS[language]}
-          loading={loading}
-          error={error}
-          onRetry={retry}
-          onCellEdit={async ({ row, columnId, value }) => {
-            await saveReceipt({ id: row.id, columnId, value })
-            /*
-             * A write invalidates the page on screen, so the host asks for it
-             * again — which is what a server-mode host does, and what makes
-             * the round trip visible here rather than mocked at the last step.
-             * `retry` is the hook's one "run the current query again" trigger;
-             * the error banner is only its other caller.
-             *
-             * Until that answer lands the table goes on showing the value the
-             * user typed, settled rather than pending, and steps aside the
-             * moment the server's own answer replaces it.
-             */
-            retry()
-          }}
-          renderDetail={features.detailPanel ? (row) => <ReceiptDetail row={row} language={language} /> : undefined}
-        />
-      </main>
+          <section className="pg-panel">
+            <h2 className="pg-panel-title">{chrome.theme.groupLabel}</h2>
+            <ThemeControls
+              value={theme}
+              resolved={themeValues}
+              onChange={setTheme}
+              /*
+               * The field and the table's own grip are one control in two places:
+               * both read `instance.tableHeight` and both write through its
+               * setter, so neither can show a height the other has moved past.
+               * Until the first change there is no override, and the field shows
+               * the `height` prop below — the value actually on screen.
+               */
+              tableHeight={table.tableHeight.value ?? START_HEIGHT}
+              minTableHeight={table.tableHeight.min}
+              onTableHeightChange={table.tableHeight.set}
+              chrome={chrome}
+            />
+          </section>
+
+          <button
+            type="button"
+            className="pg-button pg-button-strong"
+            onClick={() => {
+              setFeatures(DEFAULT_FEATURES)
+              setTheme(DEFAULT_THEME)
+            }}
+          >
+            {chrome.resetAll}
+          </button>
+        </aside>
+
+        <main className="pg-main">
+          <div className="pg-stage-bar">
+            <label className="pg-fail-toggle">
+              <input
+                type="checkbox"
+                checked={failNext}
+                onChange={(event) => setFailNext(event.target.checked)}
+              />
+              {chrome.failNext}
+            </label>
+          </div>
+
+          <div className="pg-stage">
+            <style>{themeStyleRule(theme)}</style>
+            <DataTable
+              instance={table}
+              className={THEME_CLASS}
+              height={START_HEIGHT}
+              striped={features.striped}
+              toolbar={features.toolbar}
+              footer={features.footer}
+              virtualize={features.virtualize}
+              stickyHeader={features.stickyHeader}
+              // `theme` has no explicit `| undefined` in its own type — under
+              // `exactOptionalPropertyTypes` the "follow the OS setting" case has
+              // to omit the prop outright rather than pass it `undefined`.
+              {...(theme.theme === "system" ? {} : { theme: theme.theme })}
+              labels={LABELS[language]}
+              loading={loading}
+              error={error}
+              onRetry={retry}
+              onCellEdit={async ({ row, columnId, value }) => {
+                await saveReceipt({ id: row.id, columnId, value })
+                /*
+                 * A write invalidates the page on screen, so the host asks for it
+                 * again — which is what a server-mode host does, and what makes
+                 * the round trip visible here rather than mocked at the last step.
+                 * `retry` is the hook's one "run the current query again" trigger;
+                 * the error banner is only its other caller.
+                 *
+                 * Until that answer lands the table goes on showing the value the
+                 * user typed, settled rather than pending, and steps aside the
+                 * moment the server's own answer replaces it.
+                 */
+                retry()
+              }}
+              renderDetail={
+                features.detailPanel ? (row) => <ReceiptDetail row={row} language={language} /> : undefined
+              }
+            />
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

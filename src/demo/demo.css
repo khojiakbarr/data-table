@@ -27,11 +27,12 @@
   --pg-radius-lg: 14px;
   --pg-radius-full: 999px;
 
-  /* Type scale. Only these four sizes appear anywhere in the file. */
+  /* Type scale. Only these five sizes appear anywhere in the file. */
   --pg-text-xs: 11px;
   --pg-text-sm: 12px;
   --pg-text-md: 13px;
   --pg-text-lg: 15px;
+  --pg-text-xl: 17px;
 
   /*
    * The masthead's height, as a token rather than a measurement: the rail
@@ -165,7 +166,7 @@ body {
 
 .pg-wordmark {
   margin: 0;
-  font-size: var(--pg-text-lg);
+  font-size: var(--pg-text-xl);
   font-weight: 650;
   letter-spacing: -0.01em;
   line-height: 1.3;

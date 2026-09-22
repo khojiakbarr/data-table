@@ -174,14 +174,34 @@ export function RowGroupsZone<TData extends RowData>({
    * the last position, which is where a column dropped with no particular
    * target belongs: the innermost level.
    *
-   * Guarded on the event's target being this element, because a chip's own
+   * Guarded on the event's target being the list ITSELF, because a chip's own
    * handler has already spoken by the time the event bubbles here, and this
    * would otherwise overrule it with "at the end" on every move.
+   *
+   * The placeholder counts as the list. It is the hint drawn across an EMPTY
+   * zone — "drag a column here" — and it sits in the middle of the very area
+   * it is pointing at, so a pointer aimed where the sentence says to aim lands
+   * on the `li`, not on the `ul`. A target test that did not know that refused
+   * the drop over the whole centre of the zone and accepted it only on the
+   * thin ring of padding around the text: the one place the user is told to
+   * drop was the one place that did not take a drop. It is not a chip, it has
+   * nothing of its own to say about position, so letting it answer for the
+   * list changes no other case.
    */
   const lastId = order[order.length - 1]
 
+  /**
+   * Whether a bubbled drag event belongs to the list rather than to a chip.
+   *
+   * @param event - The drag event as it reaches the list.
+   * @returns True for the list itself and for the empty-zone placeholder.
+   */
+  const isListTarget = (event: DragEvent<HTMLElement>): boolean =>
+    event.target === event.currentTarget ||
+    (event.target as HTMLElement | null)?.classList?.contains("dt-rowgroups-placeholder") === true
+
   const handleZoneDragOver = (event: DragEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget || lastId === undefined) return
+    if (!isListTarget(event) || lastId === undefined) return
     if (carried === null && drop.draggedId === null) return
     event.preventDefault()
     event.dataTransfer.dropEffect = "move"
@@ -190,7 +210,7 @@ export function RowGroupsZone<TData extends RowData>({
   }
 
   const handleZoneDrop = (event: DragEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget || lastId === undefined) return
+    if (!isListTarget(event) || lastId === undefined) return
     event.preventDefault()
     const draggedId = event.dataTransfer.getData("text/plain") || drop.draggedId
     drop.end()

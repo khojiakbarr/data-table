@@ -201,6 +201,61 @@ describe("dropping a column into the zone", () => {
     expect(publishedGrouping(onQueryChange)).toEqual(["partner", "status"])
   })
 
+  /*
+   * REGRESSION. The empty zone draws its hint — "drag a column here" — as an
+   * `li` in the middle of the very area it points at, so a real pointer aimed
+   * where the sentence says to aim lands on that `li`, not on the `ul` that
+   * carries the handlers. Measured in Chrome: the list is 247x37, the hint
+   * 229x15, and `elementFromPoint` at the centre of the zone answers with the
+   * hint. The zone's target test used to compare against the `ul` alone, so
+   * `preventDefault` never ran, the browser refused the drop, and grouping by
+   * dragging a column in simply did nothing — while every test here passed,
+   * because they all dispatch straight at the `ul`.
+   *
+   * So this one drops on the hint, which is where the pointer really is.
+   */
+  it("takes a drop released on the empty zone's own hint text", () => {
+    const onQueryChange = vi.fn()
+    render(<Harness onQueryChange={onQueryChange} />)
+    openPanel()
+
+    const hint = document.querySelector(".dt-rowgroups-placeholder") as HTMLElement
+    expect(hint).not.toBeNull()
+
+    const dataTransfer = makeDataTransfer()
+    fireEvent.dragStart(panelHandle("status"), { dataTransfer })
+    // The hint is replaced by the ghost chip the moment the zone takes the
+    // drag up, so the drop has to be released on whatever stands there now.
+    pointAt("dragOver", hint, "end", dataTransfer)
+    const released = (document.querySelector(".dt-rowgroups-placeholder") ??
+      (zone() as HTMLElement)) as HTMLElement
+    pointAt("drop", released, "end", dataTransfer)
+    fireEvent.dragEnd(panelHandle("status"))
+
+    expect(chipIds()).toEqual(["status"])
+    expect(publishedGrouping(onQueryChange)).toEqual(["status"])
+  })
+
+  it("refuses a drop released on a chip's own label, which the chip owns", () => {
+    // The other half of the same rule: widening the target test must not let
+    // the list overrule a chip that has already answered for itself.
+    const onQueryChange = vi.fn()
+    render(<Harness onQueryChange={onQueryChange} />)
+    openPanel()
+    dragColumnIntoZone("status")
+    dragColumnIntoZone("partner")
+
+    const dataTransfer = makeDataTransfer()
+    fireEvent.dragStart(panelHandle("name"), { dataTransfer })
+    pointAt("dragOver", chip("status"), "start", dataTransfer)
+    expect(chip("status").className).toContain("dt-drop-slot")
+    pointAt("drop", chip("status"), "start", dataTransfer)
+    fireEvent.dragEnd(panelHandle("name"))
+
+    // Landed where the slot promised — outermost — not appended at the end.
+    expect(chipIds()).toEqual(["name", "status", "partner"])
+  })
+
   it("draws a slot for a grouped column dragged back in from the column list", () => {
     // The tree still lists a grouped column and its handle still drags, so
     // dragging it here is a renest — and it has to show the same promise as

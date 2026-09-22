@@ -45,6 +45,7 @@ export const defaultLabels: DataTableLabels = {
   pinEnd: "Pin to end",
   unpin: "Unpin",
   hide: "Hide",
+  hideGrouped: "Rows are grouped by this column",
   sortAscending: "Sort ascending",
   sortDescending: "Sort descending",
   clearSort: "Clear sort",
@@ -882,6 +883,7 @@ export function DataTable<TData extends RowData>({
           labels={labels}
           onAutosize={() => autosize(menu.columnId)}
           onAutosizeAll={autosizeAll}
+          isGrouped={instance.grouping.has(menu.columnId)}
           onOpenFilter={
             canFilter(menu.columnId)
               ? () => setFilterAt({ columnId: menu.columnId, at: menu.at })

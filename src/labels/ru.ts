@@ -81,6 +81,7 @@ export const ruLabels: DataTableLabels = {
   pinEnd: "Закрепить справа",
   unpin: "Открепить",
   hide: "Скрыть",
+  hideGrouped: "Строки сгруппированы по этому столбцу",
   sortAscending: "Сортировать по возрастанию",
   sortDescending: "Сортировать по убыванию",
   clearSort: "Отменить сортировку",

@@ -37,6 +37,14 @@ interface HeaderMenuProps<TData extends RowData> {
    * Task 17 is what passes it: the panel does not know about tabs until then.
    */
   onOpenFilterInPanel?: (() => void) | undefined
+  /**
+   * Whether the rows are currently grouped by this column.
+   *
+   * Passed in rather than read off the column, for the same reason everything
+   * else here is: the menu knows nothing of the table, and the grouping lives
+   * on the instance rather than on TanStack's column state.
+   */
+  isGrouped: boolean
   onClose: () => void
 }
 
@@ -49,6 +57,7 @@ export function HeaderMenu<TData extends RowData>({
   onAutosizeAll,
   onOpenFilter,
   onOpenFilterInPanel,
+  isGrouped,
   onClose,
 }: HeaderMenuProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
@@ -64,6 +73,17 @@ export function HeaderMenu<TData extends RowData>({
 
   const run = (action: () => void) => () => {
     action()
+    onClose()
+  }
+
+  const handleHide = () => {
+    /*
+     * `aria-disabled` keeps the item focusable, so the platform will not
+     * refuse the click — it has to be refused here, the way `CellMenu` refuses
+     * an Edit it is offering but cannot take.
+     */
+    if (isGrouped) return
+    column.toggleVisibility(false)
     onClose()
   }
 
@@ -209,9 +229,30 @@ export function HeaderMenu<TData extends RowData>({
           type="button"
           role="menuitem"
           className="dt-menu-item"
-          onClick={run(() => column.toggleVisibility(false))}
+          /*
+           * A grouped column's visibility is not the user's to set while it is
+           * grouped: its values have left the body and the table decides which
+           * grouped column keeps a slot for them, so the derived visibility
+           * overrules whatever is written. The Columns panel takes the same
+           * position on its checkbox, and for the same reason — an action
+           * whose flag is immediately overruled is worse than no action,
+           * because the flag is still stored and springs the moment the
+           * grouping comes off, with no nearby gesture to explain it.
+           *
+           * Disabled rather than dropped, so the menu keeps its shape whatever
+           * the table is doing; `aria-disabled` rather than `disabled`, so the
+           * item stays focusable and the reason on it is actually announced.
+           */
+          aria-disabled={isGrouped ? true : undefined}
+          onClick={handleHide}
         >
           {labels.hide}
+          {isGrouped ? (
+            /* Part of the item's own accessible name, deliberately: a reason
+               that only exists in a tooltip is a reason a screen-reader user
+               never hears. */
+            <span className="dt-menu-note">{labels.hideGrouped}</span>
+          ) : null}
         </button>
       ) : null}
     </div>

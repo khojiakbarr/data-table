@@ -250,6 +250,48 @@ describe("a grouped table renders", () => {
     expect(result.current.table.getColumn("name")!.getIsVisible()).toBe(true)
   })
 
+  /**
+   * The header menu's Hide, on the column the rows are grouped by.
+   *
+   * It used to be enabled and to do nothing visible: the derived visibility
+   * keeps the group column on screen whatever the layout says, so the click
+   * looked like a no-op while `columnVisibility: { status: false }` went into
+   * storage all the same — and sprang the moment the grouping came off, in
+   * this session or a later one, with no nearby gesture to explain it.
+   */
+  it("refuses Hide on the grouped column rather than storing a flag that springs later", () => {
+    render(<Harness initialLayout={{ grouping: ["status"] }} />)
+
+    fireEvent.click(screen.getByRole("button", { name: /Status: column actions/i }))
+    const hide = screen.getByRole("menuitem", { name: /Hide/ })
+    // Offered, so the menu keeps its shape — and refused out loud, with the
+    // reason in the item's own accessible name rather than in a tooltip.
+    expect(hide).toHaveAttribute("aria-disabled", "true")
+    expect(hide).toHaveTextContent("Rows are grouped by this column")
+
+    fireEvent.click(hide)
+    // Not even the close a taken action would have done: nothing happened.
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+
+    // And the proof it wrote nothing: take the grouping off and Status is
+    // still there, which is exactly what used to fail.
+    fireEvent.click(screen.getByRole("tab", { name: "Columns" }))
+    const panel = document.querySelector<HTMLElement>(".dt-panel") as HTMLElement
+    fireEvent.click(within(panel).getByRole("button", { name: "Clear grouping" }))
+    expect(screen.getByRole("columnheader", { name: /Status/ })).toBeInTheDocument()
+  })
+
+  it("still hides a column the rows are not grouped by", () => {
+    render(<Harness initialLayout={{ grouping: ["status"] }} />)
+
+    fireEvent.click(screen.getByRole("button", { name: /Name: column actions/i }))
+    const hide = screen.getByRole("menuitem", { name: /Hide/ })
+    expect(hide).not.toHaveAttribute("aria-disabled")
+
+    fireEvent.click(hide)
+    expect(screen.queryByRole("columnheader", { name: /Name/ })).toBeNull()
+  })
+
   it("draws a continued header when the page starts inside an open group", () => {
     // The ugly case the wire's `startPath` exists for: three records, no group
     // header, and nothing on a leaf saying which group it belongs to.

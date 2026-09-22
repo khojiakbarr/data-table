@@ -175,6 +175,12 @@ export interface DataTableLabels extends CellEditingLabels {
   pinEnd: string
   unpin: string
   hide: string
+  /**
+   * On a disabled Hide: why this column's visibility is not the user's to set
+   * right now. Spoken as part of the item's own accessible name, so a reason
+   * a sighted user reads greyed out is a reason a screen reader also hears.
+   */
+  hideGrouped: string
   sortAscending: string
   sortDescending: string
   clearSort: string

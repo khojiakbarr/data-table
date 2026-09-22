@@ -66,6 +66,7 @@ export const uzLabels: DataTableLabels = {
   pinEnd: "Oʻngga mahkamlash",
   unpin: "Mahkamlashni bekor qilish",
   hide: "Yashirish",
+  hideGrouped: "Qatorlar shu ustun boʻyicha guruhlangan",
   sortAscending: "Oʻsish boʻyicha saralash",
   sortDescending: "Kamayish boʻyicha saralash",
   clearSort: "Saralashni bekor qilish",

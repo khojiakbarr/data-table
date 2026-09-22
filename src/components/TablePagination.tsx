@@ -50,7 +50,13 @@ export function TablePagination<TData extends RowData>({ instance, labels }: Tab
           ))}
         </select>
       </label>
-      <span className="dt-footer-range">{labels.range(from, to, rowCount)}</span>
+      {/*
+        `formatCount` on all three: `rows` above already renders the total
+        grouped, and a page's own numbers deserve the same treatment once
+        they climb past 999 — "9 950–10 000" reads the way "10 000" already
+        does two lines up, rather than sitting next to it unformatted.
+      */}
+      <span className="dt-footer-range">{labels.range(formatCount(from), formatCount(to), formatCount(rowCount))}</span>
       <nav className="dt-footer-nav" aria-label={labels.pagination}>
         <NavButton label={labels.firstPage} disabled={!canPrevious} onClick={() => setPageIndex(0)} glyph="«" />
         <NavButton label={labels.previousPage} disabled={!canPrevious} onClick={() => setPageIndex(pageIndex - 1)} glyph="‹" />

@@ -260,8 +260,15 @@ export interface DataTableLabels extends CellEditingLabels {
   /** Footer: total rows. */
   rows: string
   rowsPerPage: string
-  /** "1–50 of 1 000"; `total` is undefined while a server has not answered. */
-  range: (from: number, to: number, total: number | undefined) => string
+  /**
+   * "1–50 of 1 000"; `total` is "…" while a server has not answered.
+   *
+   * All three arrive pre-formatted — the same grouping `rows` renders with —
+   * so this only has to place them in the sentence, never reformat them: a
+   * host whose own text just interpolates the three has no way to land on
+   * the footer's unformatted "1000" the way the table itself used to.
+   */
+  range: (from: string, to: string, total: string) => string
   /** "Page 3 of 20"; `count` is undefined while unknown. */
   page: (page: number, count: number | undefined) => string
   pageNumber: string

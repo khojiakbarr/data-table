@@ -47,11 +47,13 @@ describe("label set parity", () => {
 describe("function-shaped labels return sensible text", () => {
   for (const { name, labels } of LOCALES) {
     it(`${name}Labels.range interpolates known and unknown totals`, () => {
-      expect(labels.range(1, 50, 1000)).toContain("1")
-      expect(labels.range(1, 50, 1000)).toContain("50")
-      expect(labels.range(1, 50, 1000)).toContain("1000")
+      // Pre-formatted strings, the same shape `formatCount` hands it — this
+      // label only places the three, it does not reformat them.
+      expect(labels.range("1", "50", "1 000")).toContain("1")
+      expect(labels.range("1", "50", "1 000")).toContain("50")
+      expect(labels.range("1", "50", "1 000")).toContain("1 000")
       // An unknown total must not silently print "undefined".
-      expect(labels.range(1, 50, undefined)).not.toContain("undefined")
+      expect(labels.range("1", "50", "…")).not.toContain("undefined")
     })
 
     it(`${name}Labels.page interpolates a known and an unknown page count`, () => {
@@ -163,8 +165,8 @@ describe("Uzbek orthography", () => {
 
   // Every function-shaped label, called: their text never reaches Object.values.
   const FUNCTION_OUTPUTS = [
-    uzLabels.range(1, 50, 1000),
-    uzLabels.range(1, 50, undefined),
+    uzLabels.range("1", "50", "1 000"),
+    uzLabels.range("1", "50", "…"),
     uzLabels.page(1, 20),
     uzLabels.page(1, undefined),
     uzLabels.searchResults(0),

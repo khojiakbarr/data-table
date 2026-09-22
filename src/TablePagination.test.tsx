@@ -27,7 +27,8 @@ describe("pagination footer", () => {
   it("shows the range, the page and the total", () => {
     render(<Table />)
     expect(screen.getByText(/^Rows:/).textContent).toBe("Rows: 1\u202f000")
-    expect(screen.getByText("1–50 of 1000")).toBeInTheDocument()
+    // Grouped the same way "Rows" is above — the two used to disagree.
+    expect(screen.getByText("1–50 of 1 000")).toBeInTheDocument()
     expect(screen.getByText("Page 1 of 20")).toBeInTheDocument()
   })
 
@@ -37,12 +38,12 @@ describe("pagination footer", () => {
 
     expect(screen.getByRole("button", { name: /previous page/i })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: /next page/i }))
-    expect(screen.getByText("51–100 of 1000")).toBeInTheDocument()
+    expect(screen.getByText("51–100 of 1 000")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /last page/i }))
-    expect(screen.getByText("951–1000 of 1000")).toBeInTheDocument()
+    expect(screen.getByText("951–1 000 of 1 000")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /next page/i })).toBeDisabled()
     await user.click(screen.getByRole("button", { name: /first page/i }))
-    expect(screen.getByText("1–50 of 1000")).toBeInTheDocument()
+    expect(screen.getByText("1–50 of 1 000")).toBeInTheDocument()
   })
 
   it("reaches the real last page after the data grows", async () => {
@@ -76,7 +77,7 @@ describe("pagination footer", () => {
     render(<Table />)
     await user.click(screen.getByRole("button", { name: /next page/i })) // rows 51–100
     await user.selectOptions(screen.getByRole("combobox", { name: /rows per page/i }), "20")
-    expect(screen.getByText("41–60 of 1000")).toBeInTheDocument()
+    expect(screen.getByText("41–60 of 1 000")).toBeInTheDocument()
     expect(latest?.pagination.pageSize).toBe(20)
   })
 
@@ -85,10 +86,10 @@ describe("pagination footer", () => {
     const input = screen.getByRole("spinbutton", { name: /page number/i })
     fireEvent.change(input, { target: { value: "7" } })
     fireEvent.keyDown(input, { key: "Enter" })
-    expect(screen.getByText("301–350 of 1000")).toBeInTheDocument()
+    expect(screen.getByText("301–350 of 1 000")).toBeInTheDocument()
     fireEvent.change(input, { target: { value: "99" } })
     fireEvent.blur(input)
-    expect(screen.getByText("951–1000 of 1000")).toBeInTheDocument()
+    expect(screen.getByText("951–1 000 of 1 000")).toBeInTheDocument()
   })
 
   it("renders no footer when pagination is off", () => {

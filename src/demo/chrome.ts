@@ -35,7 +35,7 @@ export interface ChromeStrings {
     legends: Record<"interactions" | "data" | "layout", string>
     labels: Record<keyof FeatureState, string>
     hints: Record<
-      "filtering" | "pagination" | "rowNumbers" | "selection" | "statusBar" | "detailPanel",
+      "filtering" | "pagination" | "rowNumbers" | "selection" | "statusBar" | "totals" | "detailPanel",
       string
     >
   }
@@ -128,6 +128,7 @@ const en: ChromeStrings = {
       rowNumbers: "Row numbers",
       selection: "Row selection",
       statusBar: "Status bar",
+      totals: "Totals row",
       filtering: "Filtering",
       pagination: "Pagination",
       striped: "Striped rows",
@@ -143,6 +144,7 @@ const en: ChromeStrings = {
       rowNumbers: "Off by default, and group rows are numbered too",
       selection: "Off by default. The header box takes every matching row, not the fifty on screen",
       statusBar: "Off by default; the row count then moves here from the footer",
+      totals: "The fake server sums Amount over every matching row — not this page, not client-side",
       detailPanel: "Expand a row for more",
     },
   },
@@ -216,6 +218,7 @@ const ru: ChromeStrings = {
       rowNumbers: "Номера строк",
       selection: "Выбор строк",
       statusBar: "Строка статуса",
+      totals: "Строка итогов",
       filtering: "Фильтрация",
       pagination: "Постраничный вывод",
       striped: "Чередование строк",
@@ -234,6 +237,8 @@ const ru: ChromeStrings = {
       selection:
         "По умолчанию выключен. Флажок в шапке берёт все подходящие строки, а не 50 на экране",
       statusBar: "По умолчанию выключена; счётчик строк переходит сюда из нижней панели",
+      totals: "Фиктивный сервер суммирует «Сумму» по всем подходящим строкам — не по этой странице, " +
+        "и не на клиенте",
       detailPanel: "Разверните строку, чтобы увидеть больше",
     },
   },
@@ -305,6 +310,7 @@ const uz: ChromeStrings = {
       rowNumbers: "Qator raqamlari",
       selection: "Qatorlarni tanlash",
       statusBar: "Holat paneli",
+      totals: "Jami qator",
       filtering: "Filtrlash",
       pagination: "Sahifalash",
       striped: "Navbatma-navbat qatorlar",
@@ -323,6 +329,9 @@ const uz: ChromeStrings = {
       selection:
         "Sukut boʻyicha oʻchiq. Sarlavhadagi katakcha ekrandagi 50 tasini emas, mos keluvchi barcha qatorlarni oladi",
       statusBar: "Sukut boʻyicha oʻchiq; qatorlar soni bu yerga pastki paneldan koʻchadi",
+      totals:
+        "Soxta server Summa ustunini mos keluvchi barcha qatorlar boʻyicha yigʻadi — bu sahifa " +
+        "boʻyicha emas va mijoz tomonida emas",
       detailPanel: "Batafsil koʻrish uchun qatorni yoying",
     },
   },

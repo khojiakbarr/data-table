@@ -11,7 +11,7 @@ import { CHROME } from "./chrome"
 import { FeatureControls } from "./FeatureControls"
 import { PlaygroundHeader } from "./PlaygroundHeader"
 import { ThemeControls } from "./ThemeControls"
-import { buildReceiptColumns, ReceiptDetail } from "./receiptColumns"
+import { buildReceiptColumns, LOCALE_TAG, ReceiptDetail } from "./receiptColumns"
 import {
   fetchValues,
   flagReceipts,
@@ -90,6 +90,10 @@ export function Playground() {
   const { page, loading, error, retry, failNext, setFailNext } = useReceiptsQuery(query)
   const columns = useMemo(() => buildReceiptColumns(language), [language])
   const chrome = CHROME[language]
+  // The same locale the Amount column's own cells format with — see
+  // `LOCALE_TAG`'s own docblock — so the totals row's number and the body's
+  // never disagree about what a thousand looks like.
+  const amountFormat = useMemo(() => new Intl.NumberFormat(LOCALE_TAG[language]), [language])
 
   // The controls show, and the table reads, the base theme's own value for
   // every token the user has not moved — so "System" on a dark OS starts the
@@ -249,6 +253,22 @@ export function Playground() {
               }}
               renderDetail={
                 features.detailPanel ? (row) => <ReceiptDetail row={row} language={language} /> : undefined
+              }
+              /*
+               * A real round trip, the same as the bulk-action bar just below:
+               * `amountTotal` is the fake server's own answer, summed over every
+               * row the current query matches — not typed into the demo, and
+               * not summed from the fifty rows on this page. `{}` while `page`
+               * has not resolved yet keeps the row on screen with only its
+               * caption, rather than having it pop into existence — and shift
+               * the body down — the instant the first answer lands.
+               */
+              totals={
+                features.totals
+                  ? page
+                    ? { amount: amountFormat.format(page.amountTotal) }
+                    : {}
+                  : undefined
               }
               /*
                * The bulk-action bar, and a REAL round trip behind it: the

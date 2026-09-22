@@ -43,6 +43,11 @@ const GROUPS: Group[] = [
       // Same reasoning as `rowNumbers` just above: furniture rather than an
       // interaction, but still a `useDataTable({ features })` flag.
       { key: "statusBar", hint: "statusBar" },
+      // The one toggle in this group that is not a `useDataTable({ features })`
+      // flag at all — there is no such flag, because the library computes
+      // nothing here — but a `<DataTable totals>` prop, still driven by a real
+      // fake-server round trip like everything else on this page.
+      { key: "totals", hint: "totals" },
     ],
   },
   {

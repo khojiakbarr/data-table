@@ -4,8 +4,14 @@ import type { Language } from "./playgroundState"
 import { STATUS_LABELS } from "./statusLabels"
 import { PARTNERS, type ServerReceipt } from "./fakeServer"
 
-/** BCP-47 tag for each language, for date and number formatting. */
-const LOCALE_TAG: Record<Language, string> = { en: "en-US", ru: "ru-RU", uz: "uz-UZ" }
+/**
+ * BCP-47 tag for each language, for date and number formatting.
+ *
+ * Exported so `Playground.tsx` can format the fake server's `amountTotal`
+ * with the exact same `Intl.NumberFormat` the Amount column's own cells use —
+ * one locale map rather than a second copy that could drift from it.
+ */
+export const LOCALE_TAG: Record<Language, string> = { en: "en-US", ru: "ru-RU", uz: "uz-UZ" }
 
 const HEADERS: Record<Language, Record<keyof ServerReceipt, string>> = {
   en: { id: "Id", code: "Code", partner: "Partner", amount: "Amount", status: "Status", date: "Date", flagged: "Flagged" },

@@ -132,6 +132,20 @@ export interface ServerPage<TRow = ServerReceipt> {
    * not as an error.
    */
   unfilteredTotal: number
+  /**
+   * `amount` summed over every row the current query's filters and search
+   * match — not the fifty on this page, and not computed by the library,
+   * which is the whole point of it: this is what `Playground.tsx` hands
+   * `<DataTable totals>`, a real round trip rather than a number typed into
+   * the demo. Nulls are skipped rather than treated as zero, the same rule a
+   * `SUM(amount)` would apply.
+   *
+   * Deliberately excludes grouping and pagination for the reason
+   * {@link ServerPage.unfilteredTotal}'s own SQL analogue would: neither
+   * changes which rows match, only how they are presented, and a total is
+   * about the rows.
+   */
+  amountTotal: number
 }
 
 /**
@@ -593,6 +607,13 @@ export function fetchReceipts(
           groupBy.length === 0
             ? ALL.length
             : flattenGroups(buildLevel(ALL, groupBy, 0, sort), query.expanded, []).length,
+        // Summed over `matched`, not `visible`: a group header carries no
+        // `amount` of its own, and summing the flattened list would either
+        // skip it silently (equivalent, more work) or throw trying to read a
+        // field group rows do not have. `matched` is exactly the rows the
+        // query's filters and search let through, which is the set a total
+        // is a total OF.
+        amountTotal: matched.reduce((sum, row) => sum + (row.amount ?? 0), 0),
       })
     }, delayMs)
     signal?.addEventListener("abort", onAbort, { once: true })

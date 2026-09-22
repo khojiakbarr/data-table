@@ -40,6 +40,17 @@ export interface FeatureState {
    * `rowNumbers`'s is — see that field's own comment.
    */
   statusBar: boolean
+  /**
+   * The totals row under the body.
+   *
+   * Not a `useDataTable({ features })` flag at all — there is no such flag,
+   * because the library computes nothing here — but a `<DataTable totals>`
+   * prop built from a REAL round trip: the fake server sums `amount` over
+   * every row the current query matches (not the page, and not client-side)
+   * and answers with it on every page, the same way `unfilteredTotal` already
+   * does for the status bar. See `Playground.tsx`.
+   */
+  totals: boolean
   /* `useDataTable({ filtering, pagination })`. Quick search rides with `filtering`. */
   filtering: boolean
   pagination: boolean
@@ -63,6 +74,7 @@ export const DEFAULT_FEATURES: FeatureState = {
   rowNumbers: false,
   selection: false,
   statusBar: false,
+  totals: false,
   filtering: true,
   pagination: true,
   striped: true,

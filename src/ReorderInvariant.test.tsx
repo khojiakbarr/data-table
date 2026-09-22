@@ -2,6 +2,7 @@ import { createColumnHelper } from "@tanstack/react-table"
 import { cleanup, createEvent, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { DataTable } from "./components/DataTable"
+import { ROW_NUMBER_COLUMN_ID } from "./core/rowNumbers"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
 import type { LayoutStorage, TableLayout } from "./types"
 
@@ -109,6 +110,17 @@ interface Fixture {
    * drag. Server mode, because that is the only mode that groups.
    */
   rowGrouping?: string[]
+  /**
+   * Whether the leading row-number column is on.
+   *
+   * A third derivation on top of the user's order, and the one with the
+   * strongest claim: it leads every section, before even the group column.
+   * It is never in `baseline` — `renderedOrder` reads leaves the fixtures
+   * declare, and this column is not one of the host's declarations — so what
+   * these fixtures actually check is that a column the user cannot touch,
+   * standing in front of everything, changes none of the promises below.
+   */
+  rowNumbers?: boolean
   /** Asserted once per fixture, so a fixture that quietly changes shape is caught. */
   baseline: string[]
 }
@@ -175,6 +187,27 @@ const FIXTURES: Fixture[] = [
     shape: "mixed",
     pinning: { start: [], end: [] },
     baseline: ["a", "b", "c", "d", "e", "f"],
+  },
+  {
+    // The row-number column in front of a pinned pair: it is pinned to the
+    // start itself, so without a region of its own it would share one with
+    // E and F and be offered as a swap partner for both.
+    name: "a table with row numbers and two columns pinned to the start",
+    shape: "flat",
+    pinning: { start: ["e", "f"], end: [] },
+    rowNumbers: true,
+    baseline: ["e", "f", "a", "b", "c", "d"],
+  },
+  {
+    // Every derivation at once: the row-number column leads, the group column
+    // is hoisted out of the Right group to lead the scrolling section, and
+    // the declared groups still have to survive a drop.
+    name: "a table with row numbers, grouped by one of the right-hand columns",
+    shape: "grouped",
+    pinning: { start: [], end: [] },
+    rowGrouping: ["e"],
+    rowNumbers: true,
+    baseline: ["e", "a", "b", "c", "d", "f"],
   },
   {
     // The shape the torn group was found in: the column the rows are grouped
@@ -248,6 +281,7 @@ function Table({ fixture, storage }: { fixture: Fixture; storage?: LayoutStorage
       columnPinning: fixture.pinning,
       ...(fixture.rowGrouping ? { grouping: [...fixture.rowGrouping] } : {}),
     },
+    ...(fixture.rowNumbers ? { features: { rowNumbers: true } } : {}),
     // Grouping is server-side: a client table refuses one, and the fixture
     // would then be an ordinary table wearing a grouped name.
     ...(fixture.rowGrouping
@@ -456,7 +490,16 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
       const handle = panelRow(id).querySelector(".dt-drag-handle")
       expect(handle === null).toBe(id === fixture.rowGrouping?.[0])
     }
+    // The row-number column is there or it is not, and when it is it is in
+    // neither list: no header to grab, and no row in the panel at all.
+    const numberHeader = document.querySelector(`th[data-column-id="${ROW_NUMBER_COLUMN_ID}"]`)
+    expect(numberHeader !== null).toBe(fixture.rowNumbers === true)
+    expect(numberHeader?.getAttribute("draggable") ?? "false").toBe("false")
+    expect(
+      document.querySelector(`ul.dt-panel-list li[data-column-id="${ROW_NUMBER_COLUMN_ID}"]`),
+    ).toBeNull()
   })
+
 
   it.each(SURFACES)("dragging on $name", (surface) => {
     const violations: string[] = []
@@ -567,6 +610,56 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
 })
 
 /**
+ * The half of the promise the loops above cannot reach: the row-number column
+ * as a TARGET.
+ *
+ * Those loops only ever point at the fixtures' own columns, so a drop onto
+ * the numbers themselves is never attempted there — and it is the one place
+ * this column could break the property, because it sits in the start section
+ * beside columns a user really can rearrange. Its region is solitary, so the
+ * answer must be the second form of the promise: no slot, and nothing moves.
+ */
+describe.each(FIXTURES.filter((fixture) => fixture.rowNumbers))(
+  "the row-number column takes no drop in $name",
+  (fixture) => {
+    beforeEach(() => {
+      localStorage.clear()
+      render(<Table fixture={fixture} />)
+      openPanel()
+    })
+
+    it("offers no slot, and leaves the order alone", () => {
+      const violations: string[] = []
+      const surface = SURFACES[0] as Surface
+
+      for (const draggedId of draggableIn(fixture)) {
+        for (const side of SIDES) {
+          const before = renderedOrder()
+          const dataTransfer = makeDataTransfer()
+          const target = headerCell(ROW_NUMBER_COLUMN_ID)
+
+          fireEvent.dragStart(surface.grip(draggedId), { dataTransfer })
+          pointAt(surface, "dragOver", target, side, dataTransfer)
+          const slot = surface.slot()
+          pointAt(surface, "drop", target, side, dataTransfer)
+          fireEvent.dragEnd(surface.grip(draggedId))
+
+          const after = renderedOrder()
+          const where = `${label(draggedId)} onto the row numbers' ${side}`
+          if (slot !== null) violations.push(`${where}: a slot appeared, on ${label(slot)}`)
+          if (after.join(" ") !== before.join(" ")) {
+            violations.push(`${where}: the order became ${after.join(" ")}`)
+          }
+          resetToBaseline()
+        }
+      }
+
+      expect(violations).toEqual([])
+    })
+  },
+)
+
+/**
  * The same promise, made by a header that stands for several columns.
  *
  * A column group is dragged too, and it carries every leaf under it. That
@@ -587,11 +680,18 @@ describe.each(FIXTURES)("the drop keeps the slot's promise in $name", (fixture) 
 describe.each(FIXTURES.filter((fixture) => fixture.shape !== "flat"))(
   "a column group keeps the slot's promise in $name",
   (fixture) => {
-    /** The header's top row: the groups, and any leaf that belongs to none. */
+    /**
+     * The header's top row: the groups, and any leaf that belongs to none.
+     *
+     * The row-number column is left out. It stands at the top level like any
+     * ungrouped leaf, but it is not a sibling anything can move among — it is
+     * alone in its drop region — so counting it here would shift every
+     * promised index by one for a column that never takes part.
+     */
     const topLevelOrder = (): string[] =>
-      [...document.querySelectorAll("thead tr:first-child th[data-column-id]")].map(
-        (th) => th.getAttribute("data-column-id") ?? "",
-      )
+      [...document.querySelectorAll("thead tr:first-child th[data-column-id]")]
+        .map((th) => th.getAttribute("data-column-id") ?? "")
+        .filter((id) => id !== ROW_NUMBER_COLUMN_ID)
 
     /**
      * Which leaves each top-level header stands over, read the way a user
@@ -607,6 +707,10 @@ describe.each(FIXTURES.filter((fixture) => fixture.shape !== "flat"))(
       for (const th of document.querySelectorAll("thead tr:first-child th")) {
         const id = th.getAttribute("data-column-id")
         if (id === null) continue
+        // Skipped WITHOUT advancing, exactly as the filler is: `renderedOrder`
+        // reads the fixtures' own leaves, and the row-number column is not
+        // one of them, so it occupies no place in the list being sliced.
+        if (id === ROW_NUMBER_COLUMN_ID) continue
         const span = Number(th.getAttribute("colspan") ?? "1")
         under.set(id, leaves.slice(at, at + span))
         at += span

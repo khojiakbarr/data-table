@@ -552,6 +552,20 @@ describe("base palette", () => {
     }
   })
 
+  it("prints the row numbers at WCAG AA in both themes", () => {
+    // .dt-row-number is TEXT at the table's own font size — the row's
+    // position, which a user reads — so its floor is 4.5:1, not the 3:1 the
+    // affordances below settle for. It is checked against the striped
+    // surface as well as the plain one: half the rows are painted with
+    // --dt-row-stripe, and a number that only clears AA on the other half
+    // would be unreadable on every second row.
+    for (const theme of ["light", "dark"] as const) {
+      const fg = resolvedTokenValue("--dt-muted-fg", theme)
+      expect(contrastRatio(fg, resolvedTokenValue("--dt-bg", theme))).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(fg, resolvedTokenValue("--dt-row-stripe", theme))).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
   it("prints the column-panel drag handle at the WCAG 1.4.11 non-text minimum in both themes", () => {
     // .dt-drag-handle is the sole visual affordance for column reordering,
     // and now the only control that carries it for the keyboard too, so its

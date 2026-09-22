@@ -1,6 +1,6 @@
-import { useRef, type DragEventHandler, type ReactNode } from "react"
+import type { DragEventHandler, ReactNode } from "react"
 import { classNames } from "../core/classNames"
-import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
+import { useIndeterminate } from "../core/useIndeterminate"
 import type { DataTableLabels } from "../types"
 
 /**
@@ -86,18 +86,9 @@ export function ColumnGroupRow({
   onToggleVisibility,
   onToggleCollapse,
 }: ColumnGroupRowProps) {
-  const boxRef = useRef<HTMLInputElement>(null)
-
-  /*
-   * `indeterminate` is a property of the DOM node and nothing else — there is
-   * no attribute for it and no way to reach it from CSS — so React cannot
-   * carry it in the JSX and it has to be written to the element by hand. A
-   * layout effect rather than a passive one: it runs before paint, so a group
-   * that is half-shown is never drawn ticked for a frame first.
-   */
-  useIsomorphicLayoutEffect(() => {
-    if (boxRef.current) boxRef.current.indeterminate = indeterminate
-  }, [indeterminate])
+  // The third state is a DOM property with no attribute behind it; see
+  // {@link useIndeterminate}, which the selection column's header shares.
+  const boxRef = useIndeterminate(indeterminate)
 
   return (
     <div

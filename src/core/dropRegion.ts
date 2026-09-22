@@ -1,6 +1,7 @@
 import type { Column, ColumnPinningPosition, RowData } from "@tanstack/react-table"
 import type { DataTableFeatures } from "../useDataTable"
 import { isRowNumberColumn } from "./rowNumbers"
+import { isSelectionColumn } from "./selection"
 
 /**
  * The prefix a region nobody can share is spelled with.
@@ -30,6 +31,18 @@ const GROUP_COLUMN_REGION = `${SOLITARY_PREFIX}group-column`
  * all: it leads the table because the `rowNumbers` flag put it there.
  */
 const ROW_NUMBER_COLUMN_REGION = `${SOLITARY_PREFIX}row-number`
+
+/**
+ * The region the selection column is alone in.
+ *
+ * Word for word the row-number column's reason, one column further left: it
+ * is pinned to the start, so without this it would share `"|start"` with every
+ * other start-pinned column and be offered as a swap partner for them — a move
+ * the shell would then refuse, since the column is not one of the host's
+ * declarations. Its place is not the user's to set at all: it leads the table
+ * because the `selection` flag put it there.
+ */
+const SELECTION_COLUMN_REGION = `${SOLITARY_PREFIX}selection`
 
 /**
  * A group whose leaves straddle a pinning boundary: alone in a region of its
@@ -113,6 +126,7 @@ export function dropRegionOf<TData extends RowData>(
   column: Column<DataTableFeatures, TData, unknown>,
   groupColumnId: string | undefined,
 ): string {
+  if (isSelectionColumn(column.id)) return SELECTION_COLUMN_REGION
   if (isRowNumberColumn(column.id)) return ROW_NUMBER_COLUMN_REGION
   if (groupColumnId !== undefined && column.id === groupColumnId) return GROUP_COLUMN_REGION
   const pinned = pinnedSideOf(column)
@@ -129,8 +143,8 @@ export function dropRegionOf<TData extends RowData>(
  * does not deliver, made one step earlier.
  *
  * @param region - A key from {@link dropRegionOf}.
- * @returns False for the row-number column, for the group column, and for a
- *   group split by pinning.
+ * @returns False for the selection column, for the row-number column, for the
+ *   group column, and for a group split by pinning.
  *
  * @example
  * const canDrag = flags.reordering && isMovableRegion(dropRegionOf(column, groupId))

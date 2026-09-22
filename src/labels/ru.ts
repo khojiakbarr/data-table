@@ -199,4 +199,5 @@ export const ruLabels: DataTableLabels = {
       ? `Отфильтровано: ${count} ${plural(raw ?? 0, "строка", "строки", "строк")}`
       : `Отфильтровано: ${count} ${plural(raw ?? 0, "строка", "строки", "строк")} из ${total}`,
   statusBarGroupedBy: (columns) => `Группировка: ${columns.join(", ")}`,
+  totalsRow: "Итого",
 }

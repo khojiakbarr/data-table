@@ -182,4 +182,5 @@ export const uzLabels: DataTableLabels = {
   statusBarFiltered: (count, _raw, total) =>
     total === undefined ? `Filtrlangan: ${count} ta qator` : `Filtrlangan: ${count} / ${total} ta qator`,
   statusBarGroupedBy: (columns) => `Guruhlangan: ${columns.join(", ")}`,
+  totalsRow: "Jami",
 }

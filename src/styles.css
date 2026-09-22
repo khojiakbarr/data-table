@@ -569,6 +569,63 @@
   box-shadow: var(--dt-pin-shadow-end);
 }
 
+/*
+ * ---------- totals footer ----------
+ * A row under the body, holding whatever the host put under each column id.
+ * TotalsFooter.tsx computes none of it; this positions and aligns it.
+ */
+
+/*
+ * Sticky at the BOTTOM the way `.dt-th` is sticky at the top — every cell
+ * gets `position: sticky; bottom: 0` unconditionally, with no prop to turn it
+ * off, because a total that scrolls out of view is a total nobody reads.
+ *
+ * `.dt-td` already supplies the box model (padding, height, the border that
+ * separates one row from the next) that lines this row's columns up with the
+ * body's, so it is reused rather than duplicated — which is also what makes a
+ * host's own right-aligned money `<span>` come out aligned identically to a
+ * body cell's, with no alignment concept of its own for this rule to get
+ * wrong. `border-bottom` is dropped: this row is the last one in the
+ * `<table>`, the same reason `.dt-tr:last-child .dt-td` drops it.
+ */
+.dt-tfoot-td {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--dt-header-bg);
+  color: var(--dt-fg);
+  border-top: 1px solid var(--dt-border);
+  border-bottom: 0;
+}
+
+/*
+ * A pinned column's total stays pinned with it — `pinnedStyle` sets the same
+ * inline offset the body's own pinned cells get, and this only has to draw
+ * the fill and stack it correctly. The corner where a bottom-sticky row meets
+ * a horizontally-pinned column has to sit above every OTHER sticky-bottom
+ * cell scrolling underneath it, the same bump `.dt-th.dt-pinned` gets over a
+ * plain `.dt-th`. Both declarations here have to out-specify `.dt-td.dt-pinned`
+ * above, which is why they repeat the two classes rather than adding a third.
+ */
+.dt-tfoot-td.dt-pinned {
+  z-index: 4;
+  background: var(--dt-header-bg);
+}
+
+/*
+ * The leading cell's caption — `labels.totalsRow` — beside whatever total the
+ * host put under that same column, if any. `--dt-muted-fg` rather than a
+ * token of its own, for the row-number column's own reason: it already clears
+ * WCAG AA's 4.5:1 against `--dt-header-bg` in both palettes (themes.test.ts),
+ * and a new `--dt-*` token would be one more thing both shadcn presets have
+ * to map for a colour the palette already has.
+ */
+.dt-totals-label {
+  flex: none;
+  color: var(--dt-muted-fg);
+  font-weight: 500;
+}
+
 /* ---------- resizing ---------- */
 
 .dt-resizer {

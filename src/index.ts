@@ -120,6 +120,8 @@ export { TablePagination } from "./components/TablePagination"
 export { StatusBar } from "./components/StatusBar"
 export type { StatusBarProps } from "./components/StatusBar"
 export { SkeletonRows, TableStatus } from "./components/TableStatus"
+export { TotalsFooter } from "./components/TotalsFooter"
+export type { TotalsFooterProps } from "./components/TotalsFooter"
 
 /*
  * The filter model. Conditions are built by these constructors and never by

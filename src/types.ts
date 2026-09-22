@@ -564,6 +564,16 @@ export interface DataTableLabels extends CellEditingLabels {
    * way to say a column's name.
    */
   statusBarGroupedBy: (columns: string[]) => string
+  /**
+   * The totals row's leading cell, and the row's own accessible name.
+   *
+   * Both read this same string — see `TotalsFooter` — so a translation only
+   * has one word to get right ("Total", "Итого", "Jami") rather than two that
+   * could drift apart. A count is never spoken here: the row holds whatever
+   * `<DataTable totals>` was given, and this label only says what the row IS,
+   * not how many of anything there are.
+   */
+  totalsRow: string
 
   /* Cell editing, beyond the strings the editor and the menu carry themselves. */
   /**

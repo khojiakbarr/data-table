@@ -35,6 +35,7 @@ import { StatusBar } from "./StatusBar"
 import { TableBody } from "./TableBody"
 import { TablePagination } from "./TablePagination"
 import { SkeletonRows, TableStatus } from "./TableStatus"
+import { TotalsFooter } from "./TotalsFooter"
 
 /** English defaults; pass `labels` to translate. */
 export const defaultLabels: DataTableLabels = {
@@ -161,6 +162,7 @@ export const defaultLabels: DataTableLabels = {
   statusBarFiltered: (count, _raw, total) =>
     total === undefined ? `Filtered: ${count} rows` : `Filtered: ${count} of ${total} rows`,
   statusBarGroupedBy: (columns) => `Grouped by: ${columns.join(", ")}`,
+  totalsRow: "Total",
 }
 
 /**
@@ -239,6 +241,31 @@ export interface DataTableProps<TData extends RowData> {
    * )}
    */
   renderSelectionActions?: ((selection: SelectionSummary) => ReactNode) | undefined
+  /**
+   * A row under the body, holding a total for whichever columns you give one
+   * to — keyed by column id, aligned with the columns exactly as the header
+   * and the body are, pinning included.
+   *
+   * **This table computes none of it.** Summing the rows on screen and
+   * presenting that as the table's total is the same lie that forced row
+   * grouping to be server-side — a filtered or paged result would print a
+   * number describing only what happens to be rendered, which the user has no
+   * way to tell from the real one. Answer the query for your own total and
+   * pass the finished node; see the README's Totals footer section.
+   *
+   * Absent renders no `<tfoot>` at all. `{}` still renders the row — with
+   * only its caption in it — which is what you want while an asynchronous
+   * total has not answered yet, so the row does not pop into existence (and
+   * shift the body by a row's height) the moment it does.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`: whether a
+   * table has a totals row is usually a condition at the call site
+   * (`totals={showTotals ? { amount: total } : undefined}`).
+   *
+   * @example
+   * <DataTable instance={table} totals={{ amount: formatMoney(page.amountTotal) }} />
+   */
+  totals?: Record<string, ReactNode> | undefined
   /** Shown instead of rows when there are none. */
   emptyState?: ReactNode
   /**
@@ -422,6 +449,7 @@ export function DataTable<TData extends RowData>({
   toolbar = true,
   toolbarContent,
   renderSelectionActions,
+  totals,
   emptyState,
   renderDetail,
   labels: labelOverrides,
@@ -965,6 +993,10 @@ export function DataTable<TData extends RowData>({
                 onRowClick={onRowClick}
                 editing={editing}
               />
+            )}
+
+            {totals === undefined ? null : (
+              <TotalsFooter instance={instance} totals={totals} labels={labels} />
             )}
           </table>
 

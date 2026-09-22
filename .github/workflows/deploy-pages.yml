@@ -1,0 +1,86 @@
+name: Deploy playground to GitHub Pages
+
+# Deploys the playground demo (vite.demo.config.ts) to
+# https://khojiakbarr.github.io/data-table/ whenever main changes, plus
+# workflow_dispatch so it can be re-run by hand without an empty commit.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Minimum permissions for the official Pages deploy flow: read the repo,
+# write the Pages deployment, and mint the OIDC token deploy-pages needs
+# to authenticate — nothing else. Shape taken from GitHub's own
+# actions/starter-workflows "Deploy static content to Pages" template.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; don't cancel one that's already
+# rolling out, so a production deploy always finishes instead of being
+# pre-empted by the next push. Also from the official starter workflow.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # pnpm/setup installs pnpm itself *and* Node in one step (no separate
+      # actions/setup-node needed) and reads packageManager/devEngines from
+      # package.json when present. This repo doesn't declare either, so the
+      # pnpm major is pinned explicitly below to match what generated
+      # pnpm-lock.yaml (lockfileVersion 9.0, unchanged across pnpm 9-12) —
+      # avoid changing this without checking the lockfile stays compatible.
+      - name: Setup pnpm and Node
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        with:
+          version: 11
+          runtime: node@24
+          cache: true
+          require-lockfile: true
+
+      # Gate the deploy on the same checks the repo already requires before
+      # a commit lands (typecheck clean, tests green). Building and
+      # publishing a broken commit would put a broken demo live with no
+      # warning, since Pages deploys are not reviewed like a PR is.
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build demo
+        run: pnpm run build:demo
+
+      # GitHub Pages runs uploaded content through Jekyll by default, which
+      # silently drops any path starting with an underscore. The demo build
+      # doesn't currently emit any, but future asset hashing / chunk naming
+      # could, so disable Jekyll processing unconditionally rather than
+      # relying on today's output shape.
+      - name: Disable Jekyll processing
+        run: touch demo-dist/.nojekyll
+
+      - name: Setup Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: demo-dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

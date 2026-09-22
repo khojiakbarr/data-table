@@ -1,6 +1,6 @@
 # Changelog
 
-Notable changes to `@khojiakbarr/data-table`. This file starts at 0.5.0; earlier
+Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
 ## Unreleased

@@ -15,7 +15,7 @@ import type { Language } from "./playgroundState"
 const LOGO_URL = `${import.meta.env.BASE_URL}assets/logo.svg`
 
 const GITHUB_URL = "https://github.com/khojiakbarr/data-table"
-const NPM_URL = "https://www.npmjs.com/package/@khojiakbarr/data-table"
+const NPM_URL = "https://www.npmjs.com/package/@hojiakbar_dev/data-table"
 
 /** The arrow every outbound link carries, so "GitHub" reads as leaving the page. */
 function ExternalArrow() {
@@ -74,7 +74,7 @@ export function PlaygroundHeader({ language, onLanguageChange, chrome }: Playgro
           />
           <div className="pg-brand-text">
             {/* The package name is a proper noun — it is not translated. */}
-            <h1 className="pg-wordmark">@khojiakbarr/data-table</h1>
+            <h1 className="pg-wordmark">@hojiakbar_dev/data-table</h1>
             <p className="pg-tagline">{chrome.header.tagline}</p>
           </div>
         </div>

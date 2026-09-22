@@ -89,7 +89,7 @@ describe("playground", () => {
   it("renders and fills the table from the fake server", async () => {
     render(<Playground />)
 
-    expect(screen.getByRole("heading", { name: "@khojiakbarr/data-table" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "@hojiakbar_dev/data-table" })).toBeInTheDocument()
     await waitForRows()
 
     // The total comes from the server's answer, not from the rows on screen:

@@ -8,7 +8,7 @@
 
 <img src="https://raw.githubusercontent.com/khojiakbarr/data-table/main/public/assets/logo.svg" width="84" alt="">
 
-# @khojiakbarr/data-table
+# @hojiakbar_dev/data-table
 
 **A React data table people can rearrange — and that remembers how they left it.**
 
@@ -40,7 +40,7 @@ page and asks your code to commit an edit. It never writes to its own data, whic
 lets one table sit in front of a hundred thousand rows it has never seen.
 
 ```bash
-npm i @khojiakbarr/data-table @tanstack/react-table @tanstack/react-virtual
+npm i @hojiakbar_dev/data-table @tanstack/react-table @tanstack/react-virtual
 ```
 
 <details>
@@ -58,8 +58,8 @@ npm i @khojiakbarr/data-table @tanstack/react-table @tanstack/react-virtual
 </details>
 
 ```tsx
-import { DataTable, useDataTable, localStorageLayout } from "@khojiakbarr/data-table"
-import "@khojiakbarr/data-table/styles.css"
+import { DataTable, useDataTable, localStorageLayout } from "@hojiakbar_dev/data-table"
+import "@hojiakbar_dev/data-table/styles.css"
 
 function Receipts({ data, columns }) {
   const table = useDataTable({
@@ -969,7 +969,7 @@ Give every table in your application a distinct `id` and the problem cannot occu
 By default nothing is stored — a table resets when it unmounts.
 
 ```tsx
-import { localStorageLayout } from "@khojiakbarr/data-table"
+import { localStorageLayout } from "@hojiakbar_dev/data-table"
 
 useDataTable({ id: "receipts", storage: localStorageLayout(), /* … */ })
 ```
@@ -1093,10 +1093,10 @@ base stylesheet and the table follows the host's palette, radius, font and
 dark mode:
 
 ```tsx
-import "@khojiakbarr/data-table/styles.css"
-import "@khojiakbarr/data-table/themes/shadcn.css"      // Tailwind v4 / oklch variables
+import "@hojiakbar_dev/data-table/styles.css"
+import "@hojiakbar_dev/data-table/themes/shadcn.css"      // Tailwind v4 / oklch variables
 // or
-import "@khojiakbarr/data-table/themes/shadcn-hsl.css"  // hsl(var(--x)) variables
+import "@hojiakbar_dev/data-table/themes/shadcn-hsl.css"  // hsl(var(--x)) variables
 ```
 
 Pick by how your shadcn variables are written. A complete colour such as
@@ -1180,7 +1180,7 @@ MUI gets a function rather than a stylesheet:
 
 ```tsx
 import { useTheme } from "@mui/material"
-import { muiTokens } from "@khojiakbarr/data-table"
+import { muiTokens } from "@hojiakbar_dev/data-table"
 
 const theme = useTheme()
 return <DataTable instance={table} style={muiTokens(theme)} />
@@ -1274,7 +1274,7 @@ the tint strength MUI itself stated. Two cases worth knowing:
 additions, so you can render whatever markup you need and keep the behaviour:
 
 ```tsx
-import { useDataTable, pinnedStyle, renderedLeafColumns } from "@khojiakbarr/data-table"
+import { useDataTable, pinnedStyle, renderedLeafColumns } from "@hojiakbar_dev/data-table"
 
 const { table } = useDataTable({ id: "receipts", data, columns })
 
@@ -1325,7 +1325,7 @@ whole page:
 
 ```tsx
 import type { Row } from "@tanstack/react-table"
-import type { DataTableFeatures } from "@khojiakbarr/data-table"
+import type { DataTableFeatures } from "@hojiakbar_dev/data-table"
 
 // `useCallback`'s own type parameter is inferred from the arrow, not from
 // `isDetailOpen`'s contextual type, so `row` needs an explicit annotation —
@@ -1370,7 +1370,7 @@ set, shipped so those two hosts do not have to translate 100-odd keys by hand.
 Pass one straight through:
 
 ```tsx
-import { DataTable, ruLabels, uzLabels } from "@khojiakbarr/data-table"
+import { DataTable, ruLabels, uzLabels } from "@hojiakbar_dev/data-table"
 
 <DataTable instance={instance} labels={ruLabels} />
 

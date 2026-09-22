@@ -2308,8 +2308,8 @@ Run: `pnpm vitest run src/themes/themes.test.ts` — expected FAIL (files missin
  * shadcn/ui preset — for hosts whose shadcn variables hold complete colours
  * (Tailwind v4 / oklch). Import AFTER the base stylesheet:
  *
- *   import "@khojiakbarr/data-table/styles.css"
- *   import "@khojiakbarr/data-table/themes/shadcn.css"
+ *   import "@hojiakbar_dev/data-table/styles.css"
+ *   import "@hojiakbar_dev/data-table/themes/shadcn.css"
  *
  * Dark mode is the host's: shadcn swaps its variables on `.dark`, and these
  * rules follow under every table theme state. The selectors match or exceed
@@ -2638,10 +2638,10 @@ base stylesheet and the table follows the host's palette, radius, font and
 dark mode:
 
 ```tsx
-import "@khojiakbarr/data-table/styles.css"
-import "@khojiakbarr/data-table/themes/shadcn.css"      // Tailwind v4 / oklch variables
+import "@hojiakbar_dev/data-table/styles.css"
+import "@hojiakbar_dev/data-table/themes/shadcn.css"      // Tailwind v4 / oklch variables
 // or
-import "@khojiakbarr/data-table/themes/shadcn-hsl.css"  // hsl(var(--x)) variables
+import "@hojiakbar_dev/data-table/themes/shadcn-hsl.css"  // hsl(var(--x)) variables
 ```
 ```
 

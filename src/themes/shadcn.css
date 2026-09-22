@@ -2,8 +2,8 @@
  * shadcn/ui preset — for hosts whose shadcn variables hold complete colours
  * (Tailwind v4 / oklch). Import AFTER the base stylesheet:
  *
- *   import "@khojiakbarr/data-table/styles.css"
- *   import "@khojiakbarr/data-table/themes/shadcn.css"
+ *   import "@hojiakbar_dev/data-table/styles.css"
+ *   import "@hojiakbar_dev/data-table/themes/shadcn.css"
  *
  * Dark mode is the host's: shadcn swaps its variables on `.dark`, so the same
  * `var(--x)` reference below resolves to the right colour in either mode

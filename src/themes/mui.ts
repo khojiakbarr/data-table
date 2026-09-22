@@ -211,7 +211,7 @@ const tint = (neutral: string, opacity: number): string =>
  *
  * @example
  * import { useTheme } from "@mui/material"
- * import { muiTokens } from "@khojiakbarr/data-table"
+ * import { muiTokens } from "@hojiakbar_dev/data-table"
  *
  * const theme = useTheme()
  * return <DataTable instance={table} style={muiTokens(theme)} />

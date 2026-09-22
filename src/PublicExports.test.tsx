@@ -22,7 +22,7 @@ const columns = [helper.accessor("name", { header: "Name", size: 100 })]
 describe("public API surface", () => {
   it("exports TableStatus and SkeletonRows alongside TablePagination", () => {
     // Not merely typed as exported — actually present on the runtime barrel,
-    // the way a `@khojiakbarr/data-table` import resolves for a consumer.
+    // the way a `@hojiakbar_dev/data-table` import resolves for a consumer.
     expect(publicApi.TableStatus).toBeTypeOf("function")
     expect(publicApi.SkeletonRows).toBeTypeOf("function")
     expect(publicApi.TablePagination).toBeTypeOf("function")

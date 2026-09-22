@@ -1,6 +1,6 @@
 # Stage 1 — Row virtualisation, server-side data model, pagination, shadcn theme
 
-Date: 2026-09-15 · Package: `@khojiakbarr/data-table` · Target version: 0.4.0
+Date: 2026-09-15 · Package: `@hojiakbar_dev/data-table` · Target version: 0.4.0
 
 ## Goal
 
@@ -237,9 +237,9 @@ Loading takes precedence over empty, error over loading, as in AG Grid.
 
 Two CSS files are shipped and exported from the package:
 
-- `@khojiakbarr/data-table/themes/shadcn.css` — for hosts whose shadcn
+- `@hojiakbar_dev/data-table/themes/shadcn.css` — for hosts whose shadcn
   variables are complete colours (Tailwind v4 / oklch era): `var(--background)`.
-- `@khojiakbarr/data-table/themes/shadcn-hsl.css` — for the older
+- `@hojiakbar_dev/data-table/themes/shadcn-hsl.css` — for the older
   channel-triplet format: `hsl(var(--background))`.
 
 Mapping:

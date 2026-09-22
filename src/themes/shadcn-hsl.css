@@ -48,6 +48,17 @@
  * existed. `--table-row-selected` is not read: this table has no
  * row-selection feature for it to colour.
  *
+ * The chain refines a shadcn palette; it does not replace one. Everything a
+ * `--table-*` token does not name still reads `--background`, `--foreground`,
+ * `--muted`, `--muted-foreground`, `--border`, `--primary` and
+ * `--primary-foreground` directly, with no fallback of its own. So a host that
+ * brings ONLY the `--table-*` group gets no palette at all rather than a
+ * partial one: the unnamed tokens resolve to the empty string, body cells
+ * paint transparent over whatever is behind them, and `--dt-border` inherits
+ * the text colour. Import this preset over a complete shadcn variable set. A
+ * design system that names its table surfaces but not the shadcn roles should
+ * set the `--dt-*` tokens directly instead — that is what they are for.
+ *
  * The chain is shaped differently here than in `shadcn.css`, and the shape is
  * load-bearing. The `hsl()` wrapper belongs to the SHADCN variable, not to the
  * chain — it is what turns that host's bare channel triplet into a colour —

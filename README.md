@@ -939,6 +939,16 @@ Define none of them and nothing changes — every fallback fires and the output
 is what it was before these existed. Define some and only those move. There is
 no second import and no flag.
 
+These tokens *refine* a shadcn palette; they do not replace one. Everything
+they do not name still reads `--background`, `--foreground`, `--muted`,
+`--muted-foreground`, `--border` and `--primary` directly, with no fallback of
+its own — so a host that defines the `--table-*` group and none of the shadcn
+variables gets **no palette at all**, not a partial one: cells paint
+transparent and the border colour collapses onto the text colour. Reach for a
+preset only over a complete shadcn variable set. If your design system names
+its table surfaces but not the shadcn roles, set the `--dt-*` tokens yourself
+on `.dt-root` and skip the preset entirely.
+
 `--table-row-selected` is not read: this table has no row-selection feature for
 it to colour, so mapping it would publish a token that paints nothing.
 

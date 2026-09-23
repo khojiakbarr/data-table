@@ -99,6 +99,11 @@ describe("grouping: false, in server mode", () => {
     expect(result.current.query.expanded).toEqual([])
     expect(warn).toHaveBeenCalledTimes(1)
     expect(warn.mock.calls[0]?.[0]).toContain("grp-flag-warn")
+    // The advice has to fit the situation: this host is already in server mode
+    // and switched grouping off on purpose, so "pass mode: server" would be a
+    // fix that changes nothing.
+    expect(warn.mock.calls[0]?.[0]).toContain("features.grouping is false")
+    expect(warn.mock.calls[0]?.[0]).not.toContain("client mode")
     warn.mockRestore()
   })
 

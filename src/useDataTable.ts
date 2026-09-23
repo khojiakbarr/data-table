@@ -790,10 +790,21 @@ export function useDataTable<TData extends RowData>({
     (updater: Updater<TableLayout["grouping"]>) => {
       if (!groupingEnabled) {
         if (process.env.NODE_ENV !== "production") {
+          /*
+           * Two different reasons end up here, and they need different advice.
+           * A client table is told to switch to server mode; a server table
+           * that turned the flag off must NOT be told that — it is already in
+           * server mode, the host switched grouping off on purpose, and the
+           * advice would send them looking for a fix that changes nothing.
+           */
           warnOnce(
-            `useDataTable("${id}"): grouping is server-side and was ignored in client mode. ` +
-              `Grouping one page of rows would report counts for the page rather than for the table. ` +
-              `Pass mode: "server" and answer query.grouping.`,
+            isServer
+              ? `useDataTable("${id}"): grouping was ignored because features.grouping is false. ` +
+                  `The flag is for a backend that cannot group, so the table never sends a grouping ` +
+                  `it would answer with plain rows. Remove the flag if your backend answers query.grouping.`
+              : `useDataTable("${id}"): grouping is server-side and was ignored in client mode. ` +
+                  `Grouping one page of rows would report counts for the page rather than for the table. ` +
+                  `Pass mode: "server" and answer query.grouping.`,
           )
         }
         return
@@ -804,7 +815,7 @@ export function useDataTable<TData extends RowData>({
       ])
       resetPage()
     },
-    [groupingEnabled, id, updateSlices, columnIds, resetPage],
+    [groupingEnabled, isServer, id, updateSlices, columnIds, resetPage],
   )
 
   /**

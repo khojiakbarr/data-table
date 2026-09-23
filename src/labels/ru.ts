@@ -105,6 +105,8 @@ export const ruLabels: DataTableLabels = {
     count === undefined
       ? "Выбрать все строки"
       : `Выбрать все ${count} ${plural(raw ?? 0, "строку", "строки", "строк")}`,
+  // No count in it, so nothing to agree with: the page is in front of the user.
+  selectAllRowsOnPage: "Выбрать все строки на этой странице",
   expandRow: "Развернуть строку",
   collapseRow: "Свернуть строку",
   columnActions: "Действия со столбцом",

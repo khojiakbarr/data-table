@@ -191,22 +191,33 @@ export { ROW_NUMBER_COLUMN_ID, isRowNumberColumn, rowNumberAt } from "./core/row
  * its own has to answer the same two questions the built-in body does: which
  * cell is the checkbox's, and whether this row is in the selection.
  * `useSelection` is the hook behind `instance.selection`, including the
- * query-change reset that makes the whole thing safe.
+ * query-change reset that makes the whole thing safe. `headerScopeOf`,
+ * `pageHeaderState` and `withPageRows` are the page-scoped header checkbox:
+ * what it reaches, how it draws itself, and what one tick does.
  */
 export {
   ALL_MATCHING_SELECTION,
   EMPTY_SELECTION,
   SELECTION_COLUMN_ID,
   SELECTION_COLUMN_WIDTH,
+  headerScopeOf,
   isRowSelected,
   isSelectionColumn,
   isSelectionEmpty,
+  isSelectionEnabled,
+  pageHeaderState,
   selectionColumnDef,
   selectionCount,
   selectionScopeOf,
+  withPageRows,
   withRow,
 } from "./core/selection"
-export type { SelectionModel } from "./core/selection"
+export type {
+  SelectionFeature,
+  SelectionHeaderScope,
+  SelectionModel,
+  SelectionOptions,
+} from "./core/selection"
 export { useSelection } from "./core/useSelection"
 export type {
   SelectionApi,

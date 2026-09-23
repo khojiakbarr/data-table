@@ -141,18 +141,26 @@ export function HeaderCell<TData extends RowData>({
    */
   const isSelection = isSelectionColumn(column.id)
   /*
-   * What the header checkbox says it will take: the rows the QUERY matches,
-   * not the rows on screen. Pre-formatted the way every other count this
+   * What the header checkbox says it will take: the rows the QUERY matches —
+   * or, in `"page"` header scope, the rows of this page, which is a different
+   * sentence rather than the same one with a smaller number in it.
+   * Pre-formatted the way every other count this
    * table speaks is, and `undefined` — not "…" — while a server has not
    * answered, because the label's job in that window is to leave the number
    * out rather than to print a placeholder into a spoken sentence.
    */
-  const selectAllName = labels.selectAllRows(
-    selection === undefined || selection.rowsMatching === undefined
-      ? undefined
-      : formatCount(selection.rowsMatching),
-    selection?.rowsMatching,
-  )
+  const selectAllName =
+    selection?.headerScope === "page"
+      ? // A header that reaches one page says so. The count is left out
+        // entirely here: the page is in front of the user, and "all 50" would
+        // be the one number a user cannot check against what the tick did.
+        labels.selectAllRowsOnPage
+      : labels.selectAllRows(
+          selection === undefined || selection.rowsMatching === undefined
+            ? undefined
+            : formatCount(selection.rowsMatching),
+          selection?.rowsMatching,
+        )
 
   const pinning = headerPinning(header)
   const pinned = pinning.side

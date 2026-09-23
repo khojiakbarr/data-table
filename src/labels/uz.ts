@@ -85,6 +85,7 @@ export const uzLabels: DataTableLabels = {
   selectRow: (row) => `${row}-qatorni tanlash`,
   selectAllRows: (count) =>
     count === undefined ? "Barcha qatorlarni tanlash" : `Barcha ${count} ta qatorni tanlash`,
+  selectAllRowsOnPage: "Shu sahifadagi barcha qatorlarni tanlash",
   expandRow: "Qatorni ochish",
   collapseRow: "Qatorni yopish",
   columnActions: "Ustun amallari",

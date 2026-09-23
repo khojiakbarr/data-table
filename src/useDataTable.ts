@@ -37,7 +37,12 @@ import {
   rowNumberColumnDef,
   rowNumberColumnWidth,
 } from "./core/rowNumbers"
-import { SELECTION_COLUMN_ID, selectionColumnDef } from "./core/selection"
+import {
+  SELECTION_COLUMN_ID,
+  headerScopeOf,
+  isSelectionEnabled,
+  selectionColumnDef,
+} from "./core/selection"
 import { useSelection, type SelectionChange } from "./core/useSelection"
 import { filterFn_dt } from "./core/filterFn"
 import { collectFilterKinds } from "./core/filterKinds"
@@ -492,6 +497,16 @@ export function useDataTable<TData extends RowData>({
     [features],
   )
 
+  /*
+   * The two halves of `features.selection`, which is a flag OR a flag with
+   * options: whether rows are selectable at all, and what the header checkbox
+   * reaches. Read once here so nothing downstream has to know the flag has two
+   * shapes — and note that `headerScopeOf`'s "scope" is the reach of that one
+   * control, not the query scope a selection is cleared by (`selectionScopeOf`).
+   */
+  const selectionEnabled = isSelectionEnabled(flags.selection)
+  const headerSelectionScope = headerScopeOf(flags.selection)
+
   const store = useMemo(() => storage ?? noLayoutStorage(), [storage])
 
   const columnIds = useMemo(() => leafIdsOf(columns), [columns])
@@ -885,8 +900,8 @@ export function useDataTable<TData extends RowData>({
    * widest thing in it and does not grow with the row count.
    */
   const selectionDef = useMemo(
-    () => (flags.selection ? selectionColumnDef<TData>() : null),
-    [flags.selection],
+    () => (selectionEnabled ? selectionColumnDef<TData>() : null),
+    [selectionEnabled],
   )
 
   /*
@@ -987,12 +1002,12 @@ export function useDataTable<TData extends RowData>({
      * rendered from these arrays rather than from the flat order.
      */
     const lead = [
-      ...(flags.selection ? [SELECTION_COLUMN_ID] : []),
+      ...(selectionEnabled ? [SELECTION_COLUMN_ID] : []),
       ...(flags.rowNumbers ? [ROW_NUMBER_COLUMN_ID] : []),
     ]
     if (lead.length === 0) return grouped
     return { ...grouped, start: [...lead, ...grouped.start] }
-  }, [groupColumnId, layout.columnPinning, flags.rowNumbers, flags.selection])
+  }, [groupColumnId, layout.columnPinning, flags.rowNumbers, selectionEnabled])
 
   /*
    * Widths as the table renders them: the user's own, with a floor under the
@@ -1777,12 +1792,33 @@ export function useDataTable<TData extends RowData>({
    * restored from last week, against a query that has since changed, is the
    * query-change failure wearing a hat.
    */
+  /*
+   * The rows a `"page"`-scoped header checkbox reaches: the ones the body is
+   * about to draw a checkbox on, which is not the same list as the ones it is
+   * about to draw. Group headers are left out — a group stands for children
+   * the browser does not hold, so `BodyRow` gives it no checkbox — and a page
+   * that is all group headers therefore leaves nothing for the header to take.
+   *
+   * Undefined in the default header scope, so a table whose header means
+   * "everything matching" never walks its row model for a list nothing reads.
+   */
+  const pageRows = table.getRowModel().rows
+  const pageRowIds = useMemo(
+    () =>
+      headerSelectionScope === "page"
+        ? pageRows.filter((row) => !isGroupRow(row.original)).map((row) => row.id)
+        : undefined,
+    [headerSelectionScope, pageRows],
+  )
+
   const selection = useSelection({
     id,
-    enabled: flags.selection,
+    enabled: selectionEnabled,
     query,
     rowCount: selectableCount,
     hasRowId: getRowId !== undefined,
+    headerScope: headerSelectionScope,
+    pageRowIds,
     onSelectionChange,
   })
 

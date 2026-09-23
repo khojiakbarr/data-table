@@ -5,12 +5,24 @@ import {
   EMPTY_SELECTION,
   isRowSelected,
   isSelectionEmpty,
+  pageHeaderState,
   selectionCount,
   selectionScopeOf,
+  withPageRows,
   withRow,
+  type SelectionHeaderScope,
   type SelectionModel,
 } from "./selection"
 import { warnOnce } from "./warnOnce"
+
+/**
+ * "This table's header checkbox reaches no page", at module scope.
+ *
+ * One frozen array rather than a fresh literal per render: a table in the
+ * default header scope never looks at a page, and a new-but-empty array would
+ * rebuild memos that have no reason to move.
+ */
+const NO_PAGE_ROWS: readonly string[] = Object.freeze([])
 
 /**
  * What a host is told when the selection changes.
@@ -48,6 +60,13 @@ export interface SelectionSummary extends SelectionChange {
 export interface SelectionApi {
   /** Whether this table selects rows at all — the `selection` feature flag. */
   enabled: boolean
+  /**
+   * What the header checkbox reaches. `"all-matching"` unless the host asked
+   * for `features.selection: { scope: "page" }`. It is what names that
+   * checkbox — the two scopes do different things and must not say the same
+   * sentence — and NOT the query scope a selection is cleared by.
+   */
+  headerScope: SelectionHeaderScope
   /** The selection itself. Always `EMPTY_SELECTION` while `enabled` is false. */
   model: SelectionModel
   /** How many rows are selected; undefined while `all-matching` has no count yet. */
@@ -66,12 +85,22 @@ export interface SelectionApi {
   isRowSelected: (rowId: string) => boolean
   /** Tick or untick one row. */
   toggleRow: (rowId: string, selected: boolean) => void
-  /** The header checkbox: `true` takes everything the query matches. */
+  /**
+   * The header checkbox. In the default header scope `true` takes everything
+   * the query matches; in `"page"` scope it takes the selectable rows of the
+   * current page and adds them to whatever was already selected.
+   */
   toggleAll: (selected: boolean) => void
   clear: () => void
-  /** The header checkbox is ticked: everything, with nothing taken back out. */
+  /**
+   * The header checkbox is ticked: everything with nothing taken back out, or
+   * — in `"page"` header scope — every selectable row of the current page.
+   */
   headerChecked: boolean
-  /** Something is selected, but not everything. */
+  /**
+   * Some of what the header checkbox reaches is selected, but not all of it.
+   * In `"page"` scope that question is asked about THIS page alone.
+   */
   headerIndeterminate: boolean
   /** The selection as a host reads it, with `clear` attached. */
   summary: SelectionSummary
@@ -96,6 +125,19 @@ export interface UseSelectionOptions {
   rowCount: number | undefined
   /** Whether the host supplied `getRowId`; see the warning below. */
   hasRowId: boolean
+  /**
+   * What the header checkbox reaches — NOT the query scope of
+   * `selectionScopeOf`. Omitted, it is `"all-matching"`: the behaviour this
+   * library shipped with. See {@link SelectionHeaderScope}.
+   */
+  headerScope?: SelectionHeaderScope | undefined
+  /**
+   * The ids of the SELECTABLE rows on the current page, in page order — group
+   * headers left out, because a group stands for children the browser does not
+   * hold. Read only in `"page"` header scope, where it is what the header
+   * checkbox ticks and what its three states are read over.
+   */
+  pageRowIds?: readonly string[] | undefined
   onSelectionChange?: ((selection: SelectionChange) => void) | undefined
 }
 
@@ -126,6 +168,13 @@ export interface UseSelectionOptions {
  * set during render, and the component re-renders before anything is painted
  * or any effect runs.
  *
+ * **The header scope.** `headerScope` decides what the header checkbox
+ * reaches, and nothing else — it is not the query scope of
+ * `selectionScopeOf`, which decides when a selection is cleared and is
+ * unchanged by it. `"page"` makes `all-matching` unreachable: `toggleAll`
+ * answers in ids, and a model that arrived in that mode from outside is read
+ * as nothing rather than honoured.
+ *
  * **The publish.** `onSelectionChange` fires whenever any part of what a host
  * receives changes — the model, the query it is relative to, or the count —
  * and never on mount, where there is nothing to report and `onQueryChange` has
@@ -146,6 +195,8 @@ export function useSelection({
   query,
   rowCount,
   hasRowId,
+  headerScope = "all-matching",
+  pageRowIds = NO_PAGE_ROWS,
   onSelectionChange,
 }: UseSelectionOptions): SelectionApi {
   const [model, setModel] = useState<SelectionModel>(EMPTY_SELECTION)
@@ -165,12 +216,58 @@ export function useSelection({
   }
 
   /*
+   * The page's ids, held by VALUE rather than by identity.
+   *
+   * The array arrives rebuilt on renders where the page did not change — a
+   * row model recomputed, a host re-rendering — and it feeds the memo every
+   * reader of this hook is handed. Keying the memos on the contents instead
+   * means a table whose page has not moved hands back the same object, and a
+   * table in the default header scope is given the module-level empty array
+   * and so never keys on anything at all.
+   */
+  const pageKey = pageRowIds.join("\u001f")
+  const pageKeyRef = useRef(pageKey)
+  const pageIdsRef = useRef(pageRowIds)
+  if (pageKeyRef.current !== pageKey) {
+    pageKeyRef.current = pageKey
+    pageIdsRef.current = pageRowIds
+  }
+  const pageIds = pageIdsRef.current
+
+  /*
+   * An `all-matching` model while the header checkbox only reaches a page.
+   *
+   * No control and no action in this header scope produces one — `toggleAll`
+   * answers in ids — so it can only have been put here from outside: a host
+   * flipping `scope` to "page" while an all-matching selection was live, or a
+   * model restored from somewhere. Honouring it would show "all 5 000 rows
+   * selected" to a user whose host can only act on ids, which is the exact
+   * promise this header scope exists to stop the table making. So it is
+   * treated as no selection, said out loud in development, and cleared from
+   * state as a render-phase adjustment for the same reason the query-change
+   * reset is one: an effect would leave a commit in which a bulk action could
+   * fire against it.
+   */
+  const strayAllMatching = enabled && headerScope === "page" && model.mode === "all-matching"
+  if (strayAllMatching) {
+    setModel(EMPTY_SELECTION)
+    if (process.env.NODE_ENV !== "production") {
+      warnOnce(
+        `useDataTable("${id}"): features.selection scope "page" was given an ` +
+          `all-matching selection, which no header tick in this scope can produce — it would ` +
+          `promise the user every matching row while the host can only act on the ids it holds, ` +
+          `so it is being read as no selection.`,
+      )
+    }
+  }
+
+  /*
    * A selection switched off has none, whatever was ticked before the flag
    * moved. Read here rather than guarded at each mutator: this is the one
    * place every reader goes through, so there is no path that renders a
    * checkbox for a table that does not select.
    */
-  const current = enabled ? model : EMPTY_SELECTION
+  const current = enabled && !strayAllMatching ? model : EMPTY_SELECTION
 
   const clear = useCallback(() => setModel(EMPTY_SELECTION), [])
   const toggleRow = useCallback(
@@ -178,8 +275,19 @@ export function useSelection({
     [],
   )
   const toggleAll = useCallback(
-    (selected: boolean) => setModel(selected ? ALL_MATCHING_SELECTION : EMPTY_SELECTION),
-    [],
+    (selected: boolean) =>
+      setModel((prev) =>
+        headerScope === "page"
+          ? withPageRows(prev, pageIds, selected)
+          : selected
+            ? ALL_MATCHING_SELECTION
+            : EMPTY_SELECTION,
+      ),
+    // `pageKey` and not `pageIds`: the contents are what this closure needs to
+    // be rebuilt for, and the identity alone changes on renders that moved no
+    // row. In the default header scope both are constant.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pageKey stands for pageIds
+    [headerScope, pageKey],
   )
 
   const count = selectionCount(current, rowCount)
@@ -247,11 +355,20 @@ export function useSelection({
    */
   return useMemo<SelectionApi>(() => {
     const empty = isSelectionEmpty(current)
-    // Everything, with nothing taken back out — the only state the header's
-    // own checkbox is ticked in.
-    const headerChecked = current.mode === "all-matching" && current.excluded.length === 0
+    /*
+     * The header checkbox's state, which is a different question in each
+     * header scope. Reaching every matching row, it is ticked only for
+     * everything with nothing taken back out. Reaching a page, it is ticked
+     * when every selectable row of THIS page is selected — see
+     * `pageHeaderState`, which is also why a user holding page 1's ids sees an
+     * unchecked box on page 2 rather than an indeterminate one.
+     */
+    const page = headerScope === "page" ? pageHeaderState(current, pageIds) : null
+    const headerChecked =
+      page !== null ? page.checked : current.mode === "all-matching" && current.excluded.length === 0
     return {
       enabled,
+      headerScope,
       model: current,
       count,
       rowsMatching: rowCount,
@@ -267,8 +384,10 @@ export function useSelection({
        * one a mode-blind check misses, and it is the state a user is in right
        * after unticking one row of an all-matching selection.
        */
-      headerIndeterminate: !empty && !headerChecked,
+      headerIndeterminate: page !== null ? page.indeterminate : !empty && !headerChecked,
       summary,
     }
-  }, [enabled, current, count, rowCount, toggleRow, toggleAll, clear, summary])
+    // `pageKey` stands for `pageIds` here for the reason `toggleAll` gives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pageKey stands for pageIds
+  }, [enabled, current, count, rowCount, toggleRow, toggleAll, clear, summary, headerScope, pageKey])
 }

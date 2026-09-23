@@ -6,7 +6,7 @@ import type { FilterValue } from "./core/filters"
 import { formatCount } from "./core/formatCount"
 import type { GroupRow } from "./core/grouping"
 import type { TableQuery } from "./core/query"
-import { SELECTION_COLUMN_ID } from "./core/selection"
+import { SELECTION_COLUMN_ID, type SelectionFeature } from "./core/selection"
 import type { SelectionChange } from "./core/useSelection"
 import { useDataTable, type DataTableFeatures, type DataTableInstance } from "./useDataTable"
 import type { LayoutStorage, TableLayout } from "./types"
@@ -54,7 +54,8 @@ interface HarnessProps {
   id?: string
   data?: (Row | GroupRow)[]
   server?: boolean
-  selection?: boolean
+  /** `true` is the default header scope; an object is the long form. */
+  selection?: SelectionFeature
   rowNumbers?: boolean
   /** Left out on purpose by the one case that checks the dev warning. */
   withRowId?: boolean
@@ -623,5 +624,214 @@ describe("the selection column inside the built-in shell", () => {
     )
     fireEvent.click(nameCell)
     expect(onRowClick).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("a header checkbox scoped to the page", () => {
+  /** The same table, with the header checkbox narrowed to the current page. */
+  const pageScoped = { scope: "page" } as const
+
+  it("names itself after what it actually does", () => {
+    render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    // Not "Select all 100 000 rows": this tick reaches three of them, and the
+    // whole reason the scope exists is that the host cannot honour the other
+    // 99 997.
+    expect(headerBox().getAttribute("aria-label")).toBe("Select all rows on this page")
+  })
+
+  it("ticks this page's rows as ids, never as `all-matching`", () => {
+    render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    fireEvent.click(headerBox())
+
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0", "r1", "r2"] })
+    // Three, and it is known at once: nothing here waits for a `rowCount`.
+    expect(latest?.selection.count).toBe(3)
+    expect(lastAnnounced()).toMatchObject({ mode: "ids", ids: ["r0", "r1", "r2"], count: 3 })
+    expect(rowBoxes().every((box) => box.checked)).toBe(true)
+    expect(headerBox().checked).toBe(true)
+  })
+
+  it("builds a selection across pages, one page at a time", () => {
+    const { rerender } = render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    fireEvent.click(headerBox())
+
+    // Page 2, the way a server table turns one: a new page of data under a
+    // new page index.
+    act(() => latest?.pagination.setPageIndex(1))
+    rerender(<Harness selection={pageScoped} data={rows(2, 3)} rowCount={100_000} />)
+
+    // Page 1's ids survived the turn — the rule is unchanged, a page change
+    // clears nothing.
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0", "r1", "r2"] })
+    // And this page is untouched, so the header is UNCHECKED rather than
+    // indeterminate: nothing here is selected, and a tick adds this page.
+    expect(headerBox().checked).toBe(false)
+    expect(headerBox().indeterminate).toBe(false)
+    expect(rowBoxes().some((box) => box.checked)).toBe(false)
+
+    fireEvent.click(headerBox())
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0", "r1", "r2", "r3", "r4"] })
+    expect(latest?.selection.count).toBe(5)
+  })
+
+  it("unticks this page only, leaving the ids gathered on the others", () => {
+    const { rerender } = render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    fireEvent.click(headerBox())
+    act(() => latest?.pagination.setPageIndex(1))
+    rerender(<Harness selection={pageScoped} data={rows(2, 3)} rowCount={100_000} />)
+    fireEvent.click(headerBox())
+    expect(latest?.selection.count).toBe(5)
+
+    fireEvent.click(headerBox())
+
+    // Page 2 goes; page 1 stays, because the user unticked a page and not a
+    // selection.
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0", "r1", "r2"] })
+  })
+
+  it("is indeterminate about THIS page, and checked when the page is full", () => {
+    render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    expect(headerBox().indeterminate).toBe(false)
+
+    fireEvent.click(rowBoxes()[0] as HTMLInputElement)
+    expect(headerBox().checked).toBe(false)
+    expect(headerBox().indeterminate).toBe(true)
+
+    fireEvent.click(rowBoxes()[1] as HTMLInputElement)
+    fireEvent.click(rowBoxes()[2] as HTMLInputElement)
+    // Every selectable row of the page, one at a time: the header agrees, and
+    // the model is still ids — nobody said "everything".
+    expect(headerBox().checked).toBe(true)
+    expect(headerBox().indeterminate).toBe(false)
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0", "r1", "r2"] })
+  })
+
+  it("has nothing to take on a page with no selectable rows", () => {
+    // Group headers are not selectable, so this page offers the header
+    // checkbox nothing at all.
+    render(
+      <Harness
+        selection={pageScoped}
+        data={[groupRow(["open"], 25_000), groupRow(["done"], 12)]}
+        rowCount={84}
+        initialLayout={{ grouping: ["name"] }}
+      />,
+    )
+    expect(rowBoxes()).toHaveLength(0)
+    expect(headerBox().checked).toBe(false)
+    expect(headerBox().indeterminate).toBe(false)
+
+    fireEvent.click(headerBox())
+
+    // A click that changes nothing rather than one that selects the groups or
+    // announces an empty selection nobody made.
+    expect(latest?.selection.isEmpty).toBe(true)
+    expect(announced).toEqual([])
+    expect(headerBox().checked).toBe(false)
+  })
+
+  it("takes the leaves of a grouped page, and not the group headers", () => {
+    render(
+      <Harness
+        selection={pageScoped}
+        data={[groupRow(["open"], 25_000), ...rows(2)]}
+        rowCount={84}
+        initialLayout={{ grouping: ["name"] }}
+      />,
+    )
+    fireEvent.click(headerBox())
+
+    // "The selectable rows of this page" is not "every row on this page": a
+    // group stands for children the browser does not hold.
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0", "r1"] })
+    expect(headerBox().checked).toBe(true)
+    // And the count is the ids, so a grouped table says a number here where an
+    // all-matching one has to go quiet.
+    expect(latest?.selection.count).toBe(2)
+  })
+
+  it("clears on a filter change, like any other selection", () => {
+    render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    fireEvent.click(headerBox())
+    const before = announced.length
+
+    act(() =>
+      latest?.filtering.setCondition({
+        kind: "text",
+        field: "name",
+        op: "contains",
+        value: "Row 1",
+      }),
+    )
+
+    // Ids that no longer match would be acted on invisibly — the reason the
+    // rule exists does not change with the header's reach.
+    expect(latest?.selection.isEmpty).toBe(true)
+    expect(announced.length).toBeGreaterThan(before)
+    expect(lastAnnounced()).toMatchObject({ mode: "ids", ids: [], count: 0 })
+  })
+
+  it("does not clear on a sort change", () => {
+    render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    fireEvent.click(rowBoxes()[0] as HTMLInputElement)
+
+    fireEvent.click(screen.getByRole("button", { name: "Name: Sort ascending" }))
+
+    // Sorting changes no row's membership, only the order, so the ids the user
+    // picked are still the rows they picked.
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0"] })
+  })
+
+  it("makes `all-matching` unreachable, through the header and through the API", () => {
+    render(<Harness selection={pageScoped} data={rows(3)} rowCount={100_000} />)
+    act(() => latest?.selection.toggleAll(true))
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: ["r0", "r1", "r2"] })
+    expect(latest?.selection.headerScope).toBe("page")
+    // The count never goes undefined here, so a bulk bar has a number from the
+    // first click whatever the server has said.
+    expect(latest?.selection.count).toBe(3)
+  })
+
+  it("reads an all-matching model handed to it as no selection, and says so once", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    // The one way such a model reaches a page-scoped table: the host moves the
+    // scope under a live selection.
+    const { rerender } = render(
+      <Harness id="sel-page-stray" selection data={rows(3)} rowCount={100_000} />,
+    )
+    fireEvent.click(headerBox())
+    expect(latest?.selection.model).toEqual({ mode: "all-matching", excluded: [] })
+
+    rerender(
+      <Harness id="sel-page-stray" selection={pageScoped} data={rows(3)} rowCount={100_000} />,
+    )
+
+    // Treated as empty rather than silently honoured: the user must not be
+    // shown 100 000 rows selected by a host that can only act on ids.
+    expect(latest?.selection.model).toEqual({ mode: "ids", ids: [] })
+    expect(latest?.selection.isEmpty).toBe(true)
+    expect(headerBox().checked).toBe(false)
+    expect(headerBox().indeterminate).toBe(false)
+    // And the host hears about the drop, for the reason every other clear is
+    // published.
+    expect(lastAnnounced()).toMatchObject({ mode: "ids", ids: [] })
+
+    const mine = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((said) => said.includes('features.selection scope "page"'))
+    expect(mine).toHaveLength(1)
+    // Says what goes wrong, not that something is missing.
+    expect(mine[0]).toMatch(/read as no selection/)
+    warn.mockRestore()
+  })
+
+  it("feeds the bulk-action bar a count from the first click", () => {
+    render(<Harness actions selection={pageScoped} data={rows(3)} rowCount={null} />)
+    fireEvent.click(headerBox())
+
+    // `rowCount` is undefined and it does not matter: ids are counted, not
+    // derived from a total nobody has sent.
+    expect(screen.getByTestId("bar-count").textContent).toBe("3")
+    expect(screen.getByTestId("bar-mode").textContent).toBe("ids")
   })
 })

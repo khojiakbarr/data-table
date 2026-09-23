@@ -3,10 +3,14 @@ import { buildQuery } from "./query"
 import {
   ALL_MATCHING_SELECTION,
   EMPTY_SELECTION,
+  headerScopeOf,
   isRowSelected,
   isSelectionEmpty,
+  isSelectionEnabled,
+  pageHeaderState,
   selectionCount,
   selectionScopeOf,
+  withPageRows,
   withRow,
   type SelectionModel,
 } from "./selection"
@@ -165,5 +169,114 @@ describe("the scope a selection is relative to", () => {
       filters: [contains("partner", "a"), contains("code", "KR")],
     })
     expect(selectionScopeOf(one)).toBe(selectionScopeOf(other))
+  })
+})
+
+describe("what `features.selection` says", () => {
+  it("reads `true` and an options object alike as \"on\"", () => {
+    expect(isSelectionEnabled(true)).toBe(true)
+    expect(isSelectionEnabled({})).toBe(true)
+    expect(isSelectionEnabled({ scope: "page" })).toBe(true)
+    expect(isSelectionEnabled(false)).toBe(false)
+  })
+
+  it("defaults the header scope to `all-matching`, for `true` and for `{}` alike", () => {
+    // `true` is what every host on 0.6 wrote, and it must keep meaning exactly
+    // what it meant: a host that said nothing about the header checkbox gets
+    // the header checkbox it had.
+    expect(headerScopeOf(true)).toBe("all-matching")
+    expect(headerScopeOf(false)).toBe("all-matching")
+    expect(headerScopeOf({})).toBe("all-matching")
+    expect(headerScopeOf({ scope: undefined })).toBe("all-matching")
+    expect(headerScopeOf({ scope: "all-matching" })).toBe("all-matching")
+    expect(headerScopeOf({ scope: "page" })).toBe("page")
+  })
+})
+
+describe("the header checkbox in `page` header scope", () => {
+  const page1 = ["r0", "r1", "r2"]
+  const page2 = ["r3", "r4"]
+
+  it("ticks this page's rows, as ids, and never as `all-matching`", () => {
+    const after = withPageRows(EMPTY_SELECTION, page1, true)
+    expect(after).toEqual({ mode: "ids", ids: page1 })
+  })
+
+  it("adds the next page to what the user already had", () => {
+    // The point of the mode: a selection built across pages, one page at a
+    // time, is the only honest thing a backend without a bulk endpoint can act
+    // on.
+    const both = withPageRows({ mode: "ids", ids: page1 }, page2, true)
+    expect(both).toEqual({ mode: "ids", ids: [...page1, ...page2] })
+  })
+
+  it("unticks only this page, leaving the ids picked up on other pages", () => {
+    const after = withPageRows({ mode: "ids", ids: [...page1, ...page2] }, page2, false)
+    expect(after).toEqual({ mode: "ids", ids: page1 })
+  })
+
+  it("comes back to the shared empty selection when the last id goes", () => {
+    // Identity, for the same reason `EMPTY_SELECTION` exists: a new-but-equal
+    // object would announce a change that did not happen.
+    expect(withPageRows({ mode: "ids", ids: page1 }, page1, false)).toBe(EMPTY_SELECTION)
+  })
+
+  it("hands back the same object when the page is already as asked", () => {
+    const model: SelectionModel = { mode: "ids", ids: page1 }
+    expect(withPageRows(model, page1, true)).toBe(model)
+    expect(withPageRows(model, page2, false)).toBe(model)
+    // A page with nothing selectable on it — every row a group header — is a
+    // header click that changes nothing rather than one that clears.
+    expect(withPageRows(model, [], true)).toBe(model)
+    expect(withPageRows(model, [], false)).toBe(model)
+  })
+
+  it("reads an `all-matching` model as nothing rather than as every row", () => {
+    // It cannot be produced in this header scope; reading it as "everything"
+    // would turn one header click into a selection the host cannot act on.
+    expect(withPageRows(ALL_MATCHING_SELECTION, page1, true)).toEqual({ mode: "ids", ids: page1 })
+    expect(withPageRows(ALL_MATCHING_SELECTION, page1, false)).toBe(EMPTY_SELECTION)
+    expect(pageHeaderState(ALL_MATCHING_SELECTION, page1)).toEqual({
+      checked: false,
+      indeterminate: false,
+    })
+  })
+
+  it("states checked, indeterminate and unchecked over THIS page", () => {
+    expect(pageHeaderState(EMPTY_SELECTION, page1)).toEqual({
+      checked: false,
+      indeterminate: false,
+    })
+    expect(pageHeaderState({ mode: "ids", ids: ["r1"] }, page1)).toEqual({
+      checked: false,
+      indeterminate: true,
+    })
+    expect(pageHeaderState({ mode: "ids", ids: page1 }, page1)).toEqual({
+      checked: true,
+      indeterminate: false,
+    })
+  })
+
+  it("is unchecked — not indeterminate — on a page none of whose rows are selected", () => {
+    // Fifty ids from page 1, and the user lands on page 2: nothing HERE is
+    // selected, and an indeterminate box would say this page is partly taken.
+    expect(pageHeaderState({ mode: "ids", ids: page1 }, page2)).toEqual({
+      checked: false,
+      indeterminate: false,
+    })
+  })
+
+  it("is unchecked on a page with nothing selectable on it", () => {
+    // "All of nothing is selected" is true and useless; an empty square is the
+    // honest drawing of a control with nothing to take.
+    expect(pageHeaderState({ mode: "ids", ids: page1 }, [])).toEqual({
+      checked: false,
+      indeterminate: false,
+    })
+  })
+
+  it("counts the ids, with no `rowCount` waited for", () => {
+    const both = withPageRows({ mode: "ids", ids: page1 }, page2, true)
+    expect(selectionCount(both, undefined)).toBe(5)
   })
 })

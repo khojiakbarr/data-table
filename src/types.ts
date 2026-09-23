@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import type { EditableDeclaration } from "./core/cellEditing"
 import type { FilterCondition, FilterValue, FilterValueOption, FilterKind } from "./core/filters"
 import type { CellEditingLabels } from "./labels/editing"
+import type { SelectionFeature } from "./core/selection"
 import type {
   ColumnOrderState,
   ColumnPinningState,
@@ -214,6 +215,13 @@ export interface DataTableFeatureFlags {
    * ids. `onSelectionChange` publishes that statement, the query it is
    * relative to, and the count.
    *
+   * **`{ scope: "page" }` narrows that header checkbox to the current page**,
+   * for a backend that has no bulk-by-query endpoint: every write is one row
+   * by id, so "everything the query matches" is a promise it cannot keep. In
+   * that scope the header ticks the selectable rows of the page as
+   * `{ mode: "ids" }`, ids gathered on earlier pages stay, and `all-matching`
+   * is unreachable. `true` is exactly `{ scope: "all-matching" }`.
+   *
    * **A change to the filters, the search or the grouping clears it.** Not a
    * change to the sorting or the page: neither changes which rows match, only
    * their order and which slice is on screen.
@@ -231,7 +239,7 @@ export interface DataTableFeatureFlags {
    * editable, hideable, reorderable or resizable, and absent from the Columns
    * panel. Nothing about a selection is ever written to `storage`.
    */
-  selection?: boolean
+  selection?: SelectionFeature
   /**
    * A band under the table stating what the result set contains. **Default
    * false**, for the same reason {@link DataTableFeatureFlags.rowNumbers} is:
@@ -358,6 +366,18 @@ export interface DataTableLabels extends CellEditingLabels {
    * a language that agrees a noun with the count it governs (Russian).
    */
   selectAllRows: (count: string | undefined, raw: number | undefined) => string
+  /**
+   * The same header checkbox in a `{ scope: "page" }` table, where it takes
+   * the rows of the current page and nothing else.
+   *
+   * A sentence of its own rather than the count of {@link DataTableLabels.selectAllRows}
+   * left out: the two controls do different things, and naming them alike
+   * would tell a screen-reader user their tick reached 5 000 rows when it
+   * reached the fifty in front of them. No number in it — the page's size is
+   * on screen, and the count that matters afterwards is the one the selection
+   * bar speaks.
+   */
+  selectAllRowsOnPage: string
   expandRow: string
   collapseRow: string
   columnActions: string

@@ -264,3 +264,154 @@ export function selectionColumnDef<TData extends RowData>(): ColumnDef<
     enableResizing: false,
   }
 }
+
+/**
+ * What the header checkbox reaches — the `scope` in {@link SelectionOptions}.
+ *
+ * **Not the same "scope" as {@link selectionScopeOf}.** That one is the part
+ * of the QUERY a selection is defined relative to, and it decides when a
+ * selection is cleared. This one is the reach of ONE CONTROL: whether a tick
+ * on the header means every row the query matches, or only the rows of the
+ * page in front of the user. Two different ideas one identifier apart, so
+ * everything about this one is spelled "header scope" in the code.
+ *
+ * `"all-matching"` is the default and the behaviour this library shipped with.
+ * `"page"` exists for a backend that has no bulk-by-query endpoint: every
+ * write is one row by id, so "everything the query matches" is a promise the
+ * host cannot keep, and a header tick that produced it would show the user
+ * "all 5 000 selected" while the host held 50 ids.
+ */
+export type SelectionHeaderScope = "all-matching" | "page"
+
+/**
+ * `features.selection` in its long form.
+ *
+ * @example
+ * features: { selection: { scope: "page" } }
+ */
+export interface SelectionOptions {
+  /**
+   * What the header checkbox selects. Default `"all-matching"` — every row the
+   * query matches. `"page"` ticks only the selectable rows of the current
+   * page, as `{ mode: "ids" }`.
+   */
+  scope?: SelectionHeaderScope | undefined
+}
+
+/**
+ * `features.selection`: the flag, or the flag with options.
+ *
+ * `true` and `{ }` both mean "on, with today's behaviour" — the option object
+ * only ever narrows what the header checkbox does.
+ */
+export type SelectionFeature = boolean | SelectionOptions
+
+/**
+ * Whether the table selects rows at all.
+ *
+ * An options object is "on": a host writing `{ scope: "page" }` has asked for
+ * selection, and only said something about the header checkbox as well.
+ *
+ * @param feature - The `features.selection` flag as the host wrote it.
+ * @returns True when the selection column is drawn.
+ *
+ * @example
+ * if (isSelectionEnabled(features.selection)) columns.unshift(selectionColumnDef())
+ */
+export function isSelectionEnabled(feature: SelectionFeature): boolean {
+  return feature !== false
+}
+
+/**
+ * What the header checkbox reaches, for a `features.selection` as written.
+ *
+ * `true`, and an options object with no `scope`, both answer `"all-matching"`:
+ * the default is what this library shipped with, and a host that said nothing
+ * about the header checkbox gets exactly what it had.
+ *
+ * @param feature - The `features.selection` flag as the host wrote it.
+ * @returns The header scope — see {@link SelectionHeaderScope}, which is NOT
+ *   the query scope of {@link selectionScopeOf}.
+ *
+ * @example
+ * headerScopeOf({ scope: "page" }) // "page"
+ */
+export function headerScopeOf(feature: SelectionFeature): SelectionHeaderScope {
+  return typeof feature === "object" ? (feature.scope ?? "all-matching") : "all-matching"
+}
+
+/**
+ * The header checkbox's three states, in `"page"` header scope.
+ *
+ * Read over THE PAGE and not over the whole selection, which is the whole
+ * difference from the all-matching header: a user holding fifty ids from
+ * page 1 who lands on page 2 sees an UNCHECKED box, because nothing on this
+ * page is selected and a tick here would add this page to what they have.
+ *
+ * A page with no selectable rows on it — every row a group header, or an
+ * empty page — is unchecked and not indeterminate. "All of nothing is
+ * selected" is true and useless; an empty square is the honest drawing of a
+ * control with nothing to take.
+ *
+ * An `all-matching` model cannot be produced in this header scope and is read
+ * as empty here rather than as "every row ticked"; `useSelection` warns about
+ * one and clears it.
+ *
+ * @param model - The current selection.
+ * @param pageRowIds - The ids of the selectable rows on the current page, in
+ *   page order; group headers are not among them.
+ * @returns The two booleans the checkbox is rendered from.
+ *
+ * @example
+ * const { checked, indeterminate } = pageHeaderState(model, pageRowIds)
+ */
+export function pageHeaderState(
+  model: SelectionModel,
+  pageRowIds: readonly string[],
+): { checked: boolean; indeterminate: boolean } {
+  if (pageRowIds.length === 0) return { checked: false, indeterminate: false }
+  const ids = model.mode === "ids" ? model.ids : []
+  const selected = pageRowIds.filter((rowId) => ids.includes(rowId)).length
+  return {
+    checked: selected === pageRowIds.length,
+    indeterminate: selected > 0 && selected < pageRowIds.length,
+  }
+}
+
+/**
+ * The selection after the header checkbox of a `"page"`-scoped table moved.
+ *
+ * Always `ids`: this is the reducer that makes `all-matching` unreachable in
+ * that header scope. Ticking ADDS this page's rows to whatever the user
+ * already had — which is what lets a selection be built across pages, one page
+ * at a time — and unticking removes only this page's, leaving the ids picked
+ * up on other pages exactly where they were.
+ *
+ * An `all-matching` model is treated as nothing rather than as every row: it
+ * cannot be reached here, and reading it as "everything" would turn one
+ * header click into a selection the host cannot act on. `useSelection` warns
+ * about such a model before this ever sees it.
+ *
+ * @param model - The current selection.
+ * @param pageRowIds - The ids of the selectable rows on the current page.
+ * @param selected - Where the header checkbox moved to.
+ * @returns A new selection; the same object when nothing changed.
+ *
+ * @example
+ * setModel((current) => withPageRows(current, pageRowIds, true))
+ */
+export function withPageRows(
+  model: SelectionModel,
+  pageRowIds: readonly string[],
+  selected: boolean,
+): SelectionModel {
+  const ids = model.mode === "ids" ? model.ids : []
+  if (selected) {
+    const added = pageRowIds.filter((rowId) => !ids.includes(rowId))
+    if (added.length === 0 && model.mode === "ids") return model
+    return { mode: "ids", ids: [...ids, ...added] }
+  }
+  const kept = ids.filter((rowId) => !pageRowIds.includes(rowId))
+  if (kept.length === ids.length && model.mode === "ids") return model
+  return kept.length === 0 ? EMPTY_SELECTION : { mode: "ids", ids: kept }
+}

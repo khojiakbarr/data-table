@@ -76,6 +76,9 @@ export const defaultLabels: DataTableLabels = {
   // to forget: a one-row table must not read "Select all 1 rows".
   selectAllRows: (count, raw) =>
     count === undefined ? "Select all rows" : `Select all ${count} ${raw === 1 ? "row" : "rows"}`,
+  // A different control, so a different sentence: in `{ scope: "page" }` the
+  // tick reaches this page and saying "all rows" would promise the rest.
+  selectAllRowsOnPage: "Select all rows on this page",
   expandRow: "Expand row",
   collapseRow: "Collapse row",
   columnActions: "Column actions",

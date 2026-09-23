@@ -1799,16 +1799,18 @@ export function useDataTable<TData extends RowData>({
    * the browser does not hold, so `BodyRow` gives it no checkbox — and a page
    * that is all group headers therefore leaves nothing for the header to take.
    *
-   * Undefined in the default header scope, so a table whose header means
-   * "everything matching" never walks its row model for a list nothing reads.
+   * Undefined in the default header scope, where the row model is not even
+   * asked for: a table whose header means "everything matching" must not build
+   * one for a list nothing reads — a headless host may never render rows at
+   * all.
    */
-  const pageRows = table.getRowModel().rows
+  const pageRows = headerSelectionScope === "page" ? table.getRowModel().rows : null
   const pageRowIds = useMemo(
     () =>
-      headerSelectionScope === "page"
-        ? pageRows.filter((row) => !isGroupRow(row.original)).map((row) => row.id)
-        : undefined,
-    [headerSelectionScope, pageRows],
+      pageRows === null
+        ? undefined
+        : pageRows.filter((row) => !isGroupRow(row.original)).map((row) => row.id),
+    [pageRows],
   )
 
   const selection = useSelection({

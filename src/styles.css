@@ -2320,3 +2320,37 @@
     animation: none;
   }
 }
+
+/*
+ * A host's own filter fields, above the column filters in the Filters tab
+ * (`FiltersPanelSlot`). A column stack with the panel's own rhythm; the rule
+ * under it appears only when column filters follow.
+ */
+.dt-filters-host {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 2px 12px;
+}
+
+.dt-filters-host:not(:last-child) {
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--dt-border);
+}
+
+/* The count of a host's active filters, beside the rail tab's rotated label. */
+.dt-sidebar-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 18px;
+  block-size: 18px;
+  margin-block-start: 6px;
+  padding-inline: 4px;
+  border-radius: 9px;
+  background: var(--dt-accent);
+  color: var(--dt-accent-fg);
+  font-size: 11px;
+  line-height: 1;
+  writing-mode: horizontal-tb;
+}

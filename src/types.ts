@@ -516,6 +516,12 @@ export interface DataTableLabels extends CellEditingLabels {
   filtersTab: string
   /** Marks a filtered column that is currently hidden. */
   hiddenColumn: string
+  /**
+   * The host's active filters on the rail's Filters tab, spoken after the
+   * tab's name ("Filters, 2 active"). The number is drawn beside the name;
+   * this is what a screen reader hears instead of a bare digit.
+   */
+  activeFiltersCount: (count: number) => string
   /** Shown in the Filters tab while nothing is filtered. */
   noFilters: string
   /** Clears every column filter and the search at once, from the panel. */
@@ -634,4 +640,23 @@ export interface DataTableLabels extends CellEditingLabels {
   editRowFiltered: (column: string) => string
   /** Closes a notice the user has finished reading. */
   dismiss: string
+}
+
+/**
+ * A host's own filters, drawn inside the side bar's Filters tab.
+ *
+ * For a backend whose list endpoint takes fixed parameters — a role id, a
+ * status — rather than the column conditions this table publishes. The host
+ * draws those fields (its own pickers and selects, applying as they change)
+ * and they sit where a user looks for filters, above any column filters.
+ */
+export interface FiltersPanelSlot {
+  /** The host's filter fields, rendered at the top of the Filters tab. */
+  content: ReactNode
+  /**
+   * How many of the host's filters are narrowing the list. Shown on the rail's
+   * Filters tab while above 0 — the panel is usually closed, and the count is
+   * what tells a user why a row they expect is missing.
+   */
+  activeCount?: number | undefined
 }

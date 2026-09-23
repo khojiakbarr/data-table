@@ -5,6 +5,7 @@ import type { DropSide } from "../core/reorder"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { ColumnsTab } from "./ColumnsTab"
+import type { FiltersPanelSlot } from "../types"
 import { FiltersTab } from "./FiltersTab"
 
 /**
@@ -65,6 +66,8 @@ export interface TablePanelProps<TData extends RowData> {
    * row is then indistinguishable from a re-render, and does nothing.
    */
   focusNonce?: number | undefined
+  /** The host's own filters for the Filters tab; see `FiltersPanelSlot`. */
+  filtersPanel?: FiltersPanelSlot | undefined
 }
 
 /**
@@ -90,6 +93,7 @@ export function TablePanel<TData extends RowData>({
   focusColumnId,
   focusNonce,
   draggedColumnId,
+  filtersPanel,
 }: TablePanelProps<TData>) {
   const ref = useRef<HTMLDivElement>(null)
   const docked = presentation === "docked"
@@ -199,6 +203,7 @@ export function TablePanel<TData extends RowData>({
             labels={labels}
             focusColumnId={focusColumnId}
             focusNonce={focusNonce}
+            hostContent={filtersPanel?.content}
           />
         ) : (
           <ColumnsTab

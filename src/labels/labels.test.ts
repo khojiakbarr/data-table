@@ -268,6 +268,7 @@ describe("Uzbek orthography", () => {
     uzLabels.selectRow(3),
     uzLabels.selectAllRows("1 000", 1000),
     uzLabels.selectAllRows(undefined, undefined),
+    uzLabels.activeFiltersCount(2),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -292,6 +293,7 @@ describe("Uzbek orthography", () => {
     // A function label added later would otherwise go unread: add it to
     // FUNCTION_OUTPUTS and to this list together.
     expect(functionKeys).toEqual([
+      "activeFiltersCount",
       "columnGroup",
       "editCancelled",
       "editFailed",

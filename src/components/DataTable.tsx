@@ -20,7 +20,9 @@ import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import { defaultCellEditingLabels } from "../labels/editing"
-import type { DataTableLabels } from "../types"
+import type { DataTableLabels, FiltersPanelSlot } from "../types"
+
+export type { FiltersPanelSlot } from "../types"
 import { CellEditNotice } from "./CellEditNotice"
 import { CellMenu } from "./CellMenu"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
@@ -147,6 +149,7 @@ export const defaultLabels: DataTableLabels = {
   valuesFailed: "Could not load values",
   filtersTab: "Filters",
   hiddenColumn: "Hidden",
+  activeFiltersCount: (count) => `${count} active`,
   noFilters: "No filters applied",
   clearAllFilters: "Clear all filters",
   noMatches: "No rows match the current filters",
@@ -317,6 +320,15 @@ export interface DataTableProps<TData extends RowData> {
    */
   style?: CSSProperties | undefined
   onRowClick?: (row: TData) => void
+  /**
+   * The host's own filters, inside the side bar's Filters tab — see
+   * {@link FiltersPanelSlot}. With it, the tab is offered even when no column
+   * can be filtered.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`: whether a
+   * table has host filters is usually a condition at the call site.
+   */
+  filtersPanel?: FiltersPanelSlot | undefined
   /** Show the pagination footer when paging is on. Default true. */
   footer?: boolean
   /** Render only the visible window of rows; `false` renders every row (printing, very small tables). Default true. */
@@ -475,6 +487,7 @@ export function DataTable<TData extends RowData>({
   className,
   style,
   onRowClick,
+  filtersPanel,
   footer = true,
   virtualize = true,
   loading = false,
@@ -788,7 +801,16 @@ export function DataTable<TData extends RowData>({
    * pinning happen to be on, so its existence has to be independent of them
    * too — otherwise that item opens a panel that never renders (Defect D).
    */
-  if (instance.filtering.enabled) sideBarTabs.push("filters")
+  /*
+   * And only when it would show something. With every column `filter: false`
+   * and no host filters the tab opened onto "No filters applied" and a
+   * disabled button — a control that can do nothing, offered on every table
+   * whose backend filters by its own parameters.
+   */
+  const hasFilterableColumn = table.getAllLeafColumns().some((column) => canFilterColumn(instance, column))
+  if (instance.filtering.enabled && (hasFilterableColumn || filtersPanel !== undefined)) {
+    sideBarTabs.push("filters")
+  }
 
   /**
    * Activating a rail tab: the tab already showing closes the panel, any other
@@ -1109,6 +1131,7 @@ export function DataTable<TData extends RowData>({
           labels={labels}
           onReorder={handleReorder}
           tabs={sideBarTabs}
+          filtersPanel={filtersPanel}
           open={panelOpen.open}
           tab={panelOpen.tab}
           onToggle={toggleSideBarTab}

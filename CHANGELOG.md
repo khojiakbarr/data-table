@@ -3,6 +3,32 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.9.0
+
+### Added
+
+- **`<DataTable filtersPanel={{ content, activeCount }}>`** — a host's own
+  filter fields inside the side bar's Filters tab. For a backend whose list
+  endpoint takes fixed parameters (a role id, a status, one value each) rather
+  than the conditions this table publishes, the host draws those fields and
+  they sit where a user looks for filters.
+  - `content` is drawn at the top of the tab, above any column filters.
+  - `activeCount` shows on the rail's Filters tab while above 0 and is spoken
+    after the tab's name through the new **`labels.activeFiltersCount`**
+    ("Filters, 2 active"), in `defaultLabels`, `ruLabels` (with plural
+    agreement) and `uzLabels`.
+  - With it the tab is offered even when no column can be filtered, and then
+    draws only the host's fields.
+  - `FiltersPanelSlot` is exported for a shell of its own; `TableSideBar` and
+    `TablePanel` take the same `filtersPanel` prop.
+
+### Changed
+
+- **A table with no filterable column and no `filtersPanel` has no Filters
+  tab.** It used to appear whenever quick search was on and open onto "No
+  filters applied" and a disabled "Clear all filters". A table with a
+  filterable column is unchanged.
+
 ## 0.8.0
 
 ### Added

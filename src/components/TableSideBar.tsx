@@ -4,6 +4,7 @@ import type { DropSide } from "../core/reorder"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { TablePanel, type PanelTab } from "./TablePanel"
+import type { FiltersPanelSlot } from "../types"
 
 /**
  * The docked side bar: a rail of vertical tabs on the table's inline-end edge,
@@ -47,6 +48,8 @@ export interface TableSideBarProps<TData extends RowData> {
   draggedColumnId?: string | null | undefined
   /** See `TablePanelProps.focusNonce`. */
   focusNonce?: number | undefined
+  /** The host's own filters for the Filters tab; see `FiltersPanelSlot`. */
+  filtersPanel?: FiltersPanelSlot | undefined
 }
 
 /**
@@ -74,8 +77,10 @@ export function TableSideBar<TData extends RowData>({
   focusColumnId,
   focusNonce,
   draggedColumnId,
+  filtersPanel,
 }: TableSideBarProps<TData>) {
   const railRef = useRef<HTMLDivElement>(null)
+  const activeCount = filtersPanel?.activeCount ?? 0
   const labelOf = (name: PanelTab): string =>
     name === "columns" ? labels.columnsTitle : labels.filtersTab
 
@@ -159,6 +164,18 @@ export function TableSideBar<TData extends RowData>({
                 rather than as a column of letters.
               */}
               <span className="dt-sidebar-tab-text">{labelOf(name)}</span>
+              {name === "filters" && activeCount > 0 ? (
+                <>
+                  {/*
+                    The number is drawn for the eye and spoken as words: a bare
+                    "2" after "Filters" is ambiguous read aloud.
+                  */}
+                  <span className="dt-sidebar-tab-count" aria-hidden="true">
+                    {activeCount}
+                  </span>
+                  <span className="dt-sr-only">, {labels.activeFiltersCount(activeCount)}</span>
+                </>
+              ) : null}
             </button>
           )
         })}
@@ -176,6 +193,7 @@ export function TableSideBar<TData extends RowData>({
           focusColumnId={focusColumnId}
           focusNonce={focusNonce}
           draggedColumnId={draggedColumnId}
+          filtersPanel={filtersPanel}
         />
       ) : null}
     </div>

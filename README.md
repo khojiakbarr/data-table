@@ -537,6 +537,43 @@ offers a retry; `signal` aborts a superseded request. Declaring `meta.values` on
 a client-mode column trades the free counts for fixed labels, which is a real
 trade.
 
+### Your own filters in the Filters tab
+
+Some backends do not translate conditions at all: their list endpoint takes a
+few fixed parameters — a role id, a status — one value each. Offering "any of
+these", "not", "blank" over such a list would show an unfiltered page under a
+filter's name, so turn the columns' filters off (`meta: { filter: false }`)
+and draw the parameters the endpoint really takes, with your own fields,
+inside the side bar's Filters tab:
+
+```tsx
+<DataTable
+  instance={table}
+  filtersPanel={{
+    content: (
+      <>
+        <RolePicker value={roleId} onChange={setRoleId} />
+        <StatusSelect value={status} onChange={setStatus} />
+      </>
+    ),
+    activeCount: [roleId, status].filter(Boolean).length,
+  }}
+/>
+```
+
+- `content` is drawn at the top of the tab, above any column filters. The
+  fields are yours: they apply however you make them apply, and you reset the
+  page when they change (`instance.pagination.resetPage()`).
+- `activeCount` is shown on the rail's Filters tab while above 0, and spoken
+  as words after its name ("Filters, 2 active") — the panel is usually shut,
+  and the count is what says why a row is missing.
+- With `filtersPanel` the tab is offered even when no column can be filtered,
+  and then it draws only your fields: no "No filters applied", no "Clear all
+  filters" for filters that cannot be made there.
+- **Without it, a table with no filterable column has no Filters tab.** The
+  tab used to appear whenever quick search was on, and opened onto an empty
+  note and a disabled button.
+
 ### Row grouping
 
 Drag a column into the **Row groups** zone in the side panel — or send it there from the

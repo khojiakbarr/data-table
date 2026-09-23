@@ -1,5 +1,5 @@
 import type { Column, RowData } from "@tanstack/react-table"
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { columnLabel } from "../core/columnLabel"
 import { describeCondition } from "../core/filterDraft"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
@@ -26,6 +26,11 @@ export interface FiltersTabProps<TData extends RowData> {
    * `TablePanelProps.focusNonce`, which this mirrors.
    */
   focusNonce?: number | undefined
+  /**
+   * The host's own filter fields (`FiltersPanelSlot.content`), drawn above the
+   * column filters.
+   */
+  hostContent?: ReactNode | undefined
 }
 
 /** The focus request this tab has already acted on, and what it opened for it. */
@@ -52,6 +57,7 @@ export function FiltersTab<TData extends RowData>({
   labels,
   focusColumnId,
   focusNonce,
+  hostContent,
 }: FiltersTabProps<TData>) {
   const { table, filtering } = instance
   const [openId, setOpenId] = useState<string | null>(focusColumnId ?? null)
@@ -141,70 +147,82 @@ export function FiltersTab<TData extends RowData>({
   // shows nor should silently clear.
   const hasFilters = filtering.conditions.length > 0
 
+  /*
+   * With no filterable column the section below would be only "No filters
+   * applied" and a disabled "Clear all filters" — words about filters the
+   * user cannot make here. The tab exists then only for the host's fields.
+   */
+  const hasColumnFilters = columns.length > 0
+
   return (
     <>
-      {hasFilters ? null : <p className="dt-filter-note">{labels.noFilters}</p>}
+      {hostContent ? <div className="dt-filters-host">{hostContent}</div> : null}
+      {hasColumnFilters ? (
+        <>
+          {hasFilters ? null : <p className="dt-filter-note">{labels.noFilters}</p>}
 
-      <ul className="dt-panel-list">
-        {ordered.map((column) => {
-          const condition = filtering.conditions.find((entry) => entry.field === column.id)
-          const open = openId === column.id
-          return (
-            <li key={column.id}>
-              <button
-                type="button"
-                className="dt-panel-item"
-                aria-expanded={open}
-                onClick={() => setOpenId(open ? null : column.id)}
-              >
-                <span className="dt-panel-label">
-                  {columnLabel(column.id, column.columnDef.header)}
-                </span>
-                {column.getIsVisible() ? null : (
-                  <span className="dt-filter-badge">{labels.hiddenColumn}</span>
-                )}
-                {condition ? (
-                  <span className="dt-filter-summary">{describeCondition(condition, labels)}</span>
-                ) : null}
-              </button>
+          <ul className="dt-panel-list">
+            {ordered.map((column) => {
+              const condition = filtering.conditions.find((entry) => entry.field === column.id)
+              const open = openId === column.id
+              return (
+                <li key={column.id}>
+                  <button
+                    type="button"
+                    className="dt-panel-item"
+                    aria-expanded={open}
+                    onClick={() => setOpenId(open ? null : column.id)}
+                  >
+                    <span className="dt-panel-label">
+                      {columnLabel(column.id, column.columnDef.header)}
+                    </span>
+                    {column.getIsVisible() ? null : (
+                      <span className="dt-filter-badge">{labels.hiddenColumn}</span>
+                    )}
+                    {condition ? (
+                      <span className="dt-filter-summary">{describeCondition(condition, labels)}</span>
+                    ) : null}
+                  </button>
 
-              {open ? (
-                <FilterEditor
-                  // The honoured request, not the raw prop: its `key` re-arms
-                  // the editor's one-shot focus latch for an identical repeat.
-                  key={column.id === honoured.id ? honoured.key : undefined}
-                  instance={instance}
-                  column={column}
-                  labels={labels}
-                  autoFocus={column.id === honoured.id}
-                />
-              ) : null}
-            </li>
-          )
-        })}
-      </ul>
+                  {open ? (
+                    <FilterEditor
+                      // The honoured request, not the raw prop: its `key` re-arms
+                      // the editor's one-shot focus latch for an identical repeat.
+                      key={column.id === honoured.id ? honoured.key : undefined}
+                      instance={instance}
+                      column={column}
+                      labels={labels}
+                      autoFocus={column.id === honoured.id}
+                    />
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
 
-      <div className="dt-panel-foot">
-        <button
-          type="button"
-          className="dt-link"
-          disabled={!hasFilters}
-          onClick={() =>
-            /*
-             * `filtering.clearAll` clears the quick search too, which this tab
-             * neither shows nor names — pressing this button must not destroy
-             * text typed into a control the user cannot see from here.
-             * `setModel` is the existing whole-model writer, reused with the
-             * current search carried through unchanged; it still flushes a
-             * pending search debounce via `publishNow`, exactly as
-             * `clearAll` does.
-             */
-            filtering.setModel({ filters: [], search: filtering.search })
-          }
-        >
-          {labels.clearAllFilters}
-        </button>
-      </div>
+          <div className="dt-panel-foot">
+            <button
+              type="button"
+              className="dt-link"
+              disabled={!hasFilters}
+              onClick={() =>
+                /*
+                 * `filtering.clearAll` clears the quick search too, which this tab
+                 * neither shows nor names — pressing this button must not destroy
+                 * text typed into a control the user cannot see from here.
+                 * `setModel` is the existing whole-model writer, reused with the
+                 * current search carried through unchanged; it still flushes a
+                 * pending search debounce via `publishNow`, exactly as
+                 * `clearAll` does.
+                 */
+                filtering.setModel({ filters: [], search: filtering.search })
+              }
+            >
+              {labels.clearAllFilters}
+            </button>
+          </div>
+        </>
+      ) : null}
     </>
   )
 }

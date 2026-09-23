@@ -89,7 +89,7 @@ function Receipts({ data, columns }) {
 | **Quick search** | One box over every searchable column. Every token must appear somewhere on the row; different tokens may match different columns. |
 | **Filter columns** | Text, number, date, boolean and values-list filters, from the header menu or the side panel's Filters tab. Each one is published as an explicit operator a backend can translate. |
 | **Hide columns** | From the **Columns** panel. |
-| **Select rows** | A leading column of checkboxes whose header takes **everything the current query matches**, not the page on screen — so approving 25 000 receipts is one click, not 500 screens. Off by default. |
+| **Select rows** | A leading column of checkboxes whose header takes **everything the current query matches**, not the page on screen — so approving 25 000 receipts is one click, not 500 screens. Or `{ scope: "page" }`, for a backend that can only act on ids. Off by default. |
 | **Number the rows** | An optional leading column carrying each row's place in the whole result set — not in the page. Off by default. |
 | **Totals footer** | A row under the body, aligned and pinned with the columns, holding a total you supply per column. The library computes none of it. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
@@ -842,6 +842,43 @@ everything.
 answered with a `rowCount`** — the table says so rather than showing a number
 it cannot know. The header checkbox is named "Select all rows" in that window,
 with no figure in it.
+
+### `scope: "page"` — when your backend acts on ids only
+
+Use it when **your backend has no bulk-by-query endpoint**: every write is one
+row by id, and there is no call you could translate `all-matching` into. For
+such a host the default header checkbox is a promise you cannot keep — the user
+ticks it, reads "all matching rows selected", and you are holding 50 ids out of
+5 000.
+
+```tsx
+features: { selection: { scope: "page" } }
+```
+
+`true` is exactly `{ scope: "all-matching" }`, the default and everything
+described above. `{ scope: "page" }` changes one control and nothing else:
+
+- The header checkbox ticks the **selectable rows of the current page** —
+  group headers are not among them — and produces `{ mode: "ids", ids }`. It is
+  checked when every one of them is selected, indeterminate when some are,
+  unchecked when none are, and unchecked on a page with nothing selectable on
+  it at all.
+- **Ids survive a page turn**, so a selection is built across pages one page at
+  a time: tick page 1, go to page 2 — where the header is *unchecked*, because
+  nothing here is selected — tick it, and you hold both pages. Unticking the
+  header on page 2 takes page 2 back out and leaves page 1 alone.
+- **`all-matching` is unreachable.** No control and no hook action produces it.
+  A model that arrives in that mode anyway — you moved `scope` under a live
+  selection — is read as no selection and said once in development, rather than
+  silently honoured.
+- The count and the bulk-action bar read `ids.length`, so nothing here waits
+  for a `rowCount`, not even in a grouped table where the default scope has to
+  go quiet.
+- The header checkbox is named "Select all rows on this page"
+  (`labels.selectAllRowsOnPage`), because a control that reaches one page must
+  not say the sentence the other one says.
+
+Everything else is unchanged, including the rule below.
 
 ### A change to the query clears the selection
 
@@ -1776,7 +1813,7 @@ to a docked bar, the component did not change.
 | `columns` | `ColumnDef[]` | — | Standard TanStack column definitions. |
 | `storage` | `LayoutStorage` | none | Where layouts live. |
 | `initialLayout` | `Partial<TableLayout>` | `{}` | Applied on a user's first visit. |
-| `features` | `DataTableFeatureFlags` | all on except `selection`/`rowNumbers`/`statusBar` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `selection`, `rowNumbers` or `statusBar` (`true`, or a `ReactNode` for the bar's host slot). See [Row selection](#row-selection), [Row numbers](#row-numbers) and [Status bar](#status-bar). |
+| `features` | `DataTableFeatureFlags` | all on except `selection`/`rowNumbers`/`statusBar` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `selection`, `rowNumbers` or `statusBar` (`true`, or `{ scope: "page" }` for `selection`, or a `ReactNode` for the bar's host slot). See [Row selection](#row-selection), [Row numbers](#row-numbers) and [Status bar](#status-bar). |
 | `defaultColumnWidth` | `number` | `160` | |
 | `minColumnWidth` | `number` | `60` | |
 | `maxColumnWidth` | `number` | `800` | |
@@ -1800,7 +1837,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 
 `grouping` is `{ enabled, columns, isGrouped, has, columnId, set, add, remove, clear, expanded, isExpanded, toggle, collapseAll, startPath }` — see [Row grouping](#row-grouping).
 
-`selection` is `{ enabled, model, count, rowsMatching, isEmpty, isRowSelected, toggleRow, toggleAll, clear, headerChecked, headerIndeterminate, summary }` — see [Row selection](#row-selection).
+`selection` is `{ enabled, headerScope, model, count, rowsMatching, isEmpty, isRowSelected, toggleRow, toggleAll, clear, headerChecked, headerIndeterminate, summary }` — see [Row selection](#row-selection).
 
 ### `<DataTable />`
 

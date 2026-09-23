@@ -3,6 +3,40 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.7.0
+
+### Added
+
+- **`features: { selection: { scope: "page" } }`** — a header checkbox that
+  takes the current page instead of every matching row. For a backend with no
+  bulk-by-query endpoint of any kind, where every write is one row by id,
+  "everything the query matches" is a promise it cannot keep: the user ticks
+  the header, reads "all matching rows selected", and the host holds 50 ids out
+  of 5 000. The honest options until now were to not use selection at all or to
+  hide the header checkbox with CSS.
+  - The header ticks the **selectable** rows of the page — group headers are
+    not among them — and produces `{ mode: "ids", ids }`. It is checked when
+    every one of them is selected, indeterminate when some are, unchecked when
+    none are, and unchecked on a page with nothing selectable on it.
+  - Ids gathered on page 1 survive the turn to page 2, so a selection can be
+    built across pages one page at a time. The existing rule is unchanged: a
+    change to the filters, the search or the grouping still clears it, and a
+    change to the sorting or the page still does not.
+  - `all-matching` is unreachable in this scope: no control and no hook action
+    produces it, and a model that arrives in that mode from outside — a host
+    moving `scope` under a live selection — is read as no selection and said
+    once in development rather than silently honoured.
+  - The header checkbox is named after what it does: **`labels.selectAllRowsOnPage`**
+    ("Select all rows on this page"), in `defaultLabels`, `ruLabels` and
+    `uzLabels`. The count and the bulk-action bar read `ids.length`, so neither
+    waits for a `rowCount`.
+  - `features.selection` is now `boolean | { scope?: "all-matching" | "page" }`.
+    **`true` means exactly what it meant** — `SelectionModel` is unchanged, and
+    every existing host and `onSelectionChange` consumer compiles and behaves
+    as before.
+  - `headerScopeOf`, `isSelectionEnabled`, `pageHeaderState` and `withPageRows`
+    are exported for a shell of its own, beside `instance.selection.headerScope`.
+
 ## 0.6.1
 
 ### Added

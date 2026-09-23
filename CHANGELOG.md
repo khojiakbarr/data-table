@@ -3,6 +3,35 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.8.0
+
+### Added
+
+- **`features: { grouping: false }`** — turns row grouping off for a server
+  host whose backend cannot group at all. Grouping is already server-only, but
+  until now nothing turned it off there: every server table offered the Row
+  groups zone and the per-column group toggle, whether or not the backend
+  behind it could honour `query.grouping`. A backend whose list endpoint takes
+  only paging, sizing and a search string returned plain rows for a grouping
+  it never understood — the table claiming a grouping the rows did not have.
+  - Default `true`, so every existing server host is unaffected — non-breaking.
+  - With it off: no Row groups zone, no per-column group toggle, no grouping
+    control anywhere (header menu, Columns panel, keyboard route);
+    `query.grouping` and `query.expanded` stay `[]`; `instance.grouping.add`
+    and `.toggle` refuse, with the same development warning client mode
+    already gives.
+  - A stored layout carrying `grouping`/`expanded` is ignored while the flag is
+    off — the table renders and reports as ungrouped, and a column that was
+    once the group column returns to the body, neither hidden nor hoisted —
+    but the grouping itself is left untouched in storage, so turning the flag
+    back on picks it back up. Column order, widths, pinning and visibility are
+    unaffected either way.
+  - Everything downstream (the Row groups zone, the per-column toggle, the
+    status bar's "grouped by" text, `instance.grouping`, and selection's
+    `rowsMatching`) already read the single `groupingEnabled` gate inside
+    `useDataTable`; this flag is the other half of that one condition, not a
+    second switch.
+
 ## 0.7.0
 
 ### Added

@@ -702,6 +702,22 @@ and virtualisation that already exist. The cost is the refetch on expand; the
 shape leaves room for the lazy version later, because `expanded` already
 travels as key paths.
 
+**Turn it off with `features: { grouping: false }` when your backend cannot
+group.** Grouping is already server-only; this flag is for the server host
+whose list endpoint has nothing more than paging, sizing and a search string
+— no group-by at all — so the table would otherwise offer a Row groups zone
+the backend can never answer. Default `true`, so every existing server host
+is unaffected. With it off there is no Row groups zone, no per-column group
+toggle, `query.grouping` and `query.expanded` stay `[]`, and
+`instance.grouping.add`/`toggle` refuse with the same development warning
+client mode already gives. A layout saved while grouping was on keeps its
+grouping in storage untouched — turning the flag back on picks it back up —
+but the table renders and reports as ungrouped while the flag is off.
+
+```ts
+useDataTable({ id: "receipts", data, columns, mode: "server", features: { grouping: false } })
+```
+
 ---
 
 ## Editing cells
@@ -1813,7 +1829,7 @@ to a docked bar, the component did not change.
 | `columns` | `ColumnDef[]` | — | Standard TanStack column definitions. |
 | `storage` | `LayoutStorage` | none | Where layouts live. |
 | `initialLayout` | `Partial<TableLayout>` | `{}` | Applied on a user's first visit. |
-| `features` | `DataTableFeatureFlags` | all on except `selection`/`rowNumbers`/`statusBar` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding` or `heightGrip`; turn **on** `selection`, `rowNumbers` or `statusBar` (`true`, or `{ scope: "page" }` for `selection`, or a `ReactNode` for the bar's host slot). See [Row selection](#row-selection), [Row numbers](#row-numbers) and [Status bar](#status-bar). |
+| `features` | `DataTableFeatureFlags` | all on except `selection`/`rowNumbers`/`statusBar` | Turn off `sorting`, `resizing`, `reordering`, `pinning`, `hiding`, `heightGrip` or `grouping`; turn **on** `selection`, `rowNumbers` or `statusBar` (`true`, or `{ scope: "page" }` for `selection`, or a `ReactNode` for the bar's host slot). See [Row selection](#row-selection), [Row numbers](#row-numbers), [Row grouping](#row-grouping) and [Status bar](#status-bar). |
 | `defaultColumnWidth` | `number` | `160` | |
 | `minColumnWidth` | `number` | `60` | |
 | `maxColumnWidth` | `number` | `800` | |

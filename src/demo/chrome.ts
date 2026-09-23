@@ -35,7 +35,14 @@ export interface ChromeStrings {
     legends: Record<"interactions" | "data" | "layout", string>
     labels: Record<keyof FeatureState, string>
     hints: Record<
-      "filtering" | "pagination" | "rowNumbers" | "selection" | "statusBar" | "totals" | "detailPanel",
+      | "filtering"
+      | "pagination"
+      | "rowNumbers"
+      | "selection"
+      | "selectionPageScope"
+      | "statusBar"
+      | "totals"
+      | "detailPanel",
       string
     >
   }
@@ -135,6 +142,7 @@ const en: ChromeStrings = {
       hiding: "Column hiding",
       rowNumbers: "Row numbers",
       selection: "Row selection",
+      selectionPageScope: "Header box takes the page only",
       statusBar: "Status bar",
       totals: "Totals row",
       filtering: "Filtering",
@@ -151,6 +159,9 @@ const en: ChromeStrings = {
       pagination: "Server mode needs paging — with it off you see one page of 50 and no way to the rest",
       rowNumbers: "Off by default, and group rows are numbered too",
       selection: "Off by default. The header box takes every matching row, not the fifty on screen",
+      selectionPageScope:
+        "features.selection: { scope: \"page\" } — for a backend that writes one row by id and " +
+        "has no bulk-by-query endpoint to honour \"all matching\" with",
       statusBar: "Off by default; the row count then moves here from the footer",
       totals: "The fake server sums Amount over every matching row — not this page, not client-side",
       detailPanel: "Expand a row for more",
@@ -229,6 +240,7 @@ const ru: ChromeStrings = {
       hiding: "Скрытие столбцов",
       rowNumbers: "Номера строк",
       selection: "Выбор строк",
+      selectionPageScope: "Флажок в шапке берёт только страницу",
       statusBar: "Строка статуса",
       totals: "Строка итогов",
       filtering: "Фильтрация",
@@ -248,6 +260,9 @@ const ru: ChromeStrings = {
       rowNumbers: "По умолчанию выключены; строки групп тоже нумеруются",
       selection:
         "По умолчанию выключен. Флажок в шапке берёт все подходящие строки, а не 50 на экране",
+      selectionPageScope:
+        "features.selection: { scope: \"page\" } — для бэкенда, который пишет строки по одной по id " +
+        "и не может выполнить «все подходящие» одним запросом",
       statusBar: "По умолчанию выключена; счётчик строк переходит сюда из нижней панели",
       totals: "Фиктивный сервер суммирует «Сумму» по всем подходящим строкам — не по этой странице, " +
         "и не на клиенте",
@@ -325,6 +340,7 @@ const uz: ChromeStrings = {
       hiding: "Ustunlarni yashirish",
       rowNumbers: "Qator raqamlari",
       selection: "Qatorlarni tanlash",
+      selectionPageScope: "Sarlavhadagi katakcha faqat sahifani oladi",
       statusBar: "Holat paneli",
       totals: "Jami qator",
       filtering: "Filtrlash",
@@ -344,6 +360,9 @@ const uz: ChromeStrings = {
       rowNumbers: "Sukut boʻyicha oʻchiq; guruh qatorlari ham raqamlanadi",
       selection:
         "Sukut boʻyicha oʻchiq. Sarlavhadagi katakcha ekrandagi 50 tasini emas, mos keluvchi barcha qatorlarni oladi",
+      selectionPageScope:
+        "features.selection: { scope: \"page\" } — qatorlarni bittalab id boʻyicha yozadigan va " +
+        "«mos keluvchi barchasi»ni bajara olmaydigan backend uchun",
       statusBar: "Sukut boʻyicha oʻchiq; qatorlar soni bu yerga pastki paneldan koʻchadi",
       totals:
         "Soxta server Summa ustunini mos keluvchi barcha qatorlar boʻyicha yigʻadi — bu sahifa " +

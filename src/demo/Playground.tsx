@@ -128,7 +128,16 @@ export function Playground() {
       pinning: features.pinning,
       hiding: features.hiding,
       rowNumbers: features.rowNumbers,
-      selection: features.selection,
+      /*
+       * The flag's two shapes, both real: `true` is the library default, and
+       * the long form is what a host with no bulk-by-query endpoint writes.
+       * Off is off — an options object would still draw the column.
+       */
+      selection: features.selection
+        ? features.selectionPageScope
+          ? ({ scope: "page" } as const)
+          : true
+        : false,
       statusBar: features.statusBar,
     },
     /*

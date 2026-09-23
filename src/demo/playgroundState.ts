@@ -34,6 +34,15 @@ export interface FeatureState {
    */
   selection: boolean
   /**
+   * `features.selection: { scope: "page" }` — the header checkbox narrowed to
+   * the current page.
+   *
+   * A second flag rather than a tri-state control, because that is the shape
+   * the option really has: it says nothing at all while `selection` is off,
+   * and `false` here is the library's own default, `{ scope: "all-matching" }`.
+   */
+  selectionPageScope: boolean
+  /**
    * The band under the table stating what the result set contains.
    *
    * The other flag whose library default is FALSE, for the same reason
@@ -73,6 +82,7 @@ export const DEFAULT_FEATURES: FeatureState = {
   // False, like the library's own default; see each field's own comment.
   rowNumbers: false,
   selection: false,
+  selectionPageScope: false,
   statusBar: false,
   totals: false,
   filtering: true,

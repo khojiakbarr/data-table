@@ -40,6 +40,9 @@ const GROUPS: Group[] = [
       // `useDataTable({ features })` flag — and the one that puts the
       // bulk-action bar on screen.
       { key: "selection", hint: "selection" },
+      // Only says anything while `selection` is on, and that is visible on the
+      // page: with the header checkbox gone there is nothing for it to narrow.
+      { key: "selectionPageScope", hint: "selectionPageScope" },
       // Same reasoning as `rowNumbers` just above: furniture rather than an
       // interaction, but still a `useDataTable({ features })` flag.
       { key: "statusBar", hint: "statusBar" },

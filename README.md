@@ -1912,6 +1912,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `renderDetail` | `(row: TData) => ReactNode` | — | Content revealed under an expanded row. |
 | `stickyHeader` | `boolean` | `true` | Keep the header in view while the body scrolls. |
 | `onRowClick` | `(row: TData) => void` | — | |
+| `onRowContextMenu` | `(row: TData, event: MouseEvent) => void` | — | A right-click on a data row, for the host's own row menu. Call `event.preventDefault()` when you open one; group and totals rows do not call it. |
 | `footer` | `boolean` | `true` | Show the pagination footer when paging is on. |
 | `virtualize` | `boolean` | `true` | Render only the visible window of rows. `false` renders every row. |
 | `loading` | `boolean` | `false` | Rows are on their way. Skeleton rows with none yet, a progress bar once some are on screen. |

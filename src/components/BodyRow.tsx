@@ -1,5 +1,5 @@
 import { flexRender, type CellContext, type Row, type RowData } from "@tanstack/react-table"
-import type { CSSProperties } from "react"
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react"
 import { isSameCell } from "../core/cellEditing"
 import { classNames, insertAt } from "../core/classNames"
 import { pinnedStyle } from "../core/pinning"
@@ -40,6 +40,7 @@ interface BodyRowProps<TData extends RowData> {
   /** How many grouping levels a record sits under, for its indent. */
   groupDepth?: number
   onRowClick?: ((row: TData) => void) | undefined
+  onRowContextMenu?: ((row: TData, event: ReactMouseEvent<HTMLTableRowElement>) => void) | undefined
   /**
    * Cell editing, or undefined for a table that has none.
    *
@@ -86,6 +87,7 @@ export function BodyRow<TData extends RowData>({
   groupColumnId,
   groupDepth = 0,
   onRowClick,
+  onRowContextMenu,
   editing,
   selection,
 }: BodyRowProps<TData>) {
@@ -285,6 +287,7 @@ export function BodyRow<TData extends RowData>({
           : ({ height, "--dt-row-height": `${height}px` } as CSSProperties)
       }
       onClick={onRowClick ? () => onRowClick(row.original) : undefined}
+      onContextMenu={onRowContextMenu ? (event) => onRowContextMenu(row.original, event) : undefined}
     >
       {insertAt(
         rendered,

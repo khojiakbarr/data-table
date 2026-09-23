@@ -1,5 +1,5 @@
 import type { Row, RowData } from "@tanstack/react-table"
-import { useCallback, useEffect, useMemo, type ReactNode, type RefObject } from "react"
+import { useCallback, useEffect, useMemo, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react"
 import { groupValueLabel, isGroupRow } from "../core/grouping"
 import type { CellEditing } from "../core/useCellEditing"
 import { rowNumberAt } from "../core/rowNumbers"
@@ -30,6 +30,7 @@ interface TableBodyProps<TData extends RowData> {
   virtualize: boolean
   renderDetail?: ((row: TData) => ReactNode) | undefined
   onRowClick?: ((row: TData) => void) | undefined
+  onRowContextMenu?: ((row: TData, event: ReactMouseEvent<HTMLTableRowElement>) => void) | undefined
   /** Cell editing, or undefined for a table that has none. */
   editing?: CellEditing<TData> | undefined
 }
@@ -57,6 +58,7 @@ export function TableBody<TData extends RowData>({
   virtualize,
   renderDetail,
   onRowClick,
+  onRowContextMenu,
   editing,
 }: TableBodyProps<TData>) {
   const { rowHeight, getRowHeight, heightVersion, expanded, pagination, grouping, selection } =
@@ -264,6 +266,7 @@ export function TableBody<TData extends RowData>({
             groupColumnId={grouping.columnId}
             groupDepth={grouping.columns.length}
             onRowClick={onRowClick}
+            onRowContextMenu={onRowContextMenu}
             editing={editing}
             selection={selection.enabled ? selection : undefined}
           />

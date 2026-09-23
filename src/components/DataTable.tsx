@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react"
 import { classNames, insertAt } from "../core/classNames"
@@ -321,6 +322,13 @@ export interface DataTableProps<TData extends RowData> {
   style?: CSSProperties | undefined
   onRowClick?: (row: TData) => void
   /**
+   * A right-click on a data row — the host's own row menu, usually. The
+   * browser's menu is the host's to suppress: call `event.preventDefault()`
+   * when you open yours, and leave it alone when you do not. Group and
+   * totals rows do not call it.
+   */
+  onRowContextMenu?: (row: TData, event: ReactMouseEvent<HTMLTableRowElement>) => void
+  /**
    * The host's own filters, inside the side bar's Filters tab — see
    * {@link FiltersPanelSlot}. With it, the tab is offered even when no column
    * can be filtered.
@@ -487,6 +495,7 @@ export function DataTable<TData extends RowData>({
   className,
   style,
   onRowClick,
+  onRowContextMenu,
   filtersPanel,
   footer = true,
   virtualize = true,
@@ -1034,6 +1043,7 @@ export function DataTable<TData extends RowData>({
                 virtualize={virtualize}
                 renderDetail={renderDetail}
                 onRowClick={onRowClick}
+                onRowContextMenu={onRowContextMenu}
                 editing={editing}
               />
             )}

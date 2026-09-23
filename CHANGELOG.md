@@ -3,6 +3,15 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.10.0
+
+### Added
+
+- **`<DataTable onRowContextMenu={(row, event) => …}>`** — a right-click on a
+  data row reaches the host with the row and the event, so a list can open
+  the same row menu its ⋮ button opens. The browser's own menu is left alone
+  unless the host calls `event.preventDefault()`.
+
 ## 0.9.0
 
 ### Added

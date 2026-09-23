@@ -493,6 +493,10 @@ export function useDataTable<TData extends RowData>({
       // missing (`undefined`/`null`) flag; a host's own `true`, `false` or a
       // `ReactNode` passes through exactly as given.
       statusBar: features?.statusBar ?? false,
+      // True, unlike `rowNumbers` and `selection`: this flag turns an
+      // existing behaviour OFF rather than adding new furniture, so `true` is
+      // what every server host already had. See the flag's own JSDoc.
+      grouping: features?.grouping ?? true,
     }),
     [features],
   )
@@ -564,8 +568,16 @@ export function useDataTable<TData extends RowData>({
    * partial answer as if it were the whole table: counts that are wrong, and
    * wrong in a way the user cannot see. Refusing is the honest behaviour; the
    * grouping travels on the query instead and the host answers it.
+   *
+   * `flags.grouping` is the other half: a server host whose backend has no
+   * group-by support at all (client mode is already refused above) turns it
+   * off so the table stops claiming a grouping the rows do not have. Every
+   * downstream consumer — the Row groups zone, the per-column toggle, the
+   * status bar, `query.grouping`/`query.expanded`, `instance.grouping` — reads
+   * this ONE boolean rather than `isServer`/`mode` directly, so there is a
+   * single switch and not a second one hiding somewhere else.
    */
-  const groupingEnabled = isServer
+  const groupingEnabled = isServer && flags.grouping
 
   /*
    * Resolved from the column definitions and the data rather than from the

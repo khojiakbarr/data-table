@@ -263,6 +263,21 @@ export interface DataTableFeatureFlags {
    * keep in sync.
    */
   statusBar?: boolean | ReactNode
+  /**
+   * Row grouping. **Default true** — every existing server host keeps
+   * grouping exactly as it already behaves; this flag exists to let a host
+   * turn it OFF, not on, so `true` is the non-breaking default.
+   *
+   * Grouping is server-side only (see `useDataTable`'s own `groupingEnabled`),
+   * so this flag has nothing to gate in client mode. Turn it off in a server
+   * host whose backend cannot honour `query.grouping` at all — no group-by
+   * support on its list endpoint — so the table does not claim a grouping the
+   * rows do not have. With it off: no Row groups zone, no per-column group
+   * toggle, `query.grouping` and `query.expanded` stay `[]`, and
+   * `instance.grouping.add`/`toggle` refuse with the same dev warning client
+   * mode already gives.
+   */
+  grouping?: boolean
 }
 
 /**

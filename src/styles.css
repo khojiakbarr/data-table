@@ -60,6 +60,46 @@
   --dt-drop-indicator: var(--dt-accent);
   --dt-focus-ring: var(--dt-accent);
 
+  /*
+   * buttons
+   *
+   * The toolbar/menu buttons (.dt-menu-button), the pagination buttons
+   * (.dt-icon-button) and the side bar rail tabs all draw from this group
+   * instead of the general surface tokens above, so a host can restyle every
+   * button on the table as one unit. `.dt-menu-button` is public API too — a
+   * host's own buttons in `toolbarActions` / `toolbarContent` /
+   * `renderSelectionActions` pick it up the same way (README's Styling
+   * section documents this).
+   *
+   * Every value below is literal, not aliased to --dt-bg / --dt-fg /
+   * --dt-border / --dt-row-hover, even though it starts out identical to
+   * them: the playground's colour pickers (ThemeControls) edit these tokens
+   * directly and diff each one against an exact per-theme literal, the same
+   * convention --dt-accent-text and the tokens below already follow. Kept
+   * literal, a host that never touches this group sees pixel-identical
+   * buttons to the ones shipped before it existed.
+   */
+  --dt-button-bg: #ffffff;
+  --dt-button-fg: #18181b;
+  --dt-button-border: #e4e4e7;
+  --dt-button-radius: 6px;
+  --dt-button-hover-bg: #f4f4f5;
+  /*
+   * The one emphatic action a surface has — the filter editor's Apply button
+   * (.dt-menu-button-primary) — gets its own background/foreground pair and
+   * nothing else: no border or hover token of its own, so it still inherits
+   * `.dt-menu-button`'s border and (absent a themed hover of its own) reads
+   * as a plain button until a host maps these two to a real accent. A shadcn
+   * or MUI preset points them at --primary/--primary-foreground or
+   * palette.primary.main/.contrastText, and the emphatic action turns
+   * branded with no markup change. Defaulting both to the ordinary button's
+   * own colours — not to --dt-accent/--dt-accent-fg — is what keeps the base
+   * sheet's own Apply button looking exactly as it did before this pair
+   * existed.
+   */
+  --dt-button-primary-bg: #ffffff;
+  --dt-button-primary-fg: #18181b;
+
   /* pinned columns */
   /*
    * The resting fill of a pinned BODY cell. Defaults to the surface, so a
@@ -239,6 +279,12 @@
     --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
     /* Lightened, not the light theme's darkened value: 6.97:1 on #18181b. */
     --dt-accent-text: #60a5fa;
+    --dt-button-bg: #18181b;
+    --dt-button-fg: #fafafa;
+    --dt-button-border: #2e2e33;
+    --dt-button-hover-bg: #232327;
+    --dt-button-primary-bg: #18181b;
+    --dt-button-primary-fg: #fafafa;
   }
 }
 
@@ -256,6 +302,12 @@
   --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
   --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
   --dt-accent-text: #60a5fa;
+  --dt-button-bg: #18181b;
+  --dt-button-fg: #fafafa;
+  --dt-button-border: #2e2e33;
+  --dt-button-hover-bg: #232327;
+  --dt-button-primary-bg: #18181b;
+  --dt-button-primary-fg: #fafafa;
 }
 
 .dt-table {
@@ -914,17 +966,31 @@
   gap: 6px;
   height: 28px;
   padding-inline: 10px;
-  border: 1px solid var(--dt-border);
-  border-radius: 6px;
-  background: var(--dt-bg);
-  color: var(--dt-fg);
+  border: 1px solid var(--dt-button-border);
+  border-radius: var(--dt-button-radius);
+  background: var(--dt-button-bg);
+  color: var(--dt-button-fg);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
 }
 
 .dt-menu-button:hover {
-  background: var(--dt-row-hover);
+  background: var(--dt-button-hover-bg);
+}
+
+/*
+ * The one emphatic action a surface has (currently only the filter editor's
+ * Apply button). Background and foreground only — border and hover stay
+ * `.dt-menu-button`'s own, so a base-sheet host with no --dt-button-primary-*
+ * override sees this button exactly as before (see the token's own comment
+ * in the :root block above). Source order, not specificity, is what makes
+ * this win over the plain rule above: both are single-class selectors, and
+ * this one is declared second.
+ */
+.dt-menu-button-primary {
+  background: var(--dt-button-primary-bg);
+  color: var(--dt-button-primary-fg);
 }
 
 /* ---------- the side panel, floating or docked ---------- *
@@ -1040,7 +1106,11 @@
   min-height: 72px;
   padding: 10px 0;
   border: 0;
-  border-radius: 6px;
+  /* Radius and hover fill join the button token group (see the :root block
+     above) so a host restyling its buttons restyles the rail's tabs along
+     with them. Background and text colour stay their own — a rail tab has no
+     resting fill or border to begin with, unlike a real button. */
+  border-radius: var(--dt-button-radius);
   background: none;
   color: var(--dt-muted-fg);
   font: inherit;
@@ -1051,7 +1121,7 @@
 }
 
 .dt-sidebar-tab:hover {
-  background: var(--dt-row-hover);
+  background: var(--dt-button-hover-bg);
   color: var(--dt-fg);
 }
 
@@ -1800,16 +1870,16 @@
 .dt-icon-button {
   width: 28px;
   height: 28px;
-  border: 1px solid var(--dt-border);
-  border-radius: 6px;
-  background: var(--dt-bg);
-  color: var(--dt-fg);
+  border: 1px solid var(--dt-button-border);
+  border-radius: var(--dt-button-radius);
+  background: var(--dt-button-bg);
+  color: var(--dt-button-fg);
   font: inherit;
   cursor: pointer;
 }
 
 .dt-icon-button:hover:not(:disabled) {
-  background: var(--dt-row-hover);
+  background: var(--dt-button-hover-bg);
 }
 
 .dt-icon-button:disabled {

@@ -254,7 +254,7 @@ function FilterEditorBody<TData extends RowData>({
           {labels.clearFilter}
         </button>
         <span className="dt-spacer" />
-        <button type="button" className="dt-menu-button" onClick={handleApply}>
+        <button type="button" className="dt-menu-button dt-menu-button-primary" onClick={handleApply}>
           {labels.apply}
         </button>
       </div>

@@ -122,6 +122,12 @@ export interface ThemeTokenValues {
   rowHover: string
   rowStripe: string
   detailBackground: string
+  buttonBackground: string
+  buttonForeground: string
+  buttonBorder: string
+  buttonHoverBackground: string
+  buttonPrimaryBackground: string
+  buttonPrimaryForeground: string
   radius: number
   fontFamily: string
   fontSize: number
@@ -151,6 +157,12 @@ export type ThemeColorKey = Extract<
   | "rowHover"
   | "rowStripe"
   | "detailBackground"
+  | "buttonBackground"
+  | "buttonForeground"
+  | "buttonBorder"
+  | "buttonHoverBackground"
+  | "buttonPrimaryBackground"
+  | "buttonPrimaryForeground"
 >
 
 /** The numeric controls, sliders rather than pickers. Same key-parity reason as {@link ThemeColorKey}. */
@@ -178,6 +190,12 @@ const LIGHT_VALUES: ThemeTokenValues = {
   rowHover: "#f4f4f5",
   rowStripe: "#fcfcfd",
   detailBackground: "#f8f8fa",
+  buttonBackground: "#ffffff",
+  buttonForeground: "#18181b",
+  buttonBorder: "#e4e4e7",
+  buttonHoverBackground: "#f4f4f5",
+  buttonPrimaryBackground: "#ffffff",
+  buttonPrimaryForeground: "#18181b",
   radius: 8,
   fontFamily: SYSTEM_FONT_STACK,
   fontSize: 14,
@@ -208,6 +226,12 @@ const DARK_VALUES: ThemeTokenValues = {
   rowHover: "#232327",
   rowStripe: "#1b1b1f",
   detailBackground: "#1c1c20",
+  buttonBackground: "#18181b",
+  buttonForeground: "#fafafa",
+  buttonBorder: "#2e2e33",
+  buttonHoverBackground: "#232327",
+  buttonPrimaryBackground: "#18181b",
+  buttonPrimaryForeground: "#fafafa",
 }
 
 /** What each base theme starts every token at, before any override. */
@@ -258,6 +282,12 @@ export const TOKEN_NAMES: Record<Exclude<ThemeEditableKey, "rowHeight">, string>
   rowHover: "--dt-row-hover",
   rowStripe: "--dt-row-stripe",
   detailBackground: "--dt-detail-bg",
+  buttonBackground: "--dt-button-bg",
+  buttonForeground: "--dt-button-fg",
+  buttonBorder: "--dt-button-border",
+  buttonHoverBackground: "--dt-button-hover-bg",
+  buttonPrimaryBackground: "--dt-button-primary-bg",
+  buttonPrimaryForeground: "--dt-button-primary-fg",
   radius: "--dt-radius",
   fontFamily: "--dt-font",
   fontSize: "--dt-font-size",

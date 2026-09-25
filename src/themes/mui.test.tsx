@@ -86,6 +86,34 @@ describe("muiTokens", () => {
     expect(tokens["--dt-font"]).toBe('"Roboto","Helvetica","Arial",sans-serif')
   })
 
+  it("maps the button tokens onto the same fields as the surface and the accent", () => {
+    // The ordinary button reads the same surface/text/border MUI's own
+    // outlined Button does; the emphatic one (.dt-menu-button-primary) reuses
+    // whatever --dt-accent / --dt-accent-fg already resolved to, MUI's own
+    // filled-Button pairing.
+    const tokens = muiTokens(v5Theme)
+
+    expect(tokens["--dt-button-bg"]).toBe(tokens["--dt-bg"])
+    expect(tokens["--dt-button-fg"]).toBe(tokens["--dt-fg"])
+    expect(tokens["--dt-button-border"]).toBe(tokens["--dt-border"])
+    expect(tokens["--dt-button-hover-bg"]).toBe(tokens["--dt-row-hover"])
+    expect(tokens["--dt-button-primary-bg"]).toBe(tokens["--dt-accent"])
+    expect(tokens["--dt-button-primary-fg"]).toBe(tokens["--dt-accent-fg"])
+    // MUI has no dedicated "secondary button" radius; the button follows the
+    // same `shape.borderRadius` the panel does.
+    expect(tokens["--dt-button-radius"]).toBe(tokens["--dt-radius"])
+  })
+
+  it("falls back to the base sheet's own 6px button radius, not the panel's 8px", () => {
+    // Distinct fallback from --dt-radius: verified with an empty theme, where
+    // `shape.borderRadius` is absent for both tokens and the two constants
+    // have to differ on their own, not because a theme happened to set them
+    // apart.
+    const tokens = muiTokens({})
+    expect(tokens["--dt-button-radius"]).toBe("6px")
+    expect(tokens["--dt-radius"]).toBe("8px")
+  })
+
   it("prints the accent as text unchanged, because that is MUI's own pairing", () => {
     // `primary.main` IS what MUI prints as text on a surface (Link, text
     // Button), so the token the base sheet keeps separate for the stricter

@@ -24,6 +24,12 @@ const COLOR_FIELDS: ThemeColorKey[] = [
   "rowHover",
   "rowStripe",
   "detailBackground",
+  "buttonBackground",
+  "buttonForeground",
+  "buttonBorder",
+  "buttonHoverBackground",
+  "buttonPrimaryBackground",
+  "buttonPrimaryForeground",
 ]
 
 /** One numeric token and the range a slider may move it over. */

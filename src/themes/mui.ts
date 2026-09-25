@@ -88,6 +88,8 @@ const DEFAULTS = {
 const ACCENT_FALLBACK = "#3b82f6"
 const ACCENT_FG_FALLBACK = "#18181b"
 const RADIUS_FALLBACK = "8px"
+/** The base sheet's own button radius (`.dt-menu-button`, `.dt-icon-button`) — narrower than `RADIUS_FALLBACK` above, which is the panel's. */
+const BUTTON_RADIUS_FALLBACK = "6px"
 const FONT_FALLBACK = "inherit"
 const FONT_SIZE_FALLBACK = "14px"
 
@@ -292,6 +294,29 @@ export function muiTokens(theme: MuiThemeInput): TokenStyle {
        here for the same reason. */
     "--dt-accent-text": accentText,
     "--dt-resize-handle": stringOr(palette?.divider, base.resizeHandle),
+
+    /*
+     * Buttons. The ordinary case (.dt-menu-button, .dt-icon-button, the
+     * sidebar rail tabs, and a host's own buttons via the public
+     * .dt-menu-button class) reads the same surface/text/border/hover the
+     * table itself does — MUI has no dedicated "secondary button" palette
+     * role the way shadcn does, and an outlined MUI button is paper with a
+     * divider border, which is exactly what these already are. That also
+     * means a v5/v6 theme with no explicit primary override reproduces the
+     * base sheet's own button look, not a recoloured one.
+     *
+     * The emphatic pair (.dt-menu-button-primary, currently only the filter
+     * editor's Apply button) reuses `accent` / `--dt-accent-fg` above rather
+     * than recomputing them — same values MUI's own filled Button paints
+     * with `palette.primary.main` / `.contrastText`.
+     */
+    "--dt-button-bg": surface,
+    "--dt-button-fg": stringOr(palette?.text?.primary, base.fg),
+    "--dt-button-border": stringOr(palette?.divider, base.border),
+    "--dt-button-radius": lengthOr(theme?.shape?.borderRadius, BUTTON_RADIUS_FALLBACK),
+    "--dt-button-hover-bg": tint(base.neutral, hoverOpacity),
+    "--dt-button-primary-bg": accent,
+    "--dt-button-primary-fg": stringOr(palette?.primary?.contrastText, ACCENT_FG_FALLBACK),
 
     /* Seam under a pinned column. MUI bakes its shadows into `theme.shadows`
        as whole `box-shadow` strings, with no colour to lift out of them, so

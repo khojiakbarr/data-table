@@ -3,6 +3,25 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## Unreleased
+
+### Added
+
+- **Buttons join the `--dt-*` token contract.** `--dt-button-bg` `--dt-button-fg`
+  `--dt-button-border` `--dt-button-radius` `--dt-button-hover-bg` restyle the
+  toolbar/menu buttons, the pagination buttons and the side bar rail tabs as one
+  group; `--dt-button-primary-bg` `--dt-button-primary-fg` (`.dt-menu-button-primary`)
+  colour the one emphatic action a surface has — currently the filter editor's
+  Apply button. Every default reproduces the exact value these buttons already
+  painted, so an existing table sees no change. Both shadcn presets map the group
+  onto `--secondary`/`--primary` (the same roles shadcn's own `<Button>` uses);
+  `muiTokens()` emits it from `palette.primary.main`/`.contrastText`,
+  `shape.borderRadius` and `palette.action.hoverOpacity`.
+- **`.dt-menu-button` is now documented public API** — a host's own buttons in
+  `toolbarActions`, `toolbarContent` or `renderSelectionActions` (the bulk-action
+  bar) can carry this class, and `dt-menu-button-primary` alongside it, to match
+  the table's own buttons pixel for pixel.
+
 ## 0.10.0
 
 ### Added

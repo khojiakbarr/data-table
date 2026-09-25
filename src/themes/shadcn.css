@@ -100,6 +100,24 @@
   --dt-footer-bg: var(--table-footer-bg, var(--background));
   --dt-footer-fg: var(--table-footer-fg, var(--muted-foreground));
 
+  /*
+   * Buttons (.dt-menu-button, .dt-icon-button, the sidebar rail tabs, and a
+   * host's own buttons in toolbarActions/toolbarContent/renderSelectionActions
+   * via the public .dt-menu-button class). Mapped to the roles shadcn's own
+   * <Button> uses for the same two cases: --secondary/--secondary-foreground
+   * for an ordinary button, --primary/--primary-foreground for the one
+   * emphatic action a surface has (.dt-menu-button-primary). --input, not
+   * --border, because that is the variable shadcn's own outline/secondary
+   * button borders on (`border-input`).
+   */
+  --dt-button-bg: var(--secondary);
+  --dt-button-fg: var(--secondary-foreground);
+  --dt-button-border: var(--input);
+  --dt-button-radius: var(--radius);
+  --dt-button-hover-bg: var(--accent);
+  --dt-button-primary-bg: var(--primary);
+  --dt-button-primary-fg: var(--primary-foreground);
+
   --dt-pin-shadow-start: 6px 0 6px -6px color-mix(in oklab, var(--foreground) 25%, transparent);
   --dt-pin-shadow-end: -6px 0 6px -6px color-mix(in oklab, var(--foreground) 25%, transparent);
 

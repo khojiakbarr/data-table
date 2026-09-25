@@ -1476,11 +1476,67 @@ want that cell to end up with rather than expecting the layers to add.
 | `--dt-indent` `--dt-detail-bg` | Nested rows and detail panels |
 | `--dt-viewport-max-height` | Fallback height for a table nobody bounded; see [Large data](#large-data) |
 | `--dt-font` `--dt-font-size` | Typography |
+| `--dt-button-bg` `--dt-button-fg` `--dt-button-border` `--dt-button-radius` `--dt-button-hover-bg` | The toolbar/menu buttons, the pagination buttons and the side bar rail tabs — see [Buttons](#buttons) below |
+| `--dt-button-primary-bg` `--dt-button-primary-fg` | The one emphatic action a surface has (currently the filter editor's Apply button, `.dt-menu-button-primary`) — see [Buttons](#buttons) below |
 
 </details>
 
 Dark mode follows `prefers-color-scheme`. Pass `theme="light"` or `theme="dark"` to pin it —
 or hand the table a design system's own mode, as [Material UI](#material-ui) below does.
+
+### Buttons
+
+The toolbar/menu buttons, the pagination buttons and the side bar rail tabs all draw from
+one group of tokens, so they restyle together instead of one override per selector:
+
+```css
+.dt-root.dt-root {
+  --dt-button-bg: #fff;
+  --dt-button-fg: #18181b;
+  --dt-button-border: #e4e4e7;
+  --dt-button-radius: 6px;
+  --dt-button-hover-bg: #f4f4f5;
+  /* The one emphatic action a surface has — currently the filter editor's
+     Apply button. Background and foreground only; it still inherits its
+     border and its rest state from the group above. */
+  --dt-button-primary-bg: #2563eb;
+  --dt-button-primary-fg: #fff;
+}
+```
+
+Every default reproduces exactly what these buttons already painted before this group
+existed — `--dt-button-bg` starts out identical to `--dt-bg`, `--dt-button-hover-bg` to
+`--dt-row-hover`, and so on — so a host that never sets any of these six tokens sees no
+change at all. `--dt-button-primary-bg` / `-fg` default to the *ordinary* button's own
+colours for the same reason: until you (or a shadcn/MUI preset) point them at a real
+accent, the emphatic button looks exactly like every other one.
+
+**`.dt-menu-button` is public API.** A host's own buttons passed through `toolbarActions`,
+`toolbarContent` or `renderSelectionActions` (the bulk-action bar) can carry this class to
+match the table's own toolbar buttons pixel for pixel — border, radius, hover and all,
+following the same `--dt-button-*` tokens. Add `dt-menu-button-primary` alongside it for a
+button that should read as the emphatic one of that group:
+
+```tsx
+<DataTable
+  instance={table}
+  toolbarActions={
+    <button type="button" className="dt-menu-button" onClick={exportRows}>
+      Export
+    </button>
+  }
+  renderSelectionActions={({ count, clear }) => (
+    <>
+      <button type="button" className="dt-menu-button dt-menu-button-primary" onClick={flagSelected}>
+        Flag {count}
+      </button>
+      <button type="button" className="dt-menu-button" onClick={clear}>
+        Cancel
+      </button>
+    </>
+  )}
+/>
+```
 
 ### shadcn/ui
 
@@ -1500,6 +1556,12 @@ Pick by how your shadcn variables are written. A complete colour such as
 `221 83% 53%`, read by the host as `hsl(var(--primary))`, needs
 `shadcn-hsl.css`. The wrong file produces no colour at all rather than a
 warning, so check one variable before deciding.
+
+Both presets map the [button tokens](#buttons) onto the same roles shadcn's own `<Button>`
+uses: `--secondary` / `--secondary-foreground` for `.dt-menu-button`, `--primary` /
+`--primary-foreground` for `.dt-menu-button-primary`, `--radius` for the corner and
+`--input` for the border — so a table styled with either preset picks up the host's
+existing button look with no `--dt-button-*` override needed.
 
 #### Your own table tokens win
 
@@ -1611,6 +1673,10 @@ hand-written object all compile and no host needs MUI installed to typecheck.
 | `--dt-detail-bg` | `palette.action.selectedOpacity` | a panel you opened is a region, not a hover |
 | `--dt-radius` | `shape.borderRadius` | unitless numbers mean pixels |
 | `--dt-font` `--dt-font-size` | `typography.fontFamily` / `.fontSize` | |
+| `--dt-button-bg` `--dt-button-fg` `--dt-button-border` | `--dt-bg` / `--dt-fg` / `--dt-border` above | MUI has no dedicated "secondary button" palette role; an outlined MUI button is already paper with a divider border |
+| `--dt-button-radius` | `shape.borderRadius` | falls back to 6px, not `--dt-radius`'s 8px — the base sheet's own button radius |
+| `--dt-button-hover-bg` | `palette.action.hoverOpacity` | same recomposited tint as `--dt-row-hover` |
+| `--dt-button-primary-bg` `--dt-button-primary-fg` | `palette.primary.main` / `.contrastText` | the [emphatic button](#buttons) — same values as `--dt-accent` / `--dt-accent-fg` above |
 
 Three of those need a word.
 

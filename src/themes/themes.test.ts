@@ -146,7 +146,7 @@ describe("base stylesheet token extraction", () => {
   // preset tests below passing vacuously with an empty token list.
   it("finds the base tokens", () => {
     expect(baseTokens.length).toBeGreaterThan(0)
-    expect(new Set(baseTokens).size).toBe(28)
+    expect(new Set(baseTokens).size).toBe(35)
   })
 
   it("matches digit-suffixed token names", () => {
@@ -573,5 +573,46 @@ describe("base palette", () => {
     // opacity fraction that fell under 3:1 in both themes.
     expect(contrastRatio(baseTokenValue("--dt-muted-fg"), baseTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
     expect(contrastRatio(darkTokenValue("--dt-muted-fg"), darkTokenValue("--dt-bg"))).toBeGreaterThanOrEqual(3)
+  })
+
+  it("prints an ordinary button's label at WCAG AA in both themes", () => {
+    // .dt-menu-button / .dt-icon-button text (13px, normal-size), so 4.5:1 —
+    // --dt-button-fg on --dt-button-bg, both literal per-theme tokens rather
+    // than an alias, but still checked as the resolved pair a host actually
+    // paints.
+    for (const theme of ["light", "dark"] as const) {
+      const ratio = contrastRatio(resolvedTokenValue("--dt-button-fg", theme), resolvedTokenValue("--dt-button-bg", theme))
+      expect(ratio).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it("prints the emphatic button's label at WCAG AA in both themes", () => {
+    // .dt-menu-button-primary (the filter editor's Apply button) — same 4.5:1
+    // floor, checked at the base sheet's own default pairing, which is
+    // identical to the ordinary button's until a host or preset maps these
+    // two tokens to a real accent.
+    for (const theme of ["light", "dark"] as const) {
+      const ratio = contrastRatio(
+        resolvedTokenValue("--dt-button-primary-fg", theme),
+        resolvedTokenValue("--dt-button-primary-bg", theme),
+      )
+      expect(ratio).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it("keeps the base sheet's button tokens byte-identical to the surface they replace", () => {
+    // Regression guard for the "no visual change" promise: --dt-button-bg,
+    // --dt-button-fg, --dt-button-border and --dt-button-hover-bg started out
+    // as literal copies of --dt-bg, --dt-fg, --dt-border and --dt-row-hover —
+    // this pins that they still agree, in both themes, so a future edit to
+    // either group cannot silently drift the other.
+    for (const theme of ["light", "dark"] as const) {
+      expect(resolvedTokenValue("--dt-button-bg", theme)).toBe(resolvedTokenValue("--dt-bg", theme))
+      expect(resolvedTokenValue("--dt-button-fg", theme)).toBe(resolvedTokenValue("--dt-fg", theme))
+      expect(resolvedTokenValue("--dt-button-border", theme)).toBe(resolvedTokenValue("--dt-border", theme))
+      expect(resolvedTokenValue("--dt-button-hover-bg", theme)).toBe(resolvedTokenValue("--dt-row-hover", theme))
+      expect(resolvedTokenValue("--dt-button-primary-bg", theme)).toBe(resolvedTokenValue("--dt-button-bg", theme))
+      expect(resolvedTokenValue("--dt-button-primary-fg", theme)).toBe(resolvedTokenValue("--dt-button-fg", theme))
+    }
   })
 })

@@ -1,6 +1,7 @@
 import path from "node:path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
+import { sourceAliases } from "./vite.shared.ts"
 
 // Separate config for the playground/demo *site*, as opposed to vite.config.ts
 // which builds the published *library* (build.lib, entry src/index.ts). A single
@@ -10,7 +11,7 @@ import { defineConfig } from "vite"
 // dependencies differently (see below), so they cannot share one `build` block.
 export default defineConfig({
   plugins: [react()],
-  resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+  resolve: { alias: sourceAliases },
 
   // GitHub Pages serves project sites from https://<user>.github.io/<repo>/, not
   // from the domain root. Every asset URL Vite emits is resolved against `base`,
@@ -24,6 +25,17 @@ export default defineConfig({
     // package output (see package.json "files") and must not be polluted
     // with demo HTML/JS.
     outDir: "demo-dist",
+    // Two pages, two static files. The docs are `docs.html` rather than a
+    // client-side route because GitHub Pages serves files only and has no SPA
+    // fallback: `/data-table/docs` would 404 on a hard reload, while
+    // `/data-table/docs.html#row-selection` is a real file plus a fragment the
+    // server never sees.
+    rolldownOptions: {
+      input: {
+        playground: path.resolve(__dirname, "index.html"),
+        docs: path.resolve(__dirname, "docs.html"),
+      },
+    },
     // Unlike vite.config.ts, do NOT externalise React/TanStack here. The library
     // build externalises them because a consuming app supplies its own copies
     // (they're peerDependencies); the demo site has no such consumer and no

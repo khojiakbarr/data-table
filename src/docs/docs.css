@@ -1,0 +1,562 @@
+/*
+ * The docs page. Loaded after `demo.css`, whose `--pg-*` tokens, masthead,
+ * focus ring and reduced-motion rule it reuses so the two pages read as one
+ * site. Only what the playground has no equivalent for is declared here, and
+ * every new colour is a `--docs-*` token picked for WCAG AA against the
+ * surface it sits on (4.5:1 for text, including every code-token colour
+ * against `--docs-code-bg`).
+ */
+
+:root {
+  --docs-sidebar-width: 244px;
+  --docs-toc-width: 200px;
+  --docs-content-max: 860px;
+  /* Heading sizes above the playground's five-step scale, which tops out at 17px. */
+  --docs-text-h3: 20px;
+  --docs-text-h2: 26px;
+  --docs-text-title: 32px;
+  /* The sticky Contents bar's height plus a gap, for the one-column layout. */
+  --docs-compact-anchor-offset: 64px;
+  /* Where an anchored heading lands: under the sticky masthead, with room. */
+  --docs-anchor-offset: calc(var(--pg-header-height) + var(--pg-space-4));
+
+  --docs-link: #2549b8;
+  --docs-code-bg: #f5f6f8;
+  --docs-code-fg: #1f2128;
+  --docs-inline-code-bg: #eceef2;
+  --docs-warning-bg: #fdf3e3;
+  --docs-warning-border: #b45309;
+
+  --tok-comment: #5b5e68;
+  --tok-string: #0b6b37;
+  --tok-keyword: #8434b0;
+  --tok-number: #9a4300;
+  --tok-type: #2549b8;
+  --tok-property: #a1331b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --docs-link: #8fb0ff;
+    --docs-code-bg: #0e1013;
+    --docs-code-fg: #e6e8ec;
+    --docs-inline-code-bg: #22252b;
+    --docs-warning-bg: #2a2012;
+    --docs-warning-border: #f0a14b;
+
+    --tok-comment: #9ba0aa;
+    --tok-string: #82dca3;
+    --tok-keyword: #d4a8ff;
+    --tok-number: #ffb870;
+    --tok-type: #8fb0ff;
+    --tok-property: #ff9d85;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+.docs-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Hidden until focused, then the first thing on screen. */
+.docs-skip {
+  position: absolute;
+  left: var(--pg-space-4);
+  top: var(--pg-space-2);
+  z-index: 30;
+  padding: var(--pg-space-2) var(--pg-space-3);
+  border-radius: var(--pg-radius-sm);
+  background: var(--pg-accent);
+  color: var(--pg-accent-fg);
+  font-size: var(--pg-text-md);
+  font-weight: 600;
+  transform: translateY(-200%);
+}
+.docs-skip:focus-visible {
+  transform: none;
+}
+
+/* ------------------------------------------------------------------ layout */
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: var(--docs-sidebar-width) minmax(0, 1fr) var(--docs-toc-width);
+  align-items: start;
+  gap: var(--pg-space-8);
+  width: 100%;
+  max-width: calc(var(--docs-sidebar-width) + var(--docs-content-max) + var(--docs-toc-width) + 4 * var(--pg-space-8));
+  margin: 0 auto;
+  padding: var(--pg-space-6);
+}
+
+.docs-main {
+  min-width: 0;
+  max-width: var(--docs-content-max);
+  font-size: var(--pg-text-lg);
+  line-height: 1.65;
+  color: var(--pg-fg-soft);
+}
+/* The skip link's target: focusable so focus moves, not a control, so no ring. */
+.docs-main:focus {
+  outline: none;
+}
+
+.docs-main a {
+  color: var(--docs-link);
+  text-underline-offset: 2px;
+}
+
+.docs-main code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+.docs-main :not(pre) > code {
+  padding: 1px var(--pg-space-1);
+  border-radius: var(--pg-radius-sm);
+  background: var(--docs-inline-code-bg);
+  color: var(--pg-fg);
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------------ sidebar */
+
+.docs-sidebar,
+.docs-toc {
+  position: sticky;
+  top: calc(var(--pg-header-height) + var(--pg-space-6));
+  max-height: calc(100vh - var(--pg-header-height) - var(--pg-space-8));
+  overflow-y: auto;
+  /* Room for a focus ring at the scroll region's edge. */
+  padding: var(--pg-space-1);
+}
+
+.docs-sidebar-toggle {
+  display: none;
+}
+
+.docs-sidebar-list,
+.docs-sidebar-topics,
+.docs-toc ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.docs-sidebar-list > li + li {
+  margin-top: var(--pg-space-4);
+}
+
+.docs-sidebar a,
+.docs-toc a {
+  display: block;
+  padding: var(--pg-space-1) var(--pg-space-2);
+  border-radius: var(--pg-radius-sm);
+  color: var(--pg-muted);
+  font-size: var(--pg-text-md);
+  line-height: 1.45;
+  text-decoration: none;
+}
+.docs-sidebar a:hover,
+.docs-toc a:hover {
+  color: var(--pg-fg);
+  background: var(--pg-surface-sunken);
+}
+
+.docs-sidebar a.docs-sidebar-section {
+  font-weight: 650;
+  color: var(--pg-fg);
+}
+
+.docs-sidebar-topics {
+  margin-top: var(--pg-space-1);
+  padding-left: var(--pg-space-2);
+  border-left: 1px solid var(--pg-border);
+}
+
+/* Where you are: an accent bar and the accent colour, not colour alone. */
+.docs-sidebar a[aria-current="location"],
+.docs-toc a[aria-current="location"] {
+  color: var(--docs-link);
+  background: var(--pg-accent-soft);
+  font-weight: 600;
+}
+.docs-sidebar-topic[aria-current="location"] {
+  box-shadow: inset 2px 0 0 var(--pg-accent);
+}
+
+.docs-toc-heading {
+  margin: 0 0 var(--pg-space-2);
+  padding-left: var(--pg-space-2);
+  font-size: var(--pg-text-sm);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pg-muted);
+}
+
+/* ------------------------------------------------------------------ content */
+
+.docs-intro {
+  padding-bottom: var(--pg-space-6);
+  border-bottom: 1px solid var(--pg-border);
+}
+
+.docs-eyebrow {
+  margin: 0;
+  font-size: var(--pg-text-sm);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--docs-link);
+}
+
+.docs-title {
+  margin: var(--pg-space-2) 0 var(--pg-space-3);
+  font-size: var(--docs-text-title);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--pg-fg);
+}
+
+.docs-lede {
+  margin: 0;
+  font-size: var(--pg-text-xl);
+  color: var(--pg-fg-soft);
+}
+
+.docs-section {
+  padding-top: var(--pg-space-8);
+}
+
+.docs-h2,
+.docs-h3,
+.docs-main h4 {
+  scroll-margin-top: var(--docs-anchor-offset);
+  color: var(--pg-fg);
+}
+
+.docs-h2 {
+  margin: 0;
+  font-size: var(--docs-text-h2);
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+}
+
+.docs-h3 {
+  margin: var(--pg-space-8) 0 var(--pg-space-3);
+  font-size: var(--docs-text-h3);
+  line-height: 1.3;
+}
+
+.docs-main h4 {
+  margin: var(--pg-space-6) 0 var(--pg-space-2);
+  font-size: var(--pg-text-xl);
+}
+
+/* A heading is a link to itself; it reads as a heading until hovered. */
+.docs-main .docs-h2 a,
+.docs-main .docs-h3 a {
+  color: inherit;
+  text-decoration: none;
+}
+.docs-h2 a:hover,
+.docs-h3 a:hover {
+  text-decoration: underline;
+}
+
+.docs-summary {
+  margin: var(--pg-space-2) 0 0;
+  color: var(--pg-muted);
+}
+
+.docs-main p,
+.docs-main ul,
+.docs-main ol {
+  margin: var(--pg-space-3) 0;
+}
+.docs-main li + li {
+  margin-top: var(--pg-space-1);
+}
+
+.docs-readmore {
+  font-size: var(--pg-text-md);
+  color: var(--pg-muted);
+}
+
+.docs-callout {
+  display: flex;
+  gap: var(--pg-space-3);
+  margin: var(--pg-space-4) 0;
+  padding: var(--pg-space-3) var(--pg-space-4);
+  border-left: 3px solid var(--pg-accent);
+  border-radius: var(--pg-radius-sm);
+  background: var(--pg-accent-soft);
+  color: var(--pg-fg);
+  font-size: var(--pg-text-lg);
+}
+.docs-callout[data-tone="warning"] {
+  border-left-color: var(--docs-warning-border);
+  background: var(--docs-warning-bg);
+}
+.docs-callout-label {
+  flex: none;
+  font-size: var(--pg-text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 2;
+}
+
+/* ------------------------------------------------------------- code blocks */
+
+.docs-code {
+  margin: var(--pg-space-4) 0;
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-md);
+  background: var(--docs-code-bg);
+  overflow: hidden;
+}
+
+.docs-code-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pg-space-2);
+  padding: var(--pg-space-1) var(--pg-space-2) var(--pg-space-1) var(--pg-space-4);
+  border-bottom: 1px solid var(--pg-border);
+  font-size: var(--pg-text-sm);
+  color: var(--pg-muted);
+}
+
+.docs-code-title {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs-copy {
+  flex: none;
+  min-height: 32px;
+  padding: var(--pg-space-1) var(--pg-space-3);
+  border: 1px solid var(--pg-border-control);
+  border-radius: var(--pg-radius-sm);
+  background: var(--pg-surface);
+  color: var(--pg-fg);
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+}
+.docs-copy:hover {
+  background: var(--pg-surface-sunken);
+}
+.docs-copy[data-state="copied"] {
+  border-color: var(--tok-string);
+  color: var(--tok-string);
+}
+.docs-copy[data-state="failed"] {
+  border-color: var(--pg-danger);
+  color: var(--pg-danger);
+}
+
+.docs-code-body {
+  margin: 0;
+  padding: var(--pg-space-3) var(--pg-space-4);
+  overflow-x: auto;
+  font-size: var(--pg-text-md);
+  line-height: 1.6;
+  color: var(--docs-code-fg);
+  tab-size: 2;
+}
+.docs-code-body code {
+  font-size: inherit;
+}
+
+.docs-code-body:focus-visible,
+.docs-table-wrap:focus-visible {
+  outline: 2px solid var(--pg-accent);
+  outline-offset: -2px;
+}
+
+.tok-comment { color: var(--tok-comment); font-style: italic; }
+.tok-string { color: var(--tok-string); }
+.tok-keyword { color: var(--tok-keyword); }
+.tok-number { color: var(--tok-number); }
+.tok-type { color: var(--tok-type); }
+.tok-property { color: var(--tok-property); }
+
+/* ----------------------------------------------------------- live examples */
+
+.docs-live {
+  margin: var(--pg-space-6) 0;
+  min-width: 0;
+}
+
+.docs-live-caption {
+  display: flex;
+  align-items: center;
+  gap: var(--pg-space-2);
+  margin-bottom: var(--pg-space-2);
+  font-size: var(--pg-text-md);
+  font-weight: 600;
+  color: var(--pg-fg);
+}
+
+.docs-live-badge {
+  padding: 2px var(--pg-space-2);
+  border-radius: var(--pg-radius-full);
+  background: var(--pg-accent-soft);
+  color: var(--docs-link);
+  font-size: var(--pg-text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.docs-live-stage {
+  min-width: 0;
+  padding: var(--pg-space-3);
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-lg);
+  background: var(--pg-surface);
+  box-shadow: var(--pg-shadow-md);
+  font-size: var(--pg-text-md);
+  line-height: 1.4;
+}
+.docs-live .docs-code {
+  margin-top: var(--pg-space-3);
+}
+
+/* ------------------------------------------------------- reference tables */
+
+.docs-table-wrap {
+  margin: var(--pg-space-4) 0;
+  overflow-x: auto;
+  border: 1px solid var(--pg-border);
+  border-radius: var(--pg-radius-md);
+}
+
+.docs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--pg-text-md);
+  line-height: 1.5;
+}
+.docs-table th,
+.docs-table td {
+  padding: var(--pg-space-2) var(--pg-space-3);
+  border-bottom: 1px solid var(--pg-border);
+  text-align: left;
+  vertical-align: top;
+}
+.docs-table tr:last-child > * {
+  border-bottom: none;
+}
+.docs-table thead th {
+  background: var(--pg-surface-sunken);
+  color: var(--pg-fg);
+  font-weight: 650;
+  white-space: nowrap;
+}
+.docs-table tbody th {
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- narrower */
+
+/* No room for three columns: the on-this-page list goes; the sidebar lists the same topics. */
+@media (max-width: 1199px) {
+  .docs-layout {
+    grid-template-columns: var(--docs-sidebar-width) minmax(0, 1fr);
+    gap: var(--pg-space-6);
+  }
+  .docs-toc {
+    display: none;
+  }
+}
+
+/*
+ * One column. The masthead wraps to two rows here, so it stops sticking — it
+ * would eat a third of a phone screen — and the Contents bar sticks instead,
+ * the one thing a reader needs within reach while scrolling.
+ */
+@media (max-width: 859px) {
+  :root {
+    --docs-anchor-offset: var(--docs-compact-anchor-offset);
+  }
+  .docs-root .pg-header {
+    position: static;
+  }
+  .docs-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--pg-space-4);
+    padding: 0 var(--pg-space-4) var(--pg-space-6);
+  }
+  .docs-sidebar {
+    top: 0;
+    z-index: 10;
+    max-height: none;
+    overflow: visible;
+    margin: 0 calc(-1 * var(--pg-space-4));
+    padding: var(--pg-space-2) var(--pg-space-4);
+    background: var(--pg-bg);
+    border-bottom: 1px solid var(--pg-border);
+  }
+  .docs-sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: var(--pg-space-2) var(--pg-space-4);
+    border: 1px solid var(--pg-border-control);
+    border-radius: var(--pg-radius-full);
+    background: var(--pg-surface);
+    color: var(--pg-fg);
+    font: inherit;
+    font-size: var(--pg-text-md);
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .docs-sidebar-list {
+    display: none;
+  }
+  /* Over the content, not in its flow: pushing the page down would move the
+     reader off the topic the list is about to highlight as current. */
+  .docs-sidebar[data-open] .docs-sidebar-list {
+    display: block;
+    position: absolute;
+    top: 100%;
+    left: var(--pg-space-4);
+    right: var(--pg-space-4);
+    box-shadow: var(--pg-shadow-md);
+    max-height: 70vh;
+    overflow-y: auto;
+    margin-top: var(--pg-space-2);
+    padding: var(--pg-space-2);
+    border: 1px solid var(--pg-border);
+    border-radius: var(--pg-radius-md);
+    background: var(--pg-surface);
+  }
+  /* Touch-sized rows: 40px is the web minimum for a target. */
+  .docs-sidebar a {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+  }
+  .docs-title {
+    font-size: var(--docs-text-h2);
+  }
+  .docs-main {
+    font-size: var(--pg-text-lg);
+  }
+}

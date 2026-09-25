@@ -14,6 +14,19 @@ import type { Language } from "./playgroundState"
  */
 const LOGO_URL = `${import.meta.env.BASE_URL}assets/logo.svg`
 
+/**
+ * The site's two pages. Plain files rather than routes — GitHub Pages has no
+ * SPA fallback, so a path it cannot find on disk is a 404 on reload. Built
+ * from `BASE_URL` for the same reason as {@link LOGO_URL}.
+ */
+const PAGE_URL: Record<SitePage, string> = {
+  playground: import.meta.env.BASE_URL,
+  docs: `${import.meta.env.BASE_URL}docs.html`,
+}
+
+/** Which page of the site a masthead sits on. */
+export type SitePage = "playground" | "docs"
+
 const GITHUB_URL = "https://github.com/khojiakbarr/data-table"
 const NPM_URL = "https://www.npmjs.com/package/@hojiakbar_dev/data-table"
 
@@ -34,30 +47,42 @@ function ExternalArrow() {
 }
 
 interface PlaygroundHeaderProps {
-  language: Language
-  onLanguageChange: (next: Language) => void
   chrome: ChromeStrings
+  /**
+   * The page this masthead sits on; the header links to the other one.
+   * Default `"playground"`.
+   */
+  page?: SitePage
+  /** The language currently chosen. The switcher renders only with both of these. */
+  language?: Language
+  onLanguageChange?: (next: Language) => void
 }
 
 /**
- * The page's masthead: the mark, the package name, one line saying what the
- * package is, the language switcher and the two links a visitor arriving from
- * a README actually wants.
+ * The site's masthead: the mark, the package name, one line saying what the
+ * package is, the language switcher, a link to the site's other page, and the
+ * two links a visitor arriving from a README actually wants.
+ *
+ * Shared by the playground and the docs so the two read as one site. The docs
+ * are English-only and pass no language, so they get no switcher — a control
+ * that changed nothing on the page would be a lie.
  *
  * The `<h1>` is the package name and nothing else — the mark beside it is
  * decorative (`alt=""`) so it does not end up read out as part of the name.
  * A mark that fails to load hides itself rather than leaving a broken-image
  * glyph in the one place on the page that has to look finished.
  *
+ * @param props.chrome - The page copy for the current language.
+ * @param props.page - Which page this is; the header links to the other.
  * @param props.language - The language currently chosen.
  * @param props.onLanguageChange - Called with the newly picked language.
- * @param props.chrome - The page copy for the current language.
  *
  * @example
  * <PlaygroundHeader language={language} onLanguageChange={setLanguage} chrome={chrome} />
  */
-export function PlaygroundHeader({ language, onLanguageChange, chrome }: PlaygroundHeaderProps) {
+export function PlaygroundHeader({ chrome, page = "playground", language, onLanguageChange }: PlaygroundHeaderProps) {
   const [hasLogo, setHasLogo] = useState(true)
+  const otherPage: SitePage = page === "playground" ? "docs" : "playground"
 
   return (
     <header className="pg-header">
@@ -80,8 +105,13 @@ export function PlaygroundHeader({ language, onLanguageChange, chrome }: Playgro
         </div>
 
         <div className="pg-header-actions">
-          <LanguageSwitcher value={language} onChange={onLanguageChange} chrome={chrome} />
+          {language !== undefined && onLanguageChange !== undefined && (
+            <LanguageSwitcher value={language} onChange={onLanguageChange} chrome={chrome} />
+          )}
           <nav className="pg-links" aria-label={chrome.header.nav}>
+            <a className="pg-link pg-link-site" href={PAGE_URL[otherPage]}>
+              {chrome.header.links[otherPage]}
+            </a>
             <a className="pg-link" href={GITHUB_URL} target="_blank" rel="noopener noreferrer">
               {chrome.header.links.github}
               <ExternalArrow />

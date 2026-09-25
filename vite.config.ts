@@ -2,17 +2,18 @@ import path from "node:path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import dts from "vite-plugin-dts"
+import { sourceAliases } from "./vite.shared.ts"
 
 export default defineConfig({
   plugins: [
     react(),
     dts({
       include: ["src"],
-      exclude: ["src/demo", "**/*.test.*", "src/test-setup.ts", "src/vite-env.d.ts"],
+      exclude: ["src/demo", "src/docs", "**/*.test.*", "src/test-setup.ts", "src/vite-env.d.ts"],
       entryRoot: "src",
     }),
   ],
-  resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
+  resolve: { alias: sourceAliases },
   /*
    * `public/` belongs to the playground, not to the package. Vite copies it
    * into the build output by default, which put `dist/assets/logo.svg` into

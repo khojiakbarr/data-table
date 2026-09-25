@@ -15,7 +15,10 @@
     "moduleDetection": "force",
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
-    "paths": { "@/*": ["./src/*"] },
+    "paths": {
+      "@/*": ["./src/*"],
+      "@hojiakbar_dev/data-table": ["./src/index.ts"]
+    },
 
     "strict": true,
     "noUncheckedIndexedAccess": true,

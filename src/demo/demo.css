@@ -214,6 +214,20 @@ body {
   background: var(--pg-surface-sunken);
 }
 
+/*
+ * The link to the site's other page (Docs / Playground): filled, so it reads
+ * as "go there" beside GitHub and npm, whose outline and arrow say "leave".
+ */
+.pg-link.pg-link-site {
+  border-color: var(--pg-accent);
+  background: var(--pg-accent);
+  color: var(--pg-accent-fg);
+}
+.pg-link.pg-link-site:hover {
+  background: var(--pg-accent);
+  opacity: 0.9;
+}
+
 .pg-link-arrow {
   width: 11px;
   height: 11px;
@@ -725,5 +739,8 @@ body {
     margin-left: 0;
     width: 100%;
     justify-content: space-between;
+    /* The switcher and the links do not fit one row on a phone. */
+    flex-wrap: wrap;
+    row-gap: var(--pg-space-2);
   }
 }

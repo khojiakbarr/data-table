@@ -5,3 +5,6 @@ coverage/
 *.tsbuildinfo
 .DS_Store
 .vite/
+
+# macOS Finder writes this into a folder given a custom icon; it is not source.
+Icon?

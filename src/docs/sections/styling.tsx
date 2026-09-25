@@ -61,8 +61,11 @@ function Buttons() {
   return (
     <>
       <p>
-        The table's own buttons draw from one group of tokens, so they restyle together. Every default reproduces
-        what the buttons painted before the group existed, so setting none of them changes nothing:
+        The table's own buttons draw from one group of tokens, so they restyle together. Their defaults are
+        aliases of the surface — <code>--dt-button-bg</code> is <code>var(--dt-bg)</code>, the foreground and border
+        follow <code>--dt-fg</code> and <code>--dt-border</code> — so a table restyled through its surface tokens
+        gets matching buttons without touching this group, and setting none of them changes nothing. Set them only
+        when the buttons should differ from the surface:
       </p>
       <CodeBlock
         language="css"

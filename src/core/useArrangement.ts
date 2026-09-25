@@ -81,6 +81,14 @@ interface Arrangement {
    * request, for a server-backed adapter.
    */
   hasUnsavedChanges: boolean
+  /**
+   * The "nothing arranged" layout `isCustomised` is measured against.
+   *
+   * Kept rather than thrown away after mount, so the flag can be RECOMPUTED on
+   * every change instead of only ever latching on. A latch meant hiding a
+   * column and showing it again left a Reset link offering to undo nothing.
+   */
+  natural: TableLayout
 }
 
 /** What {@link useArrangement} needs to load, prune and persist a layout. */
@@ -186,10 +194,9 @@ export function useArrangement({
       // A saved search or filter must not make the Columns tab offer a Reset
       // on the next visit either — only the arrangement slices count, which
       // is what `ARRANGEMENT_SLICES` is.
-      isCustomised: ARRANGEMENT_SLICES.some(
-        (key) => !layoutSliceEqual(layout[key], naturalLayout[key]),
-      ),
+      isCustomised: isArranged(layout, naturalLayout),
       hasUnsavedChanges: false,
+      natural: naturalLayout,
     }
   })
   const initialRef = useRef(initialLayout)
@@ -240,7 +247,6 @@ export function useArrangement({
   const updateSlices = useCallback((changes: readonly SliceChange[]) => {
     setArrangement((previous) => {
       let layout = previous.layout
-      let isCustomised = previous.isCustomised
       let hasUnsavedChanges = previous.hasUnsavedChanges
 
       for (const change of changes) {
@@ -251,13 +257,19 @@ export function useArrangement({
         if (next === layout) continue
         layout = next
         const isFilterSlice = FILTER_SLICES.has(change.key)
-        // A search does not make a Reset link appear in the Columns tab for a
-        // reason that has nothing to do with columns.
-        isCustomised = isCustomised || !isFilterSlice
         hasUnsavedChanges = hasUnsavedChanges || !isFilterSlice || keepFiltersRef.current
       }
 
-      return layout === previous.layout ? previous : { layout, isCustomised, hasUnsavedChanges }
+      if (layout === previous.layout) return previous
+      // Measured, not latched: a change that puts the arrangement back where
+      // it started takes the Reset link away again. Only arrangement slices
+      // count, so a search never lights it up.
+      return {
+        layout,
+        isCustomised: isArranged(layout, previous.natural),
+        hasUnsavedChanges,
+        natural: previous.natural,
+      }
     })
   }, [])
 
@@ -279,11 +291,8 @@ export function useArrangement({
 
   const resetLayout = useCallback(() => {
     store.clear(id)
-    setArrangement({
-      layout: seedLayout(initialRef.current, columnIds, filterKinds, filteringEnabled),
-      isCustomised: false,
-      hasUnsavedChanges: false,
-    })
+    const seeded = seedLayout(initialRef.current, columnIds, filterKinds, filteringEnabled)
+    setArrangement({ layout: seeded, isCustomised: false, hasUnsavedChanges: false, natural: seeded })
   }, [store, id, columnIds, filterKinds, filteringEnabled])
 
   return {
@@ -431,4 +440,19 @@ export function layoutSliceEqual(a: unknown, b: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+/**
+ * Whether a layout's ARRANGEMENT differs from its baseline.
+ *
+ * Filter slices are left out on purpose: a search or a filter must not light
+ * up the Columns tab's Reset link for a reason that has nothing to do with
+ * columns.
+ *
+ * @param layout - The layout now.
+ * @param natural - The layout it is measured against.
+ * @returns True when any arrangement slice differs by value.
+ */
+function isArranged(layout: TableLayout, natural: TableLayout): boolean {
+  return ARRANGEMENT_SLICES.some((key) => !layoutSliceEqual(layout[key], natural[key]))
 }

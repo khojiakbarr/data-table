@@ -125,7 +125,7 @@ export function pruneLayout(
     pruned.columnOrder = [...ordered, ...missing]
   }
   const visibility = keepKeys(stored.columnVisibility)
-  if (visibility) pruned.columnVisibility = visibility
+  if (visibility) pruned.columnVisibility = hiddenColumnsOnly(visibility)
 
   // A width that is not a finite positive number ends up as `width: NaN` on a
   // <col> and on the table itself; better to fall back to the declared size.
@@ -216,4 +216,29 @@ export function pruneLayout(
   }
 
   return pruned
+}
+
+/**
+ * A visibility map reduced to the only entries that carry information.
+ *
+ * TanStack reads a column missing from the map as visible, so `{ code: true }`
+ * and `{}` draw the same table — but they are not the same VALUE, and the
+ * layout decides "did the user change anything" by value. "Show all" used to
+ * write `true` for every column, which turned an already-fully-visible table's
+ * `{}` into `{ code: true, name: true, … }`: a change that changed nothing on
+ * screen, yet enough to mark the layout customised, offer a Reset, and write a
+ * save. Keeping only the `false` entries makes equal-looking tables equal
+ * values, so that click is the no-op it looks like.
+ *
+ * Applied on write and on load, so a layout saved before this existed stops
+ * reading as customised too.
+ *
+ * @param visibility - Column id to visible, as TanStack writes it.
+ * @returns The same map with every `true` dropped.
+ *
+ * @example
+ * hiddenColumnsOnly({ code: true, status: false }) // { status: false }
+ */
+export function hiddenColumnsOnly(visibility: Record<string, boolean>): Record<string, boolean> {
+  return Object.fromEntries(Object.entries(visibility).filter(([, visible]) => visible === false))
 }

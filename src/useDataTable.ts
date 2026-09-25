@@ -63,7 +63,7 @@ import {
   togglePath,
   type GroupRow,
 } from "./core/grouping"
-import { noLayoutStorage } from "./core/persistence"
+import { hiddenColumnsOnly, noLayoutStorage } from "./core/persistence"
 import type { TableQuery, TableSearch } from "./core/query"
 import { leadColumn, moveRun, pinnedFirstOrder, type DropSide } from "./core/reorder"
 import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
@@ -1581,7 +1581,9 @@ export function useDataTable<TData extends RowData>({
     columnResizeMode: "onChange",
     columnResizeDirection: direction,
     onColumnOrderChange: (updater) => updateSlice("columnOrder", updater),
-    onColumnVisibilityChange: (updater) => updateSlice("columnVisibility", updater),
+    // Normalised so "Show all" on an already fully visible table is a no-op
+    // rather than a customisation — see `hiddenColumnsOnly`.
+    onColumnVisibilityChange: (updater) => updateSlice("columnVisibility", updater, hiddenColumnsOnly),
     onColumnPinningChange: (updater) => updateSlice("columnPinning", updater),
     onColumnSizingChange: (updater) =>
       updateSlice("columnSizing", updater, (sizing) => normaliseSizing(sizing, table)),

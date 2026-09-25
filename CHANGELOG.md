@@ -3,6 +3,22 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## Unreleased
+
+### Fixed
+
+- **"Show all" no longer offers a Reset, or saves, when nothing was hidden.**
+  It wrote `true` for every column, turning an untouched visibility map `{}`
+  into `{ name: true, … }` — the same table on screen, but a different value,
+  so the layout read as customised. Visibility is now stored as the hidden
+  columns only (`false` entries), on write and on load, so a layout saved by an
+  older version stops lighting up Reset too. Revealing a column the host hid by
+  default is still a customisation, and still offers Reset.
+- **Reset goes away again when the arrangement is put back.** It used to latch:
+  hide a column, show it again, and Reset stayed, offering to undo nothing. It
+  is now measured against the starting layout on every change. A search or a
+  filter still never lights it up.
+
 ## 0.11.0
 
 ### Added

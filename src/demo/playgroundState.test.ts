@@ -47,6 +47,22 @@ const darkCss = declarationsOf(
   stylesheet.match(/\.dt-root\[data-dt-theme="dark"\]\s*\{([^}]*)\}/)?.[1] ?? "",
 )
 
+/**
+ * What a token resolves to in a theme, following `var(--x)` aliases.
+ *
+ * The button tokens are aliases — `--dt-button-bg: var(--dt-bg)` — so that a
+ * host restyling `--dt-bg` restyles its buttons too. A colour picker still
+ * needs a hex to show, so the playground's default is the RESOLVED value, and
+ * this is how the guard reads the sheet the same way: the alias target in the
+ * same theme, dark falling back to light for anything it does not redeclare.
+ */
+function resolveToken(token: string, theme: "light" | "dark", depth = 0): string | undefined {
+  const raw = theme === "dark" ? (darkCss[token] ?? lightCss[token]) : lightCss[token]
+  const alias = raw?.match(/^var\((--dt-[a-z-]+)\)$/)?.[1]
+  if (alias === undefined || depth > 8) return raw
+  return resolveToken(alias, theme, depth + 1)
+}
+
 /** `38` is written `38px` in CSS; a colour is already its own text. */
 const asCss = (value: string | number): string => (typeof value === "number" ? `${value}px` : value)
 
@@ -123,6 +139,17 @@ describe("resolveThemeValues", () => {
 })
 
 describe("base theme defaults", () => {
+  it("keeps the button tokens as aliases of the surface they follow", () => {
+    // A literal copy would keep today's look and quietly break a host that
+    // restyles --dt-bg on .dt-root: its buttons would stay white. The alias is
+    // the whole point, so it is asserted as written, not only as resolved.
+    expect(lightCss["--dt-button-bg"]).toBe("var(--dt-bg)")
+    expect(lightCss["--dt-button-fg"]).toBe("var(--dt-fg)")
+    expect(lightCss["--dt-button-border"]).toBe("var(--dt-border)")
+    expect(lightCss["--dt-button-hover-bg"]).toBe("var(--dt-row-hover)")
+    expect(darkCss["--dt-button-bg"]).toBeUndefined()
+  })
+
   it("still say what styles.css's own light block says", () => {
     for (const [key, token] of TOKEN_ENTRIES) {
       // `--dt-font` is the one deliberate divergence: the sheet says
@@ -131,7 +158,7 @@ describe("base theme defaults", () => {
       if (key === "fontFamily") continue
       expect({ token, value: asCss(BASE_THEME_VALUES.light[key]) }).toEqual({
         token,
-        value: lightCss[token],
+        value: resolveToken(token, "light"),
       })
     }
   })
@@ -141,7 +168,7 @@ describe("base theme defaults", () => {
       if (key === "fontFamily") continue
       expect({ token, value: asCss(BASE_THEME_VALUES.dark[key]) }).toEqual({
         token,
-        value: darkCss[token] ?? lightCss[token],
+        value: resolveToken(token, "dark"),
       })
     }
   })

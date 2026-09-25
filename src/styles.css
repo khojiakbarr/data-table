@@ -61,29 +61,25 @@
   --dt-focus-ring: var(--dt-accent);
 
   /*
-   * buttons
+   * Buttons: the table's own (`.dt-menu-button`, the pagination's
+   * `.dt-icon-button`, the rail tabs) and any a host renders with the same
+   * public class.
    *
-   * The toolbar/menu buttons (.dt-menu-button), the pagination buttons
-   * (.dt-icon-button) and the side bar rail tabs all draw from this group
-   * instead of the general surface tokens above, so a host can restyle every
-   * button on the table as one unit. `.dt-menu-button` is public API too — a
-   * host's own buttons in `toolbarActions` / `toolbarContent` /
-   * `renderSelectionActions` pick it up the same way (README's Styling
-   * section documents this).
-   *
-   * Every value below is literal, not aliased to --dt-bg / --dt-fg /
-   * --dt-border / --dt-row-hover, even though it starts out identical to
-   * them: the playground's colour pickers (ThemeControls) edit these tokens
-   * directly and diff each one against an exact per-theme literal, the same
-   * convention --dt-accent-text and the tokens below already follow. Kept
-   * literal, a host that never touches this group sees pixel-identical
-   * buttons to the ones shipped before it existed.
+   * ALIASES, not copies. Before this group existed a button read --dt-bg,
+   * --dt-fg and --dt-border directly, so a host that restyled the table by
+   * setting those on `.dt-root` — which is exactly what the README tells a
+   * host to do — restyled its buttons with it. Copying today's hex values
+   * here would have kept the default look while quietly breaking that: a
+   * host's dark `--dt-bg` over white buttons. An alias keeps both promises;
+   * it resolves on `.dt-root` against whatever --dt-bg is there, including a
+   * host's override and the dark theme's own value, which is also why the
+   * dark blocks below need no button declarations of their own.
    */
-  --dt-button-bg: #ffffff;
-  --dt-button-fg: #18181b;
-  --dt-button-border: #e4e4e7;
+  --dt-button-bg: var(--dt-bg);
+  --dt-button-fg: var(--dt-fg);
+  --dt-button-border: var(--dt-border);
   --dt-button-radius: 6px;
-  --dt-button-hover-bg: #f4f4f5;
+  --dt-button-hover-bg: var(--dt-row-hover);
   /*
    * The one emphatic action a surface has — the filter editor's Apply button
    * (.dt-menu-button-primary) — gets its own background/foreground pair and
@@ -97,8 +93,8 @@
    * sheet's own Apply button looking exactly as it did before this pair
    * existed.
    */
-  --dt-button-primary-bg: #ffffff;
-  --dt-button-primary-fg: #18181b;
+  --dt-button-primary-bg: var(--dt-button-bg);
+  --dt-button-primary-fg: var(--dt-button-fg);
 
   /* pinned columns */
   /*
@@ -279,12 +275,6 @@
     --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
     /* Lightened, not the light theme's darkened value: 6.97:1 on #18181b. */
     --dt-accent-text: #60a5fa;
-    --dt-button-bg: #18181b;
-    --dt-button-fg: #fafafa;
-    --dt-button-border: #2e2e33;
-    --dt-button-hover-bg: #232327;
-    --dt-button-primary-bg: #18181b;
-    --dt-button-primary-fg: #fafafa;
   }
 }
 
@@ -302,12 +292,6 @@
   --dt-pin-shadow-start: 6px 0 6px -6px rgb(0 0 0 / 0.5);
   --dt-pin-shadow-end: -6px 0 6px -6px rgb(0 0 0 / 0.5);
   --dt-accent-text: #60a5fa;
-  --dt-button-bg: #18181b;
-  --dt-button-fg: #fafafa;
-  --dt-button-border: #2e2e33;
-  --dt-button-hover-bg: #232327;
-  --dt-button-primary-bg: #18181b;
-  --dt-button-primary-fg: #fafafa;
 }
 
 .dt-table {

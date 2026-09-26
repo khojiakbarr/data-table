@@ -38,6 +38,18 @@ import { SelectionCheckbox } from "./SelectionCheckbox"
 const KEY_STEP_PX = 10
 const KEY_COARSE_STEP_PX = 50
 
+/**
+ * The narrowest column that still draws its ⋮ (the column-menu trigger).
+ *
+ * The trigger is 24px wide and sits 18px in from the column's end edge, so it
+ * starts 42px from that edge. The column to the start side ends in its own
+ * resize handle, whose 24px spacing circle (WCAG 2.2 AA 2.5.8) reaches 7.5px
+ * into this column. Below 50px the two would meet, so a narrower column draws
+ * no trigger and reserves no room for one; its menu is still a right-click, or
+ * Shift+F10, away. `HeaderTargetSize.test.ts` derives the bound from the sheet.
+ */
+export const MENU_TRIGGER_MIN_COLUMN_WIDTH = 50
+
 interface HeaderCellProps<TData extends RowData> {
   header: Header<DataTableFeatures, TData, unknown>
   flags: Required<DataTableFeatureFlags>
@@ -287,9 +299,19 @@ export function HeaderCell<TData extends RowData>({
     column.table.setColumnSizing((previous) => ({ ...previous, [column.id]: width }))
   }
 
+  /*
+   * Whether the header draws its ⋮. The selection and row-number headers never
+   * do, a group never does, and a column narrower than the trigger can stand in
+   * draws none; the class keys the label's reserved room on exactly this, so no
+   * other header gives 42px to a button that is not there (0.12.1).
+   */
+  const hasMenu =
+    !isGroup && !isRowNumber && !isSelection && column.getSize() >= MENU_TRIGGER_MIN_COLUMN_WIDTH
+
   const className = classNames(
     "dt-th",
     isGroup && "dt-th-group",
+    hasMenu && "dt-th-has-menu",
     pinned && "dt-pinned",
     pinning.isInnerEdge && (pinned === "start" ? "dt-pinned-start-last" : "dt-pinned-end-first"),
     isResizing && "dt-resizing",
@@ -371,7 +393,7 @@ export function HeaderCell<TData extends RowData>({
             onChange={selection.toggleAll}
           />
         ) : null}
-        {canSort ? (
+        {isSelection ? null : canSort ? (
           <button
             type="button"
             className="dt-sortable"
@@ -416,7 +438,7 @@ export function HeaderCell<TData extends RowData>({
         ) : null}
       </div>
 
-      {isGroup || isRowNumber || isSelection ? null : (
+      {!hasMenu ? null : (
         <button
           type="button"
           className="dt-kebab"

@@ -314,7 +314,10 @@ shared with other widgets — pass `pagination: "external"`. The table then
 renders exactly the rows it is given, with no footer and no page state of its
 own (what `false` does), and skips the development warning `false` earns in
 server mode. `query.pagination` keeps its untouched default window; read the
-page from your own state, not from the query.
+page from your own state, not from the query. The table does not know your
+page's offset, so with `rowNumbers` on it counts each page from 1 and
+`aria-rowcount` covers the rows it was given — show your own numbers, or keep
+`rowNumbers` off, when your pager pages.
 
 **States.** `loading` with no rows shows skeleton rows; with rows it shows a
 progress bar and dims them. `error` shows a banner with a Retry button that

@@ -163,6 +163,15 @@ describe("the selection column", () => {
     expect(ids.slice(0, 2)).toEqual([SELECTION_COLUMN_ID, "__dt_row_number"])
   })
 
+  it("keeps no menu room and no empty label in its header — the checkbox has the cell to itself", () => {
+    render(<Harness />)
+    const th = headerBox().closest("th")
+
+    // 0.12.0 reserved the ⋮'s 42px here too and clipped the box to 6px (0.12.1).
+    expect(th).not.toHaveClass("dt-th-has-menu")
+    expect(th?.querySelector(".dt-th-label")).toBeNull()
+  })
+
   it("is not offered in the Columns panel, and cannot be dragged", () => {
     render(<Harness />)
     fireEvent.click(screen.getByRole("tab", { name: "Columns" }))

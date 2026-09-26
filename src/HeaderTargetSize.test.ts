@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { describe, expect, it } from "vitest"
+import { MENU_TRIGGER_MIN_COLUMN_WIDTH } from "./components/HeaderCell"
 
 /**
  * The header's two pointer targets against WCAG 2.2 AA 2.5.8 (Target Size, Minimum).
@@ -45,7 +46,7 @@ describe("header target size (WCAG 2.5.8)", () => {
   const kebabOffset = pxOf(".dt-kebab", "inset-inline-end")
   const resizerWidth = pxOf(".dt-resizer", "width")
   const resizerOffset = pxOf(".dt-resizer", "inset-inline-end")
-  const reservedRoom = pxOf(".dt-th:not(.dt-th-group) .dt-th-inner", "padding-inline-end")
+  const reservedRoom = pxOf(".dt-th.dt-th-has-menu .dt-th-inner", "padding-inline-end")
 
   it("gives the column-menu trigger a full 24px target", () => {
     expect(kebabWidth).toBeGreaterThanOrEqual(MIN_TARGET_PX)
@@ -59,5 +60,15 @@ describe("header target size (WCAG 2.5.8)", () => {
 
   it("reserves the label room the trigger covers, so it never paints over the label", () => {
     expect(reservedRoom).toBeGreaterThanOrEqual(kebabOffset + kebabWidth)
+  })
+
+  it("draws no trigger in a column too narrow to keep it clear of the neighbour's handle", () => {
+    // The column to the start side ends in its own handle; that handle's
+    // circle reaches this far into this column.
+    const neighbourReach = MIN_TARGET_PX / 2 - resizerOffset - resizerWidth / 2
+    // The trigger starts `kebabOffset + kebabWidth` from this column's end.
+    expect(MENU_TRIGGER_MIN_COLUMN_WIDTH).toBeGreaterThanOrEqual(
+      kebabOffset + kebabWidth + neighbourReach,
+    )
   })
 })

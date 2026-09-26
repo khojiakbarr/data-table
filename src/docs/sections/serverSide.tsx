@@ -42,7 +42,8 @@ const table = useDataTable({
           Pagination is on by default in server mode. Change it with{" "}
           <code>pagination: {"{ pageSize: 100, pageSizeOptions: [50, 100, 500] }"}</code>. If your own pager pages
           the rows, pass <code>pagination: "external"</code>: no footer, nothing sliced, no development warning —
-          read the page from your own state, not from <code>query.pagination</code>.
+          read the page from your own state, not from <code>query.pagination</code>. The table does not know your
+          page's offset: with row numbers on, each page counts from 1.
         </li>
         <li>
           <code>loading</code> with no rows shows skeleton rows; with rows it shows a progress bar. <code>error</code>{" "}

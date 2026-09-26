@@ -1677,11 +1677,14 @@
  * than simply fading in where it already stood (WCAG 3.2.5: no change of
  * context the user did not ask for).
  *
- * Scoped to the headers that HAVE a kebab: `HeaderCell` renders none over a
- * column group, and reserving space there would push a centred group label
- * permanently off centre for a button that is never coming.
+ * Scoped to the headers that HAVE a kebab — `HeaderCell` marks them
+ * `.dt-th-has-menu`. It renders none over a column group, where reserving
+ * space would push a centred group label permanently off centre; none on the
+ * selection or row-number column, where 0.12.0's reserve clipped the
+ * select-all checkbox to 6px of its 13; and none on a column narrower than
+ * `MENU_TRIGGER_MIN_COLUMN_WIDTH`.
  */
-.dt-th:not(.dt-th-group) .dt-th-inner {
+.dt-th.dt-th-has-menu .dt-th-inner {
   /* The kebab's inset plus its width: the label ends where the trigger begins. */
   padding-inline-end: 42px;
 }

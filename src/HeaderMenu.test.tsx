@@ -61,6 +61,33 @@ describe("header menu", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument()
   })
 
+  it("drops the ⋮ from a column too narrow to keep it clear of the neighbour's resize handle", () => {
+    function Narrow() {
+      const instance = useDataTable({
+        id: "menu-narrow",
+        data: rows,
+        columns: [
+          helper.accessor("a", { header: "Alpha", size: 40 }),
+          helper.accessor("b", { header: "Beta", size: 100 }),
+        ],
+        minColumnWidth: 30,
+      })
+      return <DataTable instance={instance} />
+    }
+    render(<Narrow />)
+    const narrow = screen.getByRole("columnheader", { name: /alpha/i })
+    const wide = screen.getByRole("columnheader", { name: /beta/i })
+
+    expect(within(narrow).queryByRole("button", { name: /column actions/i })).toBeNull()
+    expect(narrow).not.toHaveClass("dt-th-has-menu")
+    expect(within(wide).getByRole("button", { name: /beta: column actions/i })).toBeInTheDocument()
+    expect(wide).toHaveClass("dt-th-has-menu")
+
+    // The menu itself stays one right-click (or Shift+F10) away.
+    fireEvent.contextMenu(narrow)
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
+
   it("opens on right-click and suppresses the browser menu", () => {
     render(<Table />)
     const header = screen.getByRole("columnheader", { name: /alpha/i })

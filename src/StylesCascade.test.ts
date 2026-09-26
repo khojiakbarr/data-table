@@ -375,7 +375,7 @@ describe("a hovered header", () => {
     document.head.appendChild(styleEl)
 
     const th = document.createElement("th")
-    th.className = "dt-th"
+    th.className = "dt-th dt-th-has-menu"
     const inner = document.createElement("div")
     inner.className = "dt-th-inner"
     th.appendChild(inner)
@@ -385,6 +385,15 @@ describe("a hovered header", () => {
     // target, HeaderTargetSize.test.ts): reserved, so nothing reflows when it
     // fades in.
     expect(getComputedStyle(inner).paddingInlineEnd).toBe("42px")
+
+    /*
+     * A header that renders no ⋮ — the selection and row-number columns, and a
+     * column too narrow for one — reserves nothing: 0.12.0 reserved the room on
+     * every leaf header and clipped the select-all checkbox to 6px.
+     */
+    th.className = "dt-th"
+    expect(getComputedStyle(inner).paddingInlineEnd).not.toBe("42px")
+    th.className = "dt-th dt-th-has-menu"
 
     /*
      * A group header renders no ⋮, so reserving there would push a centred

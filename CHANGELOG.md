@@ -3,6 +3,38 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.12.1
+
+### Fixed
+
+- **The select-all checkbox is whole again.** 0.12.0 reserved the column-menu
+  trigger's 42px on every leaf header, the selection and row-number headers
+  included, which draw no trigger: the select-all box was clipped to 6px of its
+  13 and sat 23px off the row checkboxes below it. The room is now reserved only
+  on a header that draws the trigger (`HeaderCell` marks it `.dt-th-has-menu`),
+  and the selection header no longer renders an empty label beside its box — the
+  offset that was already there in 0.11.1 is gone too.
+- **A column narrower than 50px draws no trigger.** Below that width the trigger
+  reached into the resize handle of the column before it. Such a column keeps its
+  menu on right-click and Shift+F10 (`MENU_TRIGGER_MIN_COLUMN_WIDTH`; the bound is
+  derived from the sheet in `HeaderTargetSize.test.ts`). The default minimum width
+  is 60px, so only a host that lowers `minColumnWidth` or a column's `minSize`
+  sees this.
+
+### Documentation
+
+- `pagination: "external"`: with `rowNumbers` on, each page counts from 1 — the
+  table does not know the host's page offset (README, Server-side data).
+
+### Corrected
+
+- 0.12.0's entry said a column at the 60px minimum "shows its label as an
+  ellipsis". It shows none of its label, and only part of a sort arrow. A label
+  needs about 76px. Measured in Chrome on the built 0.12.0.
+- The 0.12.0 commit `0e64d2c` reported "81 files / 1422 tests". At that commit
+  the suite was 80 files / 1419 tests; the count it gave is the one after
+  `c03e5bf` (`git checkout 0e64d2c && pnpm test`).
+
 ## 0.12.0
 
 ### Added
@@ -25,7 +57,8 @@ releases are summarised in one line rather than reconstructed.
   overlapped. It is now 24px wide and set 18px in, clear of the handle's circle
   (which reaches 16.5px in). The header reserves the room it covers — 42px at the
   inline end instead of 26px — so the trigger still fades in without moving the
-  label; a column at the 60px minimum now shows its label as an ellipsis.
+  label; a column at the 60px minimum no longer shows its label (corrected in
+  0.12.1 — see there).
   `HeaderTargetSize.test.ts` pins the geometry.
 
 ## 0.11.1

@@ -1627,11 +1627,18 @@
 
 /* ---------- header menu ---------- */
 
+/*
+ * A full 24px target (WCAG 2.2 AA 2.5.8), set back from the edge far enough that the
+ * resize handle's own 24px circle — centred on the 9px handle, so it reaches 4.5 + 12 =
+ * 16.5px in — never touches it, with a pixel and a half to spare for rounding. It used to
+ * be 16px wide at 9px, flush against the handle: undersized and overlapping the handle's
+ * circle. `HeaderTargetSize.test.ts` pins the arithmetic.
+ */
 .dt-kebab {
   position: absolute;
   inset-block: 0;
-  inset-inline-end: 9px;
-  width: 16px;
+  inset-inline-end: 18px;
+  width: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1675,7 +1682,8 @@
  * permanently off centre for a button that is never coming.
  */
 .dt-th:not(.dt-th-group) .dt-th-inner {
-  padding-inline-end: 26px;
+  /* The kebab's inset plus its width: the label ends where the trigger begins. */
+  padding-inline-end: 42px;
 }
 
 .dt-menu {

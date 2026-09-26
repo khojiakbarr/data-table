@@ -18,6 +18,16 @@ releases are summarised in one line rather than reconstructed.
   `query.pagination` keeps its untouched default window: a host paging
   externally reads the page from its own state.
 
+### Fixed
+
+- **The column-menu trigger is a full 24px target (WCAG 2.2 AA 2.5.8).** It was
+  16px wide and flush against the resize handle, whose own 24px circle it
+  overlapped. It is now 24px wide and set 18px in, clear of the handle's circle
+  (which reaches 16.5px in). The header reserves the room it covers — 42px at the
+  inline end instead of 26px — so the trigger still fades in without moving the
+  label; a column at the 60px minimum now shows its label as an ellipsis.
+  `HeaderTargetSize.test.ts` pins the geometry.
+
 ## 0.11.1
 
 ### Fixed

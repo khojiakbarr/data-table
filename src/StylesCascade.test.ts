@@ -381,9 +381,10 @@ describe("a hovered header", () => {
     th.appendChild(inner)
     document.body.appendChild(th)
 
-    // 26px at rest is the room the ⋮ sits in: reserved, so nothing reflows
-    // when it fades in.
-    expect(getComputedStyle(inner).paddingInlineEnd).toBe("26px")
+    // 42px at rest is the room the ⋮ sits in (its 18px inset plus its 24px
+    // target, HeaderTargetSize.test.ts): reserved, so nothing reflows when it
+    // fades in.
+    expect(getComputedStyle(inner).paddingInlineEnd).toBe("42px")
 
     /*
      * A group header renders no ⋮, so reserving there would push a centred
@@ -393,7 +394,7 @@ describe("a hovered header", () => {
      * longhand read here, so the symmetrical value is not legible.
      */
     th.className = "dt-th dt-th-group"
-    expect(getComputedStyle(inner).paddingInlineEnd).not.toBe("26px")
+    expect(getComputedStyle(inner).paddingInlineEnd).not.toBe("42px")
 
     th.remove()
     styleEl.remove()

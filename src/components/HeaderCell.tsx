@@ -300,13 +300,15 @@ export function HeaderCell<TData extends RowData>({
   }
 
   /*
-   * Whether the header draws its ⋮. The selection and row-number headers never
-   * do, a group never does, and a column narrower than the trigger can stand in
-   * draws none; the class keys the label's reserved room on exactly this, so no
-   * other header gives 42px to a button that is not there (0.12.1).
+   * Whether the column offers a menu at all — never over a group or on the
+   * selection and row-number columns, and not where the host's column says
+   * `meta.menu: false` (its own utility column) — and whether the header draws
+   * its ⋮: a column narrower than the trigger can stand in draws none, its menu
+   * still a right-click away. The class keys the label's reserved room on the
+   * ⋮ alone, so no header gives 42px to a button that is not there (0.12.1).
    */
-  const hasMenu =
-    !isGroup && !isRowNumber && !isSelection && column.getSize() >= MENU_TRIGGER_MIN_COLUMN_WIDTH
+  const offersMenu = !isGroup && !isRowNumber && !isSelection && column.columnDef.meta?.menu !== false
+  const hasMenu = offersMenu && column.getSize() >= MENU_TRIGGER_MIN_COLUMN_WIDTH
 
   const className = classNames(
     "dt-th",
@@ -366,7 +368,7 @@ export function HeaderCell<TData extends RowData>({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onContextMenu={
-        isGroup || isRowNumber || isSelection
+        !offersMenu
           ? undefined
           : (event) => {
               event.preventDefault()

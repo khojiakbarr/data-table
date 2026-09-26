@@ -71,6 +71,7 @@ export const TABLE_PROPS: RefRow[] = [
 export const COLUMN_META: RefRow[] = [
   ["filter", 'FilterKind | false', <>The filter editor: <code>"text"</code>, <code>"number"</code>, <code>"date"</code>, <code>"boolean"</code>, <code>"list"</code>. Inferred when absent.</>],
   ["searchable", "boolean", "Whether quick search covers the column."],
+  ["menu", "boolean", <>Default true. <code>false</code> for a host's own utility column: no ⋮, no reserved room, no right-click menu.</>],
   ["values", "FilterValueOption[]", "Fixed choices for a list filter and a list editor."],
   ["editable", "EditableKind | false | (row) => boolean", <>Opt the column into <a href="#cell-editing">cell editing</a>.</>],
   ["groupLabel", "(value) => string", "How a raw value reads as a group header."],

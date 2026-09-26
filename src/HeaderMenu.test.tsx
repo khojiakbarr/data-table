@@ -88,6 +88,30 @@ describe("header menu", () => {
     expect(screen.getByRole("menu")).toBeInTheDocument()
   })
 
+  it("offers no menu on a column that declares meta.menu false — no ⋮, no room, no right-click", () => {
+    function Utility() {
+      const instance = useDataTable({
+        id: "menu-off",
+        data: rows,
+        columns: [
+          helper.accessor("a", { header: "Alpha", size: 100, meta: { menu: false } }),
+          helper.accessor("b", { header: "Beta", size: 100 }),
+        ],
+      })
+      return <DataTable instance={instance} />
+    }
+    render(<Utility />)
+    const off = screen.getByRole("columnheader", { name: /alpha/i })
+
+    expect(within(off).queryByRole("button", { name: /column actions/i })).toBeNull()
+    expect(off).not.toHaveClass("dt-th-has-menu")
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true })
+    fireEvent(off, event)
+    expect(screen.queryByRole("menu")).toBeNull()
+    // The browser's own menu is left alone where the table offers none.
+    expect(event.defaultPrevented).toBe(false)
+  })
+
   it("opens on right-click and suppresses the browser menu", () => {
     render(<Table />)
     const header = screen.getByRole("columnheader", { name: /alpha/i })

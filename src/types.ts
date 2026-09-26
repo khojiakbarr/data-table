@@ -69,6 +69,14 @@ export interface TableLayout {
 export interface DataTableColumnMeta {
   /** Which editor this column gets. `false` turns filtering off for it. */
   filter?: FilterKind | false | undefined
+  /**
+   * Whether the column offers its column menu — the ⋮ in its header, and the
+   * menu right-click, the ContextMenu key and Shift+F10 open. `false` for a
+   * host's own utility column (a checkbox, a row-actions button) that has
+   * nothing to sort, hide or pin: its header then draws no ⋮, reserves no room
+   * for one, and leaves the browser's own menu alone. Default true.
+   */
+  menu?: boolean | undefined
   /** Whether quick search covers this column. Default true for text-ish columns. */
   searchable?: boolean | undefined
   /**

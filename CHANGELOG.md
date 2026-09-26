@@ -3,6 +3,17 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.12.2
+
+### Added
+
+- **`meta: { menu: false }` — a column with no column menu.** A host's own
+  utility column — a row checkbox, a row-actions button — has nothing to sort,
+  hide or pin, but got the ⋮, the menu on right-click, and since 0.12.0 the 42px
+  of label room the ⋮ is given: its own control was clipped to 8px of 16. With
+  the flag the header draws no ⋮, reserves no room and leaves the browser's own
+  menu alone. Default true, so nothing changes for a column that does not say.
+
 ## 0.12.1
 
 ### Fixed

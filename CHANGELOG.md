@@ -3,6 +3,21 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## Unreleased
+
+### Added
+
+- **`pagination: "external"` — the host pages the rows itself.** A host that
+  keeps the page in the URL, or shares a pager with other widgets, used to pass
+  `pagination: false` in server mode and get the development warning written for
+  a host that forgot the server holds more rows — on every table it rendered.
+  `"external"` does what `false` does (no footer, no page state of the table's
+  own, nothing sliced, in either mode) and says the paging is deliberate, so the
+  warning stays for the case it was written for. `false` in server mode still
+  warns, and the warning now names `"external"` as the way out.
+  `query.pagination` keeps its untouched default window: a host paging
+  externally reads the page from its own state.
+
 ## 0.11.1
 
 ### Fixed

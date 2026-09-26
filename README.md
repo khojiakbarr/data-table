@@ -309,6 +309,13 @@ either. The footer shows the total, a page-size select, the current range and
 first/previous/next/last controls with a page number box. The chosen page
 size is persisted with the rest of the layout.
 
+If your own pager pages the rows — the page lives in the URL, or a pager is
+shared with other widgets — pass `pagination: "external"`. The table then
+renders exactly the rows it is given, with no footer and no page state of its
+own (what `false` does), and skips the development warning `false` earns in
+server mode. `query.pagination` keeps its untouched default window; read the
+page from your own state, not from the query.
+
 **States.** `loading` with no rows shows skeleton rows; with rows it shows a
 progress bar and dims them. `error` shows a banner with a Retry button that
 calls `onRetry`; rows already on screen stay put.
@@ -1942,7 +1949,7 @@ to a docked bar, the component did not change.
 | `mode` | `"client" \| "server"` | `"client"` | `"server"`: `data` is one page, already sorted; the table only describes what it wants. |
 | `rowCount` | `number` | — | Total rows across all pages. Server mode only; undefined until known. |
 | `unfilteredTotal` | `number` | — | Rows before the active filter and search narrowed them, for the status bar's "X of Y". Server mode only; optional, undefined until answered. See [Status bar](#status-bar). |
-| `pagination` | `boolean \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`. See [Server-side data](#server-side-data). |
+| `pagination` | `boolean \| "external" \| PaginationOptions` | off (client) / on (server) | `{ pageSize?, pageSizeOptions? }`; `"external"` when your own pager pages the rows. See [Server-side data](#server-side-data). |
 | `filtering` | `boolean \| FilteringOptions` | on | `{ debounceMs?, persist?, searchFields?, loadValues? }`. `false` turns filtering off. |
 | `startPath` | `FilterValue[]` | `[]` | The open group the page's first row sits inside. See [Row grouping](#row-grouping). |
 | `getRowId` | `(row: TData, index: number, parent?: Row) => string` | — | Stable row identity. Required in server mode for expansion to follow records across pages, and effectively required by [row selection](#row-selection) in either mode. Never called for a group header, whose id is its key path joined. |

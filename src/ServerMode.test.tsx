@@ -175,7 +175,40 @@ describe("server mode", () => {
       }),
     )
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("pagination"))
+    // The warning names the way out for a host whose own pager pages the rows.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('pagination: "external"'))
     warn.mockRestore()
+  })
+
+  it('stays quiet when the host says it pages the rows itself (pagination: "external")', () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    renderHook(() =>
+      useDataTable<Row>({
+        id: "srv-external", columns, data: page(0, 120), mode: "server", rowCount: 480,
+        pagination: "external", getRowId: (r) => r.id,
+      }),
+    )
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("pagination turned off"))
+    warn.mockRestore()
+  })
+
+  it('pages nothing under pagination: "external" — every row it is given is rendered', () => {
+    const { result } = renderHook(() =>
+      useDataTable<Row>({
+        id: "srv-external-rows", columns, data: page(0, 120), mode: "server", rowCount: 480,
+        pagination: "external", getRowId: (r) => r.id,
+      }),
+    )
+    expect(result.current.pagination.enabled).toBe(false)
+    expect(result.current.table.getRowModel().rows).toHaveLength(120)
+  })
+
+  it('slices nothing in client mode either: the host already handed over one page', () => {
+    const { result } = renderHook(() =>
+      useDataTable<Row>({ id: "cli-external", columns, data: page(0, 80), pagination: "external" }),
+    )
+    expect(result.current.pagination.enabled).toBe(false)
+    expect(result.current.table.getRowModel().rows).toHaveLength(80)
   })
 
   it("accepts the README's async options verbatim under exactOptionalPropertyTypes", () => {

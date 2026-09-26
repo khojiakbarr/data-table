@@ -25,7 +25,7 @@ export const HOOK_OPTIONS: RefRow[] = [
   ["unfilteredTotal", "number", "—", <>Rows before filters and search, for the {link("#status-bar", "status bar")}'s "X of Y".</>],
   ["selectableRowCount", "number", "—", <>Records a selection counts, when <code>rowCount</code> includes group headers.</>],
   ["startPath", "FilterValue[]", "[]", <>The open group the page's first row sits inside; see {link("#row-grouping", "Row grouping")}.</>],
-  ["pagination", "boolean | PaginationOptions", "off (client) / on (server)", <><code>{"{ pageSize?, pageSizeOptions? }"}</code></>],
+  ["pagination", 'boolean | "external" | PaginationOptions', "off (client) / on (server)", <><code>{"{ pageSize?, pageSizeOptions? }"}</code>; <code>"external"</code> when your own pager pages the rows</>],
   ["filtering", "boolean | FilteringOptions", "on", <><code>{"{ debounceMs?, persist?, searchFields?, loadValues? }"}</code>; <code>false</code> turns filtering off.</>],
   ["onSelectionChange", "(selection: SelectionChange) => void", "—", <>The model, its query and the count; see {link("#row-selection", "Row selection")}.</>],
   ["getSubRows", "(row) => TData[]", "—", "Child rows, for tree data."],

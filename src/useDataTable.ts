@@ -328,8 +328,16 @@ export interface UseDataTableOptions<TData extends RowData> {
   /**
    * Page the rows. Off by default in client mode, on in server mode. Pass
    * `true` for the defaults or an object to set the page size and choices.
+   *
+   * `"external"` says the HOST pages the rows: it hands the table one page and
+   * draws its own pager — a list whose page lives in the URL, a pager shared
+   * with other widgets. The table then does exactly what `false` does (no
+   * footer, no page state of its own, nothing sliced) without `false`'s
+   * server-mode warning, which is for a host that turned paging off and forgot
+   * that the server still holds more rows. `query.pagination` keeps the
+   * table's untouched default window; a host paging externally does not read it.
    */
-  pagination?: boolean | PaginationOptions
+  pagination?: boolean | "external" | PaginationOptions
   /**
    * Filtering: quick search and per-column filters. On by default. Pass
    * `false` to turn it off, or an object to configure it.
@@ -546,8 +554,9 @@ export function useDataTable<TData extends RowData>({
    * is worse than no footer — but implied by server mode, where a page is the
    * only thing a server can sensibly return.
    */
+  const pagesExternally = pagination === "external"
   const paginationOptions: PaginationOptions | null =
-    pagination === false || (pagination === undefined && !isServer)
+    pagination === false || pagesExternally || (pagination === undefined && !isServer)
       ? null
       : pagination === true || pagination === undefined
         ? {}
@@ -2034,13 +2043,21 @@ export function useDataTable<TData extends RowData>({
    * Turning paging off does not stop the query describing a page: `TableQuery`
    * has no way to say "all of them", so it carries the default size and a
    * backend written against it answers with 50 rows — with no footer to page
-   * past them and no total to reveal the rest.
+   * past them and no total to reveal the rest. A host that pages the rows with
+   * its own pager says so with `pagination: "external"`, and is not warned:
+   * it never read the query's window in the first place.
    */
-  if (process.env.NODE_ENV !== "production" && isServer && paginationOptions === null) {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    isServer &&
+    paginationOptions === null &&
+    !pagesExternally
+  ) {
     warnOnce(
       `useDataTable("${id}"): mode "server" with pagination turned off still asks for ` +
         `one page of ${pageState.pageSize} rows, and offers no way to reach the rest. ` +
-        `Leave pagination on in server mode, or page the rows in the server's own query.`,
+        `Leave pagination on in server mode, page the rows in the server's own query, or ` +
+        `pass pagination: "external" if your own pager pages them.`,
     )
   }
 

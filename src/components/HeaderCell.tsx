@@ -307,6 +307,14 @@ export function HeaderCell<TData extends RowData>({
    * still a right-click away. The class keys the label's reserved room on the
    * ⋮ alone, so no header gives 42px to a button that is not there (0.12.1).
    */
+  /** The host's mark before the name (`meta.icon`); decoration, so the name alone is announced. */
+  const icon = column.columnDef.meta?.icon
+  const headerIcon = icon ? (
+    <span className="dt-th-icon" aria-hidden="true">
+      {icon}
+    </span>
+  ) : null
+
   const offersMenu = !isGroup && !isRowNumber && !isSelection && column.columnDef.meta?.menu !== false
   const hasMenu = offersMenu && column.getSize() >= MENU_TRIGGER_MIN_COLUMN_WIDTH
 
@@ -402,6 +410,7 @@ export function HeaderCell<TData extends RowData>({
             onClick={column.getToggleSortingHandler()}
             aria-label={`${columnName}: ${sortActionLabel(column, labels)}`}
           >
+            {headerIcon}
             <span className="dt-th-label">{label}</span>
             <SortIcon direction={sorted} />
             {column.getSortIndex() > -1 ? (
@@ -409,7 +418,10 @@ export function HeaderCell<TData extends RowData>({
             ) : null}
           </button>
         ) : (
-          <span className="dt-th-label">{label}</span>
+          <>
+            {headerIcon}
+            <span className="dt-th-label">{label}</span>
+          </>
         )}
 
         {/*

@@ -3,6 +3,17 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.12.5
+
+### Added
+
+- **`meta: { icon }` — a mark before a column's name.** A column that stands
+  for a thing — one column per warehouse — can say which kind of thing in its
+  header: the icon sits before the label, in the header's colour, sortable
+  header or plain, and never squeezed by a long name. It is decoration, hidden
+  from assistive technology, so the column is still named by its label alone.
+  `HeaderIcon.test.tsx` drives both headers.
+
 ## 0.12.4
 
 ### Added

@@ -340,6 +340,14 @@
   flex: 1 1 auto;
 }
 
+/* `meta.icon`: before the name, never squeezed by it, in the header's own colour. */
+.dt-th-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
 .dt-sortable {
   cursor: pointer;
   user-select: none;

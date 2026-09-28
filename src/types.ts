@@ -84,6 +84,13 @@ export interface DataTableColumnMeta {
    * column id is shown, which is a developer's word ("pick", "actions").
    */
   label?: string | undefined
+  /**
+   * A mark before the column's name in its header — a warehouse beside each
+   * warehouse's column, say. Decoration: hidden from assistive technology,
+   * so the column is still named by its label alone. Sized by the host
+   * (16px sits level with the label); it takes the header's colour.
+   */
+  icon?: ReactNode | undefined
   /** Whether quick search covers this column. Default true for text-ish columns. */
   searchable?: boolean | undefined
   /**

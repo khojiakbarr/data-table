@@ -215,6 +215,39 @@ describe("resizing", () => {
     }
   })
 
+  it("gives a column that arrives after the first render the width it was given before", () => {
+    vi.useFakeTimers()
+    try {
+      const Full = makeTable({ storage: localStorageLayout() })
+      const first = render(<Full />)
+      drag(handleFor(/amount: resize column/i), 300, 100)
+      vi.advanceTimersByTime(500)
+      first.unmount()
+
+      // The next visit: the amount column is built from data, so the first render has no such column.
+      function Late({ hasAmount }: { hasAmount: boolean }) {
+        const instance = useDataTable<Row>({
+          id: "r",
+          data: rows,
+          columns: hasAmount ? flat : flat.slice(0, 2),
+          storage: localStorageLayout(),
+        })
+        return <DataTable instance={instance} />
+      }
+      const second = render(<Late hasAmount={false} />)
+      // A change saved before the column arrives must not drop its width from storage either.
+      drag(handleFor(/code: resize column/i), 100, 30)
+      vi.advanceTimersByTime(500)
+      const stored = JSON.parse(localStorage.getItem("data-table:layout:r") ?? "null")
+      expect(stored?.layout.columnSizing).toMatchObject({ amount: 220, code: 130 })
+
+      second.rerender(<Late hasAmount />)
+      expect(colWidths(second.container)).toEqual(["130px", "200px", "220px"])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("moves a pinned neighbour's offset along with the dragged width", () => {
     const Table = makeTable({
       initialLayout: { columnPinning: { start: ["code", "partner"], end: [] } },

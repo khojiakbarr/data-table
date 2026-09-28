@@ -88,6 +88,14 @@ describe("pruneLayout", () => {
     expect(pruned.columnSizing).toEqual({ a: 120 })
   })
 
+  it("keeps the width of a column the table does not define yet — one built from data that has not arrived", () => {
+    // A column per warehouse, or per month, exists only once the rows do; the
+    // table's first render does not know it, and its width must still be there
+    // when it appears.
+    const pruned = pruneLayout({ columnSizing: { a: 120, warehouse_7: 180 } }, ["a"])
+    expect(pruned.columnSizing).toEqual({ a: 120, warehouse_7: 180 })
+  })
+
   it("drops a width that is not a positive finite number", () => {
     const damaged = {
       columnSizing: { a: Number.NaN, b: "abc" as unknown as number, c: 0, d: 120 },

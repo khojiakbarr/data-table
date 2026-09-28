@@ -3,6 +3,21 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.12.3
+
+### Fixed
+
+- **A column built from data keeps its width across a reload.** A column that
+  exists only once the rows arrive — one per warehouse, one per month — is not
+  defined on the table's first render, which is when the stored layout is read,
+  and its width was pruned there as if the column had been removed; the next
+  save, of any other column's width, wrote the loss back to storage. Widths are
+  now kept for column ids the table does not define yet, both on load
+  (`pruneLayout`) and on every resize (a width is still clamped once its column
+  exists). Every other slice still drops unknown columns: order, visibility
+  and pinning of a late column are not remembered yet. `Resizing.test.tsx`
+  drives the whole round trip.
+
 ## 0.12.2
 
 ### Added

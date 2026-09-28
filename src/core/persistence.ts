@@ -127,12 +127,20 @@ export function pruneLayout(
   const visibility = keepKeys(stored.columnVisibility)
   if (visibility) pruned.columnVisibility = hiddenColumnsOnly(visibility)
 
-  // A width that is not a finite positive number ends up as `width: NaN` on a
-  // <col> and on the table itself; better to fall back to the declared size.
-  const sizing = keepKeys(stored.columnSizing)
-  if (sizing) {
+  /*
+   * Widths are kept for columns the table does not define YET, unlike every
+   * other slice. A column built from data — one per warehouse, one per month —
+   * exists only once the rows arrive, so the first render, where the layout is
+   * read, does not know it: pruned here, its width was gone before it could
+   * apply, and the next save wrote the loss back to storage. A width for an id
+   * no column carries costs nothing — TanStack reads sizes by column id — and
+   * the one for a column truly removed is a few bytes, not a phantom anyone
+   * sees. A width that is not a finite positive number still goes: it ends up
+   * as `width: NaN` on a <col> and on the table itself.
+   */
+  if (stored.columnSizing && typeof stored.columnSizing === "object") {
     pruned.columnSizing = Object.fromEntries(
-      Object.entries(sizing).filter(([, width]) => Number.isFinite(width) && width > 0),
+      Object.entries(stored.columnSizing).filter(([, width]) => Number.isFinite(width) && width > 0),
     )
   }
 

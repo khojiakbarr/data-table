@@ -2115,6 +2115,12 @@ export type DataTableInstance<TData extends RowData> = ReturnType<
  * Group ids are dropped too. TanStack's group resize snapshots
  * `header.getLeafHeaders()`, which includes the group header itself, and a
  * group has no width of its own — its width is its children's.
+ *
+ * A width for a column the table does not define YET is kept as it is — a
+ * column built from data (one per warehouse, one per month) arrives after the
+ * rows do, and dropping its width here, on the first resize of any other
+ * column, wrote the loss to storage. It cannot be clamped without its column;
+ * it is clamped like any other once the column exists and is dragged.
  */
 function normaliseSizing(
   sizing: ColumnSizingState,
@@ -2122,8 +2128,13 @@ function normaliseSizing(
 ): ColumnSizingState {
   const next: ColumnSizingState = {}
   for (const [columnId, width] of Object.entries(sizing)) {
+    if (!Number.isFinite(width)) continue
     const column = table.getColumn(columnId)
-    if (!column || column.columns.length > 0 || !Number.isFinite(width)) continue
+    if (!column) {
+      if (width > 0) next[columnId] = width
+      continue
+    }
+    if (column.columns.length > 0) continue
     const clamped = clampColumnWidth(column, width)
     if (clamped === column.columnDef.size) continue
     next[columnId] = clamped

@@ -53,7 +53,7 @@ export function FilterValues<TData extends RowData>({
   const [needle, setNeedle] = useState("")
   // Debounced only where it costs a request; the local filter below is instant.
   const search = useDebouncedValue(needle, VALUES_SEARCH_DEBOUNCE_MS)
-  const name = columnLabel(column.id, column.columnDef.header)
+  const name = columnLabel(column.id, column.columnDef.header, column.columnDef.meta?.label)
 
   /*
    * One source, in §5.3's order. Faceting is deliberately not memoised: it is

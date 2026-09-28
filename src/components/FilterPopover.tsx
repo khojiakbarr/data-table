@@ -134,7 +134,7 @@ export function FilterPopover<TData extends RowData>({
       className="dt-filter-popover"
       ref={ref}
       role="dialog"
-      aria-label={labels.filterTitle(columnLabel(column.id, column.columnDef.header))}
+      aria-label={labels.filterTitle(columnLabel(column.id, column.columnDef.header, column.columnDef.meta?.label))}
       style={{ left: placement.x, top: placement.y }}
       onKeyDown={handleKeyDown}
     >

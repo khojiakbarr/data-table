@@ -77,6 +77,13 @@ export interface DataTableColumnMeta {
    * for one, and leaves the browser's own menu alone. Default true.
    */
   menu?: boolean | undefined
+  /**
+   * The column's name where a header drawn as a render function — an icon, a
+   * checkbox — gives none: its row in the Columns panel, a filter's title, an
+   * accessible name. A string `header` wins over it. Without either, the
+   * column id is shown, which is a developer's word ("pick", "actions").
+   */
+  label?: string | undefined
   /** Whether quick search covers this column. Default true for text-ish columns. */
   searchable?: boolean | undefined
   /**

@@ -218,7 +218,7 @@ export function ColumnsTab<TData extends RowData>({
    * panel needs no reordering strings of its own for groups.
    */
   const spokenName = (node: ColumnTreeNode<TData>): string => {
-    const name = columnLabel(node.column.id, node.column.columnDef.header)
+    const name = columnLabel(node.column.id, node.column.columnDef.header, node.column.columnDef.meta?.label)
     return node.kind === "group" ? labels.columnGroup(name) : name
   }
 
@@ -381,7 +381,7 @@ export function ColumnsTab<TData extends RowData>({
     at: number,
   ): ReactNode => {
     const { column } = node
-    const name = columnLabel(column.id, column.columnDef.header)
+    const name = columnLabel(column.id, column.columnDef.header, column.columnDef.meta?.label)
     const held = drop.isKeyboardGrab && drop.draggedId === column.id
     const grouped = instance.grouping.has(column.id)
     const className = classNames(
@@ -475,7 +475,7 @@ export function ColumnsTab<TData extends RowData>({
     const leaves = leafColumnsOfNode(node)
     const { checked, indeterminate } = groupVisibility(leaves)
     const collapsed = collapsedGroups.has(node.key)
-    const name = columnLabel(node.column.id, node.column.columnDef.header)
+    const name = columnLabel(node.column.id, node.column.columnDef.header, node.column.columnDef.meta?.label)
     const held = drop.isKeyboardGrab && drop.draggedId === node.column.id
     /*
      * Keyed by position, not by the group's id: an id is whatever the host's

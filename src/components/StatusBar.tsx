@@ -70,7 +70,7 @@ export function StatusBar<TData extends RowData>({ instance, labels }: StatusBar
 
   const groupedNames = grouping.columns.map((columnId) => {
     const column = table.getColumn(columnId)
-    return columnLabel(columnId, column?.columnDef.header)
+    return columnLabel(columnId, column?.columnDef.header, column?.columnDef.meta?.label)
   })
 
   return (

@@ -346,7 +346,7 @@ export function HeaderCell<TData extends RowData>({
     ? labels.rowNumber
     : isSelection
       ? selectAllName
-      : columnLabel(column.id, column.columnDef.header)
+      : columnLabel(column.id, column.columnDef.header, column.columnDef.meta?.label)
 
   return (
     <th

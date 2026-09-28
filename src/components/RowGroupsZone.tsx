@@ -105,7 +105,7 @@ export function RowGroupsZone<TData extends RowData>({
 
   const nameOf = (columnId: string): string => {
     const column = table.getColumn(columnId)
-    return columnLabel(columnId, column?.columnDef.header)
+    return columnLabel(columnId, column?.columnDef.header, column?.columnDef.meta?.label)
   }
 
   /** Which edge of a chip the pointer is nearest. The chips run vertically. */

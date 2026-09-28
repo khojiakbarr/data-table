@@ -93,7 +93,7 @@ function Receipts({ data, columns }) {
 | **Number the rows** | An optional leading column carrying each row's place in the whole result set — not in the page. Off by default. |
 | **Totals footer** | A row under the body, aligned and pinned with the columns, holding a total you supply per column. The library computes none of it. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
-| **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. A host's own utility column (a checkbox, a row-actions button) opts out with `meta: { menu: false }`. |
+| **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. A host's own utility column (a checkbox, a row-actions button) opts out with `meta: { menu: false }`, and names itself with `meta: { label }` where its header is drawn rather than written. |
 | **Edit a cell** | Right-click a body cell and choose **Edit**. Text, number, date, boolean and single-choice list editors. The edit is a request to your `onCellEdit` — the table never writes to its own data. |
 | **Remember all of it** | Per table, per user, wherever you choose to put it. |
 

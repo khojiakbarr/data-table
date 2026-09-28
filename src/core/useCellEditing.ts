@@ -361,7 +361,7 @@ export function useCellEditing<TData extends RowData>({
       row: row.original,
       kind: verdict.kind,
       previous: shown === undefined ? own : shown.value,
-      name: columnLabel(cell.columnId, column?.columnDef.header),
+      name: columnLabel(cell.columnId, column?.columnDef.header, column?.columnDef.meta?.label),
       choices: column?.columnDef.meta?.values,
     })
     /*

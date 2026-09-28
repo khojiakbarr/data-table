@@ -174,7 +174,7 @@ export function FiltersTab<TData extends RowData>({
                     onClick={() => setOpenId(open ? null : column.id)}
                   >
                     <span className="dt-panel-label">
-                      {columnLabel(column.id, column.columnDef.header)}
+                      {columnLabel(column.id, column.columnDef.header, column.columnDef.meta?.label)}
                     </span>
                     {column.getIsVisible() ? null : (
                       <span className="dt-filter-badge">{labels.hiddenColumn}</span>

@@ -110,7 +110,7 @@ function FilterEditorBody<TData extends RowData>({
   kind,
 }: FilterEditorBodyProps<TData>) {
   const { filtering } = instance
-  const name = columnLabel(column.id, column.columnDef.header)
+  const name = columnLabel(column.id, column.columnDef.header, column.columnDef.meta?.label)
   const current = filtering.conditions.find((condition) => condition.field === column.id)
   /*
    * Seeded once and never synced: §8.3 makes a draft something that is

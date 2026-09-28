@@ -3,6 +3,19 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.12.4
+
+### Added
+
+- **`meta: { label }` — a name for a column whose header is drawn.** A host's
+  utility column draws its header — a page checkbox, a gear icon — so it had no
+  text, and every place that needs one fell back to the column id: the Columns
+  panel listed "pick" and "actions", a developer's words in front of a user.
+  `columnLabel` now takes the label after a string `header` and before the id,
+  and every caller passes it: the Columns and Filters tabs, the filter popover
+  and editor, the status bar, the row groups zone, a header's accessible name
+  and the cell-edit notice. `ColumnLabel.test.tsx` drives the panel.
+
 ## 0.12.3
 
 ### Fixed

@@ -3,6 +3,26 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## Unreleased
+
+### Changed
+
+- **A compact header edge.** The ⋮ now sits right beside the resize handle, so
+  its dots land about 13px from the column divider instead of about 30. The
+  trigger is 14px wide (was 24) and the handle 7px (was 9); a label gives up
+  21px instead of 42. This trades WCAG 2.2 AA 2.5.8's 24px target spacing for
+  these two controls — the earlier layout met it at the price of a wide empty
+  band on every header. The two still never overlap each other or the sort
+  button, and the column menu is also a right-click or Shift+F10 away.
+- **The column divider is short and centred** — half the header's height —
+  instead of running edge to edge. The resize hit area is unchanged, and the
+  line runs full height again while a column is being dragged. A column group
+  keeps its full border.
+- **On a phone (≤640px) the Columns/Filters tabs sit across the top of the
+  table**, not down its side. Upright they cost 44px of a 375px screen on
+  every table; across the top they cost one short row, and opening a tab no
+  longer moves the tabs.
+
 ## 0.12.5
 
 ### Added

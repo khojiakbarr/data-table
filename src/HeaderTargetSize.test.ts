@@ -4,23 +4,22 @@ import { describe, expect, it } from "vitest"
 import { MENU_TRIGGER_MIN_COLUMN_WIDTH } from "./components/HeaderCell"
 
 /**
- * The header's two pointer targets against WCAG 2.2 AA 2.5.8 (Target Size, Minimum).
+ * The header's two pointer targets at its inline-end edge: the resize handle
+ * (`.dt-resizer`) and the column-menu trigger (`.dt-kebab`).
  *
- * The column-menu trigger (`.dt-kebab`) and the resize handle (`.dt-resizer`) share the
- * header cell's inline-end edge. 2.5.8 asks for a 24 by 24 CSS px target, or — for an
- * undersized one — that a 24px circle centred on it intersect no other target. The resize
- * handle is deliberately narrow (it straddles the column edge), so its circle is the one
- * the kebab must stay clear of; the kebab itself is sized to pass on its own.
+ * The header is COMPACT by the owner's choice: the trigger sits right against
+ * the handle so its dots land about 12px from the column divider. That gives up
+ * WCAG 2.2 AA 2.5.8's 24px target spacing for these two (an earlier version met
+ * it, with a 30px band between the dots and the divider on every header). What
+ * is pinned here is what must stay true anyway — that the targets never overlap
+ * each other or the label they sit beside, and that neither shrinks further
+ * without someone changing this file on purpose.
  *
- * The geometry is read from the real stylesheet and checked as arithmetic rather than
- * through `getComputedStyle`: jsdom resolves no layout and no logical insets, so a
- * computed-style check would pass on any values. What is pinned here is the relationship
- * between the numbers, which is what a later edit to one of them would break.
+ * The geometry is read from the real stylesheet and checked as arithmetic rather
+ * than through `getComputedStyle`: jsdom resolves no layout and no logical
+ * insets, so a computed-style check would pass on any values.
  */
 const stylesheet = readFileSync(resolve(__dirname, "styles.css"), "utf8")
-
-/** The WCAG 2.5.8 minimum, in CSS px. */
-const MIN_TARGET_PX = 24
 
 /**
  * Reads one declaration from the first rule whose selector text is exactly `selector`.
@@ -41,34 +40,30 @@ function pxOf(selector: string, property: string): number {
   return Number.parseFloat(declaration[1] ?? "")
 }
 
-describe("header target size (WCAG 2.5.8)", () => {
+describe("header targets at the column's end edge", () => {
   const kebabWidth = pxOf(".dt-kebab", "width")
   const kebabOffset = pxOf(".dt-kebab", "inset-inline-end")
   const resizerWidth = pxOf(".dt-resizer", "width")
   const resizerOffset = pxOf(".dt-resizer", "inset-inline-end")
   const reservedRoom = pxOf(".dt-th.dt-th-has-menu .dt-th-inner", "padding-inline-end")
 
-  it("gives the column-menu trigger a full 24px target", () => {
-    expect(kebabWidth).toBeGreaterThanOrEqual(MIN_TARGET_PX)
+  it("keeps the trigger off the resize handle, so a click on the dots never starts a resize", () => {
+    expect(kebabOffset).toBeGreaterThanOrEqual(resizerOffset + resizerWidth)
   })
 
-  it("keeps the trigger clear of the resize handle's 24px circle", () => {
-    // The handle's circle is centred on the handle and reaches half a target past it.
-    const circleReach = resizerOffset + resizerWidth / 2 + MIN_TARGET_PX / 2
-    expect(kebabOffset).toBeGreaterThanOrEqual(circleReach)
-  })
-
-  it("reserves the label room the trigger covers, so it never paints over the label", () => {
+  it("reserves the room the trigger covers, so it never sits over the sort button", () => {
+    // Overlap here would make a click on the sort arrow open the menu instead.
     expect(reservedRoom).toBeGreaterThanOrEqual(kebabOffset + kebabWidth)
   })
 
-  it("draws no trigger in a column too narrow to keep it clear of the neighbour's handle", () => {
-    // The column to the start side ends in its own handle; that handle's
-    // circle reaches this far into this column.
-    const neighbourReach = MIN_TARGET_PX / 2 - resizerOffset - resizerWidth / 2
-    // The trigger starts `kebabOffset + kebabWidth` from this column's end.
-    expect(MENU_TRIGGER_MIN_COLUMN_WIDTH).toBeGreaterThanOrEqual(
-      kebabOffset + kebabWidth + neighbourReach,
-    )
+  it("keeps both targets at least as large as the compact header settled on", () => {
+    // Floors, not targets: shrinking either below these is a decision, not a tidy-up.
+    expect(kebabWidth).toBeGreaterThanOrEqual(14)
+    expect(resizerWidth).toBeGreaterThanOrEqual(7)
+  })
+
+  it("draws no trigger in a column too narrow to leave its label room", () => {
+    // The trigger's room plus enough for a short label to stay readable.
+    expect(MENU_TRIGGER_MIN_COLUMN_WIDTH).toBeGreaterThanOrEqual(reservedRoom + 24)
   })
 })

@@ -381,10 +381,10 @@ describe("a hovered header", () => {
     th.appendChild(inner)
     document.body.appendChild(th)
 
-    // 42px at rest is the room the ⋮ sits in (its 18px inset plus its 24px
-    // target, HeaderTargetSize.test.ts): reserved, so nothing reflows when it
-    // fades in.
-    expect(getComputedStyle(inner).paddingInlineEnd).toBe("42px")
+    // 21px at rest is the room the ⋮ sits in (its 7px inset beside the resize
+    // handle plus its 14px target, HeaderTargetSize.test.ts): reserved, so
+    // nothing reflows when it fades in.
+    expect(getComputedStyle(inner).paddingInlineEnd).toBe("21px")
 
     /*
      * A header that renders no ⋮ — the selection and row-number columns, and a

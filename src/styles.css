@@ -676,7 +676,7 @@
   position: absolute;
   inset-block: 0;
   inset-inline-end: 0;
-  width: 9px;
+  width: 7px;
   cursor: col-resize;
   touch-action: none;
   user-select: none;
@@ -1698,17 +1698,23 @@
 /* ---------- header menu ---------- */
 
 /*
- * A full 24px target (WCAG 2.2 AA 2.5.8), set back from the edge far enough that the
- * resize handle's own 24px circle — centred on the 9px handle, so it reaches 4.5 + 12 =
- * 16.5px in — never touches it, with a pixel and a half to spare for rounding. It used to
- * be 16px wide at 9px, flush against the handle: undersized and overlapping the handle's
- * circle. `HeaderTargetSize.test.ts` pins the arithmetic.
+ * Compact: the trigger sits right against the resize handle (7px), 14px wide,
+ * so its dots land about 12px from the column's edge instead of about 30.
+ *
+ * It used to be a full 24px target held 18px off the edge, so the resize
+ * handle's 24px spacing circle (WCAG 2.2 AA 2.5.8) never touched it. That
+ * cleared the AA spacing rule at the price of a wide empty band between the
+ * dots and the column divider on every header, and the owner chose the
+ * compact header over it. Both targets are now below 24px wide; they are
+ * still full header height, never overlap each other or the sort button, and
+ * the menu is also a right-click or Shift+F10 away on the whole header.
+ * `HeaderTargetSize.test.ts` pins that geometry.
  */
 .dt-kebab {
   position: absolute;
   inset-block: 0;
-  inset-inline-end: 18px;
-  width: 24px;
+  inset-inline-end: 7px;
+  width: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1756,7 +1762,7 @@
  */
 .dt-th.dt-th-has-menu .dt-th-inner {
   /* The kebab's inset plus its width: the label ends where the trigger begins. */
-  padding-inline-end: 42px;
+  padding-inline-end: 21px;
 }
 
 .dt-menu {

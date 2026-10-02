@@ -41,12 +41,12 @@ const KEY_COARSE_STEP_PX = 50
 /**
  * The narrowest column that still draws its ⋮ (the column-menu trigger).
  *
- * The trigger is 24px wide and sits 18px in from the column's end edge, so it
- * starts 42px from that edge. The column to the start side ends in its own
- * resize handle, whose 24px spacing circle (WCAG 2.2 AA 2.5.8) reaches 7.5px
- * into this column. Below 50px the two would meet, so a narrower column draws
- * no trigger and reserves no room for one; its menu is still a right-click, or
- * Shift+F10, away. `HeaderTargetSize.test.ts` derives the bound from the sheet.
+ * The trigger is 14px wide and sits 7px in from the column's end edge, beside
+ * the resize handle, so the label ends 21px from that edge (see `.dt-kebab` in
+ * styles.css). Below 50px that would leave the label too little room to be
+ * read, so a narrower column draws no trigger and reserves no room for one;
+ * its menu is still a right-click, or Shift+F10, away.
+ * `HeaderTargetSize.test.ts` checks the bound against the sheet.
  */
 export const MENU_TRIGGER_MIN_COLUMN_WIDTH = 50
 

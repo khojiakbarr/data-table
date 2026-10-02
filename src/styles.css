@@ -691,12 +691,22 @@
    * anything hanging past the edge.
    */
   justify-content: flex-end;
+  /* The line is drawn short and centred (below); the hit area stays the
+     full header height, so it is no harder to grab than before. */
+  align-items: center;
 }
 
+/*
+ * Half the header's height, centred, rather than edge to edge: a full-height
+ * rule reads as a cell border and makes a header row look like a grid of
+ * boxes, where a short divider separates the names and gets out of the way.
+ * A column GROUP keeps its full border (`.dt-th-group`) — it really is a box
+ * spanning the columns under it.
+ */
 .dt-resizer::after {
   content: "";
   width: 1px;
-  height: 100%;
+  height: 50%;
   background: var(--dt-resize-handle);
   transition: background 120ms ease, width 120ms ease;
 }
@@ -711,6 +721,12 @@
 /* While dragging, hint the whole column. */
 .dt-resizing {
   user-select: none;
+}
+
+/* While dragging, the line runs the full height: the exact edge being moved
+   matters more than how quiet the header looks. */
+.dt-resizing .dt-resizer::after {
+  height: 100%;
 }
 
 /* ---------- the height grip ---------- *
@@ -1184,6 +1200,52 @@
     width: auto;
     max-height: none;
     border-inline-end: 0;
+  }
+
+  /*
+   * The CLOSED rail, too, is laid across the top instead of down the side.
+   * Upright it cost 44px of a 375px screen — an eighth of the width — on
+   * every table, all the time, to hold two words written sideways. Across
+   * the top it costs one short row of height instead, which a phone has far
+   * more of, and it is the same horizontal tab strip the open panel already
+   * shows, so opening a tab no longer changes where the tabs are.
+   *
+   * `order: -1` puts it above the table without moving it in the DOM: the
+   * rail still comes first in the Tab order, as the tablist must.
+   */
+  .dt-root:has(> .dt-sidebar) {
+    flex-direction: column;
+  }
+
+  .dt-root:has(> .dt-sidebar) > .dt-main {
+    min-height: 0;
+    border-start-end-radius: 0;
+    border-start-start-radius: 0;
+    border-end-end-radius: inherit;
+  }
+
+  .dt-sidebar:not([data-dt-open]) {
+    order: -1;
+    flex-direction: column;
+    border-inline-start: 0;
+    border-bottom: 1px solid var(--dt-border);
+  }
+
+  .dt-sidebar:not([data-dt-open]) .dt-sidebar-rail {
+    flex-direction: row;
+    width: auto;
+    padding: 4px;
+    border-radius: inherit;
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  /* 28px tall with the 12px label: still clear of WCAG 2.5.8's 24px. */
+  .dt-sidebar:not([data-dt-open]) .dt-sidebar-tab {
+    writing-mode: horizontal-tb;
+    width: auto;
+    min-height: 0;
+    padding: 6px 12px;
   }
 }
 

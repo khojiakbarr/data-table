@@ -20,7 +20,9 @@ import { dropSideAt, type DropSide } from "../core/reorder"
 import type { DropSlot } from "../core/useDropSlot"
 import { clampColumnWidth } from "../core/sizing"
 import { formatCount } from "../core/formatCount"
+import { isTimelineColumn, type TimelineState } from "../core/timeline"
 import { SelectionCheckbox } from "./SelectionCheckbox"
+import { TimelineHeader } from "./TimelineHeader"
 
 /**
  * One header cell: the sort control, the drag target for reordering, and the
@@ -95,6 +97,11 @@ interface HeaderCellProps<TData extends RowData> {
    * rather than a control that cannot work.
    */
   selection?: SelectionApi | undefined
+  /**
+   * The timeline pane, for the one header that draws its scale. Optional for
+   * the selection's reason: a shell without a timeline mounts this unchanged.
+   */
+  timeline?: TimelineState<TData> | undefined
 }
 
 export function HeaderCell<TData extends RowData>({
@@ -109,8 +116,33 @@ export function HeaderCell<TData extends RowData>({
   onAutosize,
   drop,
   selection,
+  timeline,
 }: HeaderCellProps<TData>) {
   const { column } = header
+
+  /*
+   * The timeline's header is its scale and nothing else: no sort, no menu, no
+   * resize handle, no drag — the column's width is the range's, and it comes
+   * after every host column but one pinned to the end, which stays over its
+   * right edge. It keeps the sticky `top` every header has, and no inner
+   * padding, so its days line up with the rows' to the pixel.
+   */
+  if (isTimelineColumn(column.id)) {
+    return (
+      <th
+        colSpan={header.colSpan}
+        rowSpan={header.rowSpan > 1 ? header.rowSpan : undefined}
+        className="dt-th dt-timeline-th"
+        style={sticky ? { top: `calc(var(--dt-header-height) * ${header.depth - 1})` } : undefined}
+        data-column-id={column.id}
+      >
+        {timeline === undefined ? null : (
+          <TimelineHeader timeline={timeline} labels={labels} pinnedStartWidth={column.table.getStartTotalSize()} />
+        )}
+      </th>
+    )
+  }
+
   const isDragging = drop.draggedId === column.id
   const isDropSlot = drop.slotId === column.id
 

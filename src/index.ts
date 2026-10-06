@@ -186,6 +186,43 @@ export type { GroupRow } from "./core/grouping"
 export { ROW_NUMBER_COLUMN_ID, isRowNumberColumn, rowNumberAt } from "./core/rowNumbers"
 
 /*
+ * The timeline pane (`useDataTable({ timeline })`). The two components are
+ * the header's scale and one row's drawing, for a shell of its own; the
+ * helpers are the arithmetic behind them — a day's x, a bar's clipped box, a
+ * scale's months — for a host that draws something of its own beside it.
+ */
+export { TimelineHeader } from "./components/TimelineHeader"
+export { TimelineCell } from "./components/TimelineCell"
+export {
+  DEFAULT_DAY_WIDTH,
+  MIN_BAR_WIDTH,
+  TIMELINE_COLUMN_ID,
+  barBox,
+  calendarParts,
+  dayMarks,
+  dayNumber,
+  isTimelineColumn,
+  monthSpans,
+  pointX,
+  timelineScale,
+} from "./core/timeline"
+export type {
+  BarBox,
+  CalendarParts,
+  DayMark,
+  MonthSpan,
+  TimelineBar,
+  TimelineItem,
+  TimelineMarker,
+  TimelineOptions,
+  TimelinePoint,
+  TimelineScale,
+  TimelineState,
+  TimelineTone,
+  TimelineZoom,
+} from "./core/timeline"
+
+/*
  * Row selection. The model and its four reducers are exported because a host
  * has to translate `all-matching` into its own `WHERE` clause, and a shell of
  * its own has to answer the same two questions the built-in body does: which
@@ -307,5 +344,6 @@ export type {
   DataTableFeatureFlags,
   DataTableLabels,
   LayoutStorage,
+  RowTone,
   TableLayout,
 } from "./types"

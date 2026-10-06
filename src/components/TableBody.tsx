@@ -6,7 +6,7 @@ import { rowNumberAt } from "../core/rowNumbers"
 import { useRowVirtualizer } from "../core/useRowVirtualizer"
 import { displayItemKey } from "../core/virtualRows"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
-import type { DataTableLabels } from "../types"
+import type { DataTableLabels, RowTone } from "../types"
 import { BodyRow } from "./BodyRow"
 import { GroupBodyRow } from "./GroupBodyRow"
 
@@ -33,6 +33,8 @@ interface TableBodyProps<TData extends RowData> {
   onRowContextMenu?: ((row: TData, event: ReactMouseEvent<HTMLTableRowElement>) => void) | undefined
   /** Cell editing, or undefined for a table that has none. */
   editing?: CellEditing<TData> | undefined
+  /** Each record's tone; see `DataTableProps.getRowTone`. Never asked about a group row. */
+  getRowTone?: ((row: TData) => RowTone | undefined) | undefined
 }
 
 /**
@@ -60,6 +62,7 @@ export function TableBody<TData extends RowData>({
   onRowClick,
   onRowContextMenu,
   editing,
+  getRowTone,
 }: TableBodyProps<TData>) {
   const { rowHeight, getRowHeight, heightVersion, expanded, pagination, grouping, selection } =
     instance
@@ -249,6 +252,7 @@ export function TableBody<TData extends RowData>({
               fillerAt={fillerAt}
               labels={labels}
               editing={editing}
+              timeline={instance.timeline}
             />
           )
         }
@@ -269,6 +273,8 @@ export function TableBody<TData extends RowData>({
             onRowContextMenu={onRowContextMenu}
             editing={editing}
             selection={selection.enabled ? selection : undefined}
+            timeline={instance.timeline}
+            tone={getRowTone?.(item.row.original)}
           />
         )
       })}

@@ -4,6 +4,7 @@ import { classNames, insertAt } from "../core/classNames"
 import { fillerIndex, pinnedStyle, renderedLeafColumns } from "../core/pinning"
 import { isRowNumberColumn } from "../core/rowNumbers"
 import { isSelectionColumn } from "../core/selection"
+import { isTimelineColumn } from "../core/timeline"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 
@@ -85,7 +86,7 @@ export function TotalsFooter<TData extends RowData>({
    * actually leads the row, the way the expand toggle does in `BodyRow`.
    */
   const leadIndex = leafColumns.findIndex(
-    (column) => !isRowNumberColumn(column.id) && !isSelectionColumn(column.id),
+    (column) => !isRowNumberColumn(column.id) && !isSelectionColumn(column.id) && !isTimelineColumn(column.id),
   )
 
   const cells = leafColumns.map((column, index) => {

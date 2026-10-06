@@ -15,6 +15,7 @@ import { dropRegionOf, isMovableRegion } from "../core/dropRegion"
 import { orderedLeafColumns } from "../core/pinning"
 import { isRowNumberColumn } from "../core/rowNumbers"
 import { isSelectionColumn } from "../core/selection"
+import { isTimelineColumn } from "../core/timeline"
 import { reachableRange, type DropSide } from "../core/reorder"
 import { useDropSlot } from "../core/useDropSlot"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
@@ -89,7 +90,7 @@ export function ColumnsTab<TData extends RowData>({
    * the surfaces that do list them.
    */
   const columns = orderedLeafColumns(table).filter(
-    (column) => !isRowNumberColumn(column.id) && !isSelectionColumn(column.id),
+    (column) => !isRowNumberColumn(column.id) && !isSelectionColumn(column.id) && !isTimelineColumn(column.id),
   )
   const tree = buildColumnTree(columns)
   /*

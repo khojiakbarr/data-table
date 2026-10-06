@@ -69,6 +69,7 @@ import { leadColumn, moveRun, pinnedFirstOrder, type DropSide } from "./core/reo
 import { collectSearchFields, filterFn_dtSearch, pruneSearchFields } from "./core/search"
 import { clampColumnWidth, type ColumnBounds, type SizedColumn } from "./core/sizing"
 import { clampTableHeight, minTableHeight, tableHeightStep } from "./core/tableHeight"
+import { timelineColumnDef, timelineScale, type TimelineOptions, type TimelineState } from "./core/timeline"
 import { apply, layoutSliceEqual, sliceChange, useArrangement } from "./core/useArrangement"
 import { useDebouncedValue } from "./core/useDebouncedValue"
 import { useIsomorphicLayoutEffect } from "./core/useIsomorphicLayoutEffect"
@@ -429,6 +430,31 @@ export interface UseDataTableOptions<TData extends RowData> {
    * ```
    */
   heightVersion?: string | number | undefined
+  /**
+   * A time scale after the columns — a Gantt — on which each row draws bars
+   * (a plan, the work done, the days past the plan) and points (a due day, a
+   * payment), under markers that run the height of the body (today, a
+   * deadline).
+   *
+   * It is one more column, appended after the host's own and unpinned, so the
+   * pinned columns stay while it scrolls, and rows, the tree, virtualisation
+   * and heights are the table's as they are. Like the row-number column it is
+   * chrome: absent from the Columns panel and the saved layout, with no menu,
+   * sort, filter, resize or drag. Its width is the range's days × the day
+   * width, so a zoom change rebuilds the column once.
+   *
+   * The library draws; it does not know what a project or a step is. Turn
+   * your rows into {@link TimelineItem}s in `getItems`, which is read on every
+   * render — inline functions are fine. Explicitly `| undefined` under
+   * `exactOptionalPropertyTypes`: a table usually shows its pane on a toggle.
+   *
+   * @example
+   * useDataTable({ id: "stages", data, columns, getSubRows,
+   *   timeline: { start: "2026-08-31", end: "2026-12-07", zoom: "week", scrollTo: today,
+   *     getItems: (row) => [{ kind: "bar", variant: "plan", start: row.planStart, end: row.planEnd }],
+   *     markers: [{ date: today, label: `Today ${today}`, tone: "danger" }] } })
+   */
+  timeline?: TimelineOptions<TData> | undefined
 }
 
 /**
@@ -476,6 +502,7 @@ export function useDataTable<TData extends RowData>({
   rowHeight = 40,
   getRowHeight,
   heightVersion,
+  timeline,
 }: UseDataTableOptions<TData>) {
   const flags: Required<DataTableFeatureFlags> = useMemo(
     () => ({
@@ -937,6 +964,46 @@ export function useDataTable<TData extends RowData>({
   )
 
   /*
+   * The timeline's scale, rebuilt only when what decides it does — the range,
+   * the zoom, a day width — and never because the host handed over a new
+   * options object, which an inline `timeline: { … }` does on every render.
+   * The scale's identity is what the grid cache and `scrollTo` key on, so a
+   * scale that changed every render would recompute one and fire the other.
+   */
+  const timelineStart = timeline?.start
+  const timelineEnd = timeline?.end
+  const timelineZoom = timeline?.zoom
+  const dayWidthDay = timeline?.dayWidth?.day
+  const dayWidthWeek = timeline?.dayWidth?.week
+  const dayWidthMonth = timeline?.dayWidth?.month
+  const scale = useMemo(() => {
+    if (timelineStart === undefined || timelineEnd === undefined || timelineZoom === undefined) return null
+    const resolved = timelineScale(timelineStart, timelineEnd, timelineZoom, {
+      ...(dayWidthDay === undefined ? {} : { day: dayWidthDay }),
+      ...(dayWidthWeek === undefined ? {} : { week: dayWidthWeek }),
+      ...(dayWidthMonth === undefined ? {} : { month: dayWidthMonth }),
+    })
+    if (resolved === null && process.env.NODE_ENV !== "production") {
+      warnOnce(
+        `useDataTable("${id}"): timeline ${timelineStart} – ${timelineEnd} at "${timelineZoom}" was not drawn. ` +
+          `start and end must be YYYY-MM-DD days with end on or after start, and a day width must be above 0.`,
+      )
+    }
+    return resolved
+  }, [id, timelineStart, timelineEnd, timelineZoom, dayWidthDay, dayWidthWeek, dayWidthMonth])
+
+  /*
+   * The pane's column, keyed on its width alone: a new definition makes
+   * TanStack rebuild every column, which is right for a zoom and wasteful for
+   * anything else.
+   */
+  const timelineWidth = scale?.width
+  const timelineDef = useMemo(
+    () => (timelineWidth === undefined ? null : timelineColumnDef<TData>(timelineWidth)),
+    [timelineWidth],
+  )
+
+  /*
    * The chrome columns lead EVERYTHING, the group column included, which is
    * why they are prepended after the hoist rather than inside it: the hoist
    * decides where the host's own columns stand, and these stand before all of
@@ -954,8 +1021,15 @@ export function useDataTable<TData extends RowData>({
   const tableColumns = useMemo(() => {
     const declared = groupColumnId === undefined ? columns : hoistGroupColumn(columns, groupColumnId)
     const chrome = [selectionDef, rowNumberDef].filter((def) => def !== null)
-    return chrome.length === 0 ? declared : [...chrome, ...declared]
-  }, [columns, groupColumnId, rowNumberDef, selectionDef])
+    const leading = chrome.length === 0 ? declared : [...chrome, ...declared]
+    /*
+     * The timeline TRAILS everything, and nothing has to enforce it: it is
+     * unpinned, the last definition, and named in no stored order — TanStack
+     * appends a column an order does not name after the ones it does, so a
+     * user's own column order still ends with the pane.
+     */
+    return timelineDef === null ? leading : [...leading, timelineDef]
+  }, [columns, groupColumnId, rowNumberDef, selectionDef, timelineDef])
 
   /*
    * Order as the table renders it: the user's own, with the group column
@@ -2073,6 +2147,15 @@ export function useDataTable<TData extends RowData>({
    * and pinned by `ServerFirstPaint.test.tsx` instead.
    */
 
+  /**
+   * The timeline pane — this render's options with the scale they make — or
+   * undefined when there is none or its range could not be read. A fresh
+   * object each render on purpose: `getItems` and the markers are read off
+   * it, and they are the host's latest.
+   */
+  const timelineState: TimelineState<TData> | undefined =
+    scale === null || timeline === undefined ? undefined : { options: timeline, scale }
+
   return {
     table,
     id,
@@ -2092,6 +2175,7 @@ export function useDataTable<TData extends RowData>({
     rowHeight,
     getRowHeight,
     heightVersion,
+    timeline: timelineState,
   }
 }
 

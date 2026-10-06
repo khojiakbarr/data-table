@@ -185,4 +185,6 @@ export const uzLabels: DataTableLabels = {
     total === undefined ? `Filtrlangan: ${count} ta qator` : `Filtrlangan: ${count} / ${total} ta qator`,
   statusBarGroupedBy: (columns) => `Guruhlangan: ${columns.join(", ")}`,
   totalsRow: "Jami",
+  timeline: "Vaqt shkalasi",
+  timelineMonth: (month) => ["Yan", "Fev", "Mar", "Apr", "May", "Iyn", "Iyl", "Avg", "Sen", "Okt", "Noy", "Dek"][month] ?? "",
 }

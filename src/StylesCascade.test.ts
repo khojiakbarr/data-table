@@ -183,6 +183,72 @@ describe("striping vs. row-state cascade", () => {
 })
 
 /**
+ * `<DataTable getRowTone>`: a toned row keeps its band through every state
+ * that paints a row's cells — striped, expanded (every parent row of a tree
+ * whose rows are open), a pinned cell — so a department's band reads straight
+ * across the table. Hover is the one state that outranks it, and jsdom cannot
+ * hover, so that half is read off the rule's place in the sheet instead.
+ */
+describe("row tones vs. row states", () => {
+  const STRONG = "rgb(10, 20, 30)"
+  const SOFT = "rgb(40, 50, 60)"
+  const STRIPE = "rgb(1, 2, 3)"
+  const HOVER = "rgb(4, 5, 6)"
+  const PINNED = "rgb(7, 8, 9)"
+
+  let styleEl: HTMLStyleElement
+
+  beforeEach(() => {
+    styleEl = document.createElement("style")
+    styleEl.textContent = baseStylesheet
+      .replaceAll("var(--dt-row-strong-bg)", STRONG)
+      .replaceAll("var(--dt-row-soft-bg)", SOFT)
+      .replaceAll("var(--dt-row-stripe)", STRIPE)
+      .replaceAll("var(--dt-row-hover)", HOVER)
+      .replaceAll("var(--dt-pinned-bg)", PINNED)
+    document.head.appendChild(styleEl)
+  })
+
+  afterEach(() => {
+    styleEl.remove()
+    document.body.replaceChildren()
+  })
+
+  /** One body row as BodyRow.tsx renders it, with the tone and states asked for. */
+  const toned = (options: { tone: "strong" | "soft"; striped?: boolean; expanded?: boolean; pinned?: boolean }) => {
+    const table = document.createElement("table")
+    table.className = options.striped ? "dt-table dt-striped" : "dt-table"
+    const tbody = document.createElement("tbody")
+    const row = document.createElement("tr")
+    row.className = options.expanded ? "dt-tr dt-tr-expanded" : "dt-tr"
+    row.dataset.parity = "odd"
+    row.dataset.dtTone = options.tone
+    const cell = document.createElement("td")
+    cell.className = options.pinned ? "dt-td dt-pinned" : "dt-td"
+    row.appendChild(cell)
+    tbody.appendChild(row)
+    table.appendChild(tbody)
+    document.body.appendChild(table)
+    return getComputedStyle(cell).backgroundColor
+  }
+
+  it("paints the tone over the stripe, an expanded row's tint and a pinned cell's fill", () => {
+    expect(toned({ tone: "strong", striped: true })).toBe(STRONG)
+    expect(toned({ tone: "strong", striped: true, expanded: true })).toBe(STRONG)
+    expect(toned({ tone: "soft", expanded: true })).toBe(SOFT)
+    expect(toned({ tone: "soft", striped: true, pinned: true })).toBe(SOFT)
+  })
+
+  it("lets a hovered row say so: the hover rule comes after the tones and ties their weight", () => {
+    const strong = baseStylesheet.indexOf('.dt-striped .dt-tr[data-dt-tone="strong"] .dt-td')
+    const soft = baseStylesheet.indexOf('.dt-striped .dt-tr[data-dt-tone="soft"] .dt-td')
+    const hover = baseStylesheet.indexOf(".dt-tr[data-dt-tone]:hover .dt-td")
+    expect(Math.min(strong, soft, hover)).toBeGreaterThan(-1)
+    expect(hover).toBeGreaterThan(Math.max(strong, soft))
+  })
+})
+
+/**
  * The README's headline "Styling" recipe (finding #19): every token is
  * declared directly on `.dt-root`, so an override has to match that element,
  * not an ancestor — and, unlike the shadcn preset's `(0,2,0)` selector, the

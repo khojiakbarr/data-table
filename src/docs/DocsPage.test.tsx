@@ -88,10 +88,12 @@ describe("docs page", () => {
   it("renders the live examples with rows from their data", () => {
     render(<DocsPage />)
     const figures = screen.getAllByRole("figure")
-    expect(figures).toHaveLength(3)
-    for (const figure of figures) {
-      expect(within(figure).getAllByText("KR-10001").length).toBeGreaterThan(0)
-    }
+    expect(figures).toHaveLength(4)
+    // Three examples draw the receipts; the timeline's draws a project's departments.
+    const receipts = figures.filter((figure) => within(figure).queryAllByText("KR-10001").length > 0)
+    expect(receipts).toHaveLength(3)
+    const timeline = figures.find((figure) => !receipts.includes(figure))
+    expect(timeline && within(timeline).getAllByText("Management").length).toBeGreaterThan(0)
   })
 
   it("links back to the playground and offers no language switcher", () => {

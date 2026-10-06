@@ -22,11 +22,13 @@ const baseTokens = [...read("../styles.css").matchAll(/^\s*(--dt-[a-z0-9-]+)\s*:
 /**
  * Tokens the presets deliberately leave alone.
  *
- * shadcn has no variable for a row height, an indent or a fallback viewport
- * height, so a preset entry could only repeat the base sheet's own value — at
- * the preset's higher specificity, which would quietly stop a host from
- * changing it with a plain `.dt-root {}` rule. They stay with the base sheet
- * instead.
+ * shadcn has no variable for a row height, an indent, a fallback viewport
+ * height or a success colour, so a preset entry could only repeat the base
+ * sheet's own value — at the preset's higher specificity, which would quietly
+ * stop a host from changing it with a plain `.dt-root {}` rule. They stay with
+ * the base sheet instead. So does the timeline's danger red: shadcn's
+ * `--destructive` is light enough (3.6–3.8:1) that the white text the "today"
+ * chip prints on it would fail 4.5:1.
  */
 const INHERITED_TOKENS = [
   "--dt-header-height",
@@ -34,6 +36,8 @@ const INHERITED_TOKENS = [
   "--dt-indent",
   "--dt-font-size",
   "--dt-viewport-max-height",
+  "--dt-timeline-success",
+  "--dt-timeline-danger",
 ]
 
 /** A preset with its comments removed, so prose cannot pass for a mapping. */
@@ -146,7 +150,7 @@ describe("base stylesheet token extraction", () => {
   // preset tests below passing vacuously with an empty token list.
   it("finds the base tokens", () => {
     expect(baseTokens.length).toBeGreaterThan(0)
-    expect(new Set(baseTokens).size).toBe(35)
+    expect(new Set(baseTokens).size).toBe(44)
   })
 
   it("matches digit-suffixed token names", () => {
@@ -614,5 +618,29 @@ describe("base palette", () => {
       expect(resolvedTokenValue("--dt-button-primary-bg", theme)).toBe(resolvedTokenValue("--dt-button-bg", theme))
       expect(resolvedTokenValue("--dt-button-primary-fg", theme)).toBe(resolvedTokenValue("--dt-button-fg", theme))
     }
+  })
+})
+
+describe("timeline palette", () => {
+  /*
+   * The two colours of the pane the base sheet states outright rather than
+   * mixing from the palette. Each is checked where it is used: as a bar on
+   * either surface (WCAG 1.4.11, 3:1 for a graphic) and under the chip text
+   * the stylesheet prints on it (4.5:1, small text).
+   */
+  const success = baseTokenValue("--dt-timeline-success")
+  const danger = baseTokenValue("--dt-timeline-danger")
+
+  it("draws done and late work at the non-text minimum on both surfaces", () => {
+    for (const theme of ["light", "dark"] as const) {
+      const surface = resolvedTokenValue("--dt-bg", theme)
+      expect(contrastRatio(success, surface)).toBeGreaterThanOrEqual(3)
+      expect(contrastRatio(danger, surface)).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it("prints a marker chip's text at WCAG AA on its tone", () => {
+    expect(contrastRatio("#ffffff", danger)).toBeGreaterThanOrEqual(4.5)
+    expect(contrastRatio("#18181b", success)).toBeGreaterThanOrEqual(4.5)
   })
 })

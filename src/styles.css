@@ -125,6 +125,17 @@
   --dt-indent: 18px;
   --dt-detail-bg: #f8f8fa;
 
+  /*
+   * Row tones (`<DataTable getRowTone>`): a row that heads others, and one a
+   * level down. Tints of the accent over the surface rather than colours of
+   * their own, so a host that brands --dt-accent brands these with it, and
+   * the dark theme needs no entry for them — they mix with whatever --dt-bg
+   * is. 18% and 5% of the base sheet's blue keep body text far above 4.5:1 in
+   * both themes; a host with a darker accent should check its own.
+   */
+  --dt-row-strong-bg: color-mix(in srgb, var(--dt-accent) 18%, var(--dt-bg));
+  --dt-row-soft-bg: color-mix(in srgb, var(--dt-accent) 5%, var(--dt-bg));
+
   /* footer */
   /*
    * The pagination band under the table. Defaults to the surface and the
@@ -139,6 +150,36 @@
    */
   --dt-footer-bg: var(--dt-bg);
   --dt-footer-fg: var(--dt-muted-fg);
+
+  /* timeline (`useDataTable({ timeline })`) */
+  /*
+   * Seven colours the pane's drawing is made of; every shade it draws is mixed
+   * from these where it is used, so a host maps seven tokens, not twenty.
+   *
+   * - plan: a planned span's dashed outline, filled with 8% of itself.
+   * - actual: work under way — the filled part of a bar; its track is the
+   *   same colour at 32% over the surface, and a thick bar mixes it toward
+   *   --dt-fg, which darkens it in light and lightens it in dark.
+   * - success: work done. #1f9d55 clears 3:1 as a graphic on the light
+   *   surface (WCAG 1.4.11) and 5:1 on the dark one.
+   * - danger: an overrun's stripes and the "today" line. #dc2626, not a
+   *   brighter red: the marker chip prints white on it, which needs 4.5:1.
+   * - neutral: a due day's tick and a deadline's line — the table's own text
+   *   colour, so it reads in either theme.
+   * - grid: where a month starts, a shade stronger than --dt-border, which
+   *   draws the weeks and days.
+   *
+   * All but success and danger derive from the palette, so a theme that sets
+   * --dt-accent brands the bars and dark mode needs no entry for them.
+   */
+  --dt-timeline-plan: var(--dt-accent);
+  --dt-timeline-actual: var(--dt-accent);
+  --dt-timeline-success: #1f9d55;
+  --dt-timeline-danger: #dc2626;
+  --dt-timeline-neutral: var(--dt-fg);
+  --dt-timeline-grid: color-mix(in srgb, var(--dt-fg) 16%, var(--dt-bg));
+  /* A weekend's shade at the day zoom, laid over whatever the row is painted. */
+  --dt-timeline-weekend: color-mix(in srgb, var(--dt-fg) 4%, transparent);
 
   /*
    * Fallback height for a table nobody gave one. Applied only to a viewport
@@ -2494,4 +2535,382 @@
   font-size: 11px;
   line-height: 1;
   writing-mode: horizontal-tb;
+}
+
+/* ---------- row tones ---------- *
+ * `<DataTable getRowTone>`. Every cell of the row takes the tone — a pinned
+ * cell, which paints its own --dt-pinned-bg at (0,2,0), and the timeline's
+ * cell included — so a band reads straight across the table. The first
+ * selector of each pair is (0,3,0), over the expanded row's (0,2,0); the
+ * second ties the stripe's (0,4,0) and wins on source order, as the expanded
+ * and group rows' own rules do above. A hovered row still says so.
+ */
+.dt-tr[data-dt-tone="strong"] .dt-td,
+.dt-striped .dt-tr[data-dt-tone="strong"] .dt-td {
+  background: var(--dt-row-strong-bg);
+}
+
+.dt-tr[data-dt-tone="soft"] .dt-td,
+.dt-striped .dt-tr[data-dt-tone="soft"] .dt-td {
+  background: var(--dt-row-soft-bg);
+}
+
+.dt-tr[data-dt-tone]:hover .dt-td {
+  background: var(--dt-row-hover);
+}
+
+/* ---------- timeline ---------- *
+ * The pane is one column (`useDataTable({ timeline })`): its header draws the
+ * scale and each body cell draws its row. A cell holds no padding and clips
+ * what runs past it, so a bar that began before the range is cut at the edge
+ * exactly where `barBox` measured it. Every item is placed by its `left` (a
+ * bar by its `width` too) and centred on its row, so a row of any height —
+ * `getRowHeight` included — draws its bars across its middle.
+ *
+ * Sizes of text are shares of --dt-font-size, never pixels, so a host that
+ * scales the table's type scales the scale with it.
+ */
+.dt-timeline-cell {
+  position: relative;
+  padding: 0;
+}
+
+/*
+ * The row's separator is drawn INSIDE the cell rather than as its border: a
+ * border lies outside the box the cell clips its drawing to, so a marker's
+ * line, drawn row by row, broke for a pixel at every row. Drawn here, under
+ * the markers, the line runs unbroken down the body. The row height is the
+ * cell's whole box (`box-sizing: border-box`), so nothing moves.
+ */
+.dt-td.dt-timeline-cell {
+  border-bottom: 0;
+}
+
+.dt-timeline-row {
+  position: absolute;
+  inset: 0;
+}
+
+.dt-timeline-row::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--dt-border);
+}
+
+.dt-tr:last-child .dt-timeline-row::after {
+  display: none;
+}
+
+.dt-timeline-item {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  box-sizing: border-box;
+}
+
+/* An item's tone, read by whichever part of it is coloured. */
+.dt-timeline-tone-primary {
+  --_dt-timeline-color: var(--dt-timeline-actual);
+}
+
+.dt-timeline-tone-success {
+  --_dt-timeline-color: var(--dt-timeline-success);
+}
+
+.dt-timeline-tone-danger {
+  --_dt-timeline-color: var(--dt-timeline-danger);
+}
+
+.dt-timeline-tone-neutral {
+  --_dt-timeline-color: var(--dt-timeline-neutral);
+}
+
+/* A plan: what was meant to happen, as an outline the actual bar lies inside. */
+.dt-timeline-plan {
+  height: 18px;
+  border: 1.5px dashed var(--dt-timeline-plan);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--dt-timeline-plan) 8%, transparent);
+}
+
+/* What happened: a track, filled to the progress while the work is under way. */
+.dt-timeline-actual {
+  height: 10px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dt-timeline-actual) 32%, var(--dt-bg));
+}
+
+/* Done, late or a plain fact: the whole bar in its tone, no fill to read. */
+.dt-timeline-actual:not(.dt-timeline-tone-primary) {
+  background: var(--_dt-timeline-color);
+}
+
+.dt-timeline-progress {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  background: var(--dt-timeline-actual);
+}
+
+/*
+ * A row that sums the rows under it. Taller, and mixed toward --dt-fg — which
+ * darkens it on a light surface and lightens it on a dark one — so it holds
+ * its own against a --dt-row-strong-bg band in either theme.
+ */
+.dt-timeline-actual.dt-timeline-thick {
+  height: 14px;
+  background: color-mix(in srgb, var(--dt-timeline-actual) 55%, var(--dt-bg));
+}
+
+.dt-timeline-actual.dt-timeline-thick:not(.dt-timeline-tone-primary) {
+  background: color-mix(in srgb, var(--_dt-timeline-color) 80%, var(--dt-fg));
+}
+
+.dt-timeline-thick .dt-timeline-progress {
+  background: color-mix(in srgb, var(--dt-timeline-actual) 75%, var(--dt-fg));
+}
+
+/* The days past the plan: striped, square where they meet the work they extend. */
+.dt-timeline-overrun {
+  height: 10px;
+  border: 0;
+  border-radius: 0 4px 4px 0;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--dt-timeline-danger) 0 3px,
+    color-mix(in srgb, var(--dt-timeline-danger) 40%, var(--dt-bg)) 3px 6px
+  );
+}
+
+.dt-timeline-overrun.dt-timeline-thick {
+  height: 14px;
+}
+
+/* Cut at the pane's edge: square there, and a plan's outline left open, so it reads as going on. */
+.dt-timeline-bar.dt-timeline-clip-start {
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.dt-timeline-bar.dt-timeline-clip-end {
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+
+.dt-timeline-plan.dt-timeline-clip-start {
+  border-inline-start: 0;
+}
+
+.dt-timeline-plan.dt-timeline-clip-end {
+  border-inline-end: 0;
+}
+
+/*
+ * A moment — a payment — in the middle of its day, ringed off from the bars
+ * beneath. The points' rules name `.dt-timeline-point` too, so they outrank
+ * `.dt-timeline-button`'s margin reset below: a clickable dot or tick stays
+ * centred on its day rather than 6px (or 2px) past it.
+ */
+.dt-timeline-point.dt-timeline-dot {
+  width: 12px;
+  height: 12px;
+  margin-inline-start: -6px;
+  border: 2px solid var(--dt-bg);
+  border-radius: 50%;
+  background: var(--_dt-timeline-color);
+  box-shadow: 0 0 0 1px var(--_dt-timeline-color);
+}
+
+/* A limit — a due day — at its day's end, capped with a small pointer. */
+.dt-timeline-point.dt-timeline-tick {
+  width: 2px;
+  height: 20px;
+  margin-inline-start: -2px;
+  border: 0;
+  background: var(--_dt-timeline-color);
+}
+
+.dt-timeline-point.dt-timeline-tick::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  inset-inline-start: -3px;
+  border-inline: 4px solid transparent;
+  border-top: 5px solid var(--_dt-timeline-color);
+}
+
+/*
+ * A marker's line, one row's height of it; the rows' lines together run the
+ * height of the body. Above the items, beneath the pinned columns (z-index 2)
+ * and the header, and never in the way of a click.
+ */
+.dt-timeline-marker {
+  position: absolute;
+  inset-block: 0;
+  margin-inline-start: -1px;
+  border-inline-start: 2px solid var(--_dt-timeline-color);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dt-timeline-marker-dashed {
+  border-inline-start-style: dashed;
+}
+
+/* With `onItemClick` each item is a button; it looks as it did, and says when it has the focus. */
+.dt-timeline-button {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+
+.dt-timeline-button:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: 2px;
+}
+
+/* A clickable point is a 24px target (WCAG 2.5.8), however small it is drawn: 12px + 6px a side, 2px + 11px. */
+.dt-timeline-button.dt-timeline-point::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+.dt-timeline-button.dt-timeline-tick::after {
+  inset: -2px -11px;
+}
+
+/*
+ * The scale: months across the top half of the header, days or Mondays across
+ * the bottom. `clip` and not `hidden` here too: a hidden overflow makes the
+ * cell a scroller, and every month's sticky name would then keep its distance
+ * from the cell's edge instead of the viewport's — 240px into its month under
+ * a 240px pinned column.
+ */
+.dt-timeline-th {
+  overflow: clip;
+}
+
+.dt-timeline-scale {
+  position: relative;
+  height: 100%;
+}
+
+.dt-timeline-months,
+.dt-timeline-days {
+  position: absolute;
+  inset-inline: 0;
+  height: 50%;
+}
+
+.dt-timeline-months {
+  top: 0;
+}
+
+.dt-timeline-days {
+  bottom: 0;
+  box-sizing: border-box;
+  border-top: 1px solid var(--dt-border);
+}
+
+/*
+ * `clip`, not `hidden`: a hidden overflow would make each month a scroller of
+ * its own, and the label inside could no longer stick to the visible edge of
+ * the table's viewport while its month scrolls under the pinned columns.
+ */
+.dt-timeline-month {
+  position: absolute;
+  inset-block: 0;
+  box-sizing: border-box;
+  overflow: clip;
+  border-inline-start: 1px solid var(--dt-timeline-grid);
+}
+
+.dt-timeline-month:first-child {
+  border-inline-start: 0;
+}
+
+/* --dt-accent-text: the accent as text, which clears 4.5:1 on the header in both themes. */
+.dt-timeline-month-label {
+  position: sticky;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding-inline: 6px;
+  color: var(--dt-accent-text);
+  font-size: calc(var(--dt-font-size) * 0.75);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.dt-timeline-day {
+  position: absolute;
+  inset-block: 0;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding-inline-start: 4px;
+  border-inline-start: 1px solid var(--dt-border);
+  color: var(--dt-muted-fg);
+  font-size: calc(var(--dt-font-size) * 0.72);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The day zoom: a column per day, its number centred, the weekend shaded as in the rows. */
+.dt-timeline-day-cell {
+  justify-content: center;
+  padding-inline-start: 0;
+}
+
+.dt-timeline-weekend {
+  background: var(--dt-timeline-weekend);
+}
+
+/* Over the shade --dt-muted-fg falls under 4.5:1 (4.28 in light); the header's own text colour does not. */
+.dt-timeline-day-cell.dt-timeline-weekend {
+  color: var(--dt-header-fg);
+}
+
+/*
+ * A marker's chip, centred on its line at the foot of the header. Its text
+ * is picked per tone for 4.5:1: white on the danger red, the surface colour on
+ * the neutral (which is the text colour), the accent's own foreground on the
+ * accent, and near-black on the success green.
+ */
+.dt-timeline-chip {
+  position: absolute;
+  bottom: 2px;
+  z-index: 1;
+  translate: -50% 0;
+  padding-inline: 5px;
+  border-radius: 999px;
+  background: var(--_dt-timeline-color);
+  color: #fff;
+  font-size: calc(var(--dt-font-size) * 0.68);
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.dt-timeline-chip.dt-timeline-tone-neutral {
+  color: var(--dt-bg);
+}
+
+.dt-timeline-chip.dt-timeline-tone-primary {
+  color: var(--dt-accent-fg);
+}
+
+.dt-timeline-chip.dt-timeline-tone-success {
+  color: #18181b;
 }

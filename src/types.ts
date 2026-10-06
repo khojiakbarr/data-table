@@ -662,7 +662,30 @@ export interface DataTableLabels extends CellEditingLabels {
   editRowFiltered: (column: string) => string
   /** Closes a notice the user has finished reading. */
   dismiss: string
+
+  /* The timeline pane. See `UseDataTableOptions.timeline`. */
+  /**
+   * The timeline column's name, for a screen reader: its header is a drawn
+   * scale with no words of its own. The markers' chips are read after it.
+   */
+  timeline: string
+  /**
+   * A month's short name, printed over the scale beside the year («Сен
+   * 2026»). `month` is 0 for January through 11 for December. A label rather
+   * than `Intl`: Chrome's own data has no Latin Uzbek month names and prints
+   * "M09" for every one of them.
+   */
+  timelineMonth: (month: number) => string
 }
+
+/**
+ * How strongly a row stands out from the rows around it — see
+ * `DataTableProps.getRowTone`. `strong` for a row that heads others (a
+ * department over its steps), `soft` for one a level down (a step over its
+ * documents). Every cell of the row takes it, pinned ones and the timeline's
+ * included.
+ */
+export type RowTone = "strong" | "soft"
 
 /**
  * A host's own filters, drawn inside the side bar's Filters tab.

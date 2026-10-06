@@ -2,6 +2,7 @@ import type { Column, ColumnPinningPosition, RowData } from "@tanstack/react-tab
 import type { DataTableFeatures } from "../useDataTable"
 import { isRowNumberColumn } from "./rowNumbers"
 import { isSelectionColumn } from "./selection"
+import { isTimelineColumn } from "./timeline"
 
 /**
  * The prefix a region nobody can share is spelled with.
@@ -43,6 +44,17 @@ const ROW_NUMBER_COLUMN_REGION = `${SOLITARY_PREFIX}row-number`
  * because the `selection` flag put it there.
  */
 const SELECTION_COLUMN_REGION = `${SOLITARY_PREFIX}selection`
+
+/**
+ * The region the timeline pane is alone in.
+ *
+ * It is unpinned, so without this it would share the centre region with the
+ * host's scrolling columns: a column could be dropped after it, and it could
+ * be picked up and dropped among them — moves the shell would refuse anyway,
+ * since it is not one of the host's declarations. Its place is not the user's
+ * to set: it trails the table because the `timeline` option put it there.
+ */
+const TIMELINE_COLUMN_REGION = `${SOLITARY_PREFIX}timeline`
 
 /**
  * A group whose leaves straddle a pinning boundary: alone in a region of its
@@ -128,6 +140,7 @@ export function dropRegionOf<TData extends RowData>(
 ): string {
   if (isSelectionColumn(column.id)) return SELECTION_COLUMN_REGION
   if (isRowNumberColumn(column.id)) return ROW_NUMBER_COLUMN_REGION
+  if (isTimelineColumn(column.id)) return TIMELINE_COLUMN_REGION
   if (groupColumnId !== undefined && column.id === groupColumnId) return GROUP_COLUMN_REGION
   const pinned = pinnedSideOf(column)
   if (pinned === null) return splitGroupRegion(column.id)

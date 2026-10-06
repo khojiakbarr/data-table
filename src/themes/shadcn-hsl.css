@@ -142,5 +142,22 @@
 
   --dt-detail-bg: hsl(var(--muted) / 0.5);
 
+  /*
+   * Row tones and the timeline, restated from the base sheet over this
+   * preset's own --dt-accent, --dt-bg and --dt-fg rather than --background:
+   * a host that paints the table on a card sets --dt-bg to the card, and a
+   * tone mixed over the page colour would come out darker than the rows
+   * around it. --dt-timeline-success and --dt-timeline-danger stay the base
+   * sheet's — shadcn has no success colour, and --destructive is too light
+   * to carry the white text of the "today" chip at 4.5:1.
+   */
+  --dt-row-strong-bg: color-mix(in srgb, var(--dt-accent) 18%, var(--dt-bg));
+  --dt-row-soft-bg: color-mix(in srgb, var(--dt-accent) 5%, var(--dt-bg));
+  --dt-timeline-plan: var(--dt-accent);
+  --dt-timeline-actual: var(--dt-accent);
+  --dt-timeline-neutral: var(--dt-fg);
+  --dt-timeline-grid: color-mix(in srgb, var(--dt-fg) 16%, var(--dt-bg));
+  --dt-timeline-weekend: color-mix(in srgb, var(--dt-fg) 4%, transparent);
+
   --dt-font: var(--font-sans, inherit);
 }

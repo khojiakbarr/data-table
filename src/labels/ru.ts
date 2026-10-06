@@ -203,4 +203,6 @@ export const ruLabels: DataTableLabels = {
       : `Отфильтровано: ${count} ${plural(raw ?? 0, "строка", "строки", "строк")} из ${total}`,
   statusBarGroupedBy: (columns) => `Группировка: ${columns.join(", ")}`,
   totalsRow: "Итого",
+  timeline: "Шкала времени",
+  timelineMonth: (month) => ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"][month] ?? "",
 }

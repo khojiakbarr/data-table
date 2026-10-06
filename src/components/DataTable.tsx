@@ -21,7 +21,7 @@ import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import { defaultCellEditingLabels } from "../labels/editing"
-import type { DataTableLabels, FiltersPanelSlot } from "../types"
+import type { DataTableLabels, FiltersPanelSlot, RowTone } from "../types"
 
 export type { FiltersPanelSlot } from "../types"
 import { CellEditNotice } from "./CellEditNotice"
@@ -170,6 +170,8 @@ export const defaultLabels: DataTableLabels = {
     total === undefined ? `Filtered: ${count} rows` : `Filtered: ${count} of ${total} rows`,
   statusBarGroupedBy: (columns) => `Grouped by: ${columns.join(", ")}`,
   totalsRow: "Total",
+  timeline: "Timeline",
+  timelineMonth: (month) => ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][month] ?? "",
 }
 
 /**
@@ -328,6 +330,25 @@ export interface DataTableProps<TData extends RowData> {
    * totals rows do not call it.
    */
   onRowContextMenu?: (row: TData, event: ReactMouseEvent<HTMLTableRowElement>) => void
+  /**
+   * How strongly a record's row stands out: `"strong"` for a row that heads
+   * others — a department over its steps — `"soft"` a level down, undefined
+   * for an ordinary row. The whole row takes `--dt-row-strong-bg` or
+   * `--dt-row-soft-bg`: pinned cells, which paint their own background, and
+   * the timeline's cell included, so a band reads straight across the table.
+   *
+   * A colour, not a class: a pinned cell's background comes from a more
+   * specific rule than a host's row class would, so a class would leave the
+   * frozen columns out of the band. Group rows of a grouped table are never
+   * asked; they have a look of their own.
+   *
+   * Explicitly `| undefined` under `exactOptionalPropertyTypes`, like the
+   * other callbacks a host forwards.
+   *
+   * @example
+   * getRowTone={(row) => (row.kind === "group" ? "strong" : row.kind === "step" ? "soft" : undefined)}
+   */
+  getRowTone?: ((row: TData) => RowTone | undefined) | undefined
   /**
    * The host's own filters, inside the side bar's Filters tab — see
    * {@link FiltersPanelSlot}. With it, the tab is offered even when no column
@@ -496,6 +517,7 @@ export function DataTable<TData extends RowData>({
   style,
   onRowClick,
   onRowContextMenu,
+  getRowTone,
   filtersPanel,
   footer = true,
   virtualize = true,
@@ -994,6 +1016,7 @@ export function DataTable<TData extends RowData>({
                         onAutosize={autosize}
                         drop={drop}
                         selection={instance.selection.enabled ? instance.selection : undefined}
+                        timeline={instance.timeline}
                       />
                     )),
                 )
@@ -1045,6 +1068,7 @@ export function DataTable<TData extends RowData>({
                 onRowClick={onRowClick}
                 onRowContextMenu={onRowContextMenu}
                 editing={editing}
+                getRowTone={getRowTone}
               />
             )}
 

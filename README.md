@@ -93,6 +93,7 @@ function Receipts({ data, columns }) {
 | **Number the rows** | An optional leading column carrying each row's place in the whole result set — not in the page. Off by default. |
 | **Totals footer** | A row under the body, aligned and pinned with the columns, holding a total you supply per column. The library computes none of it. |
 | **Expand rows** | A detail panel under a row, child rows that indent by depth, or both. Nesting is unlimited. |
+| **Timeline (Gantt)** | A time scale after the columns: each row draws its plan, the work done and what ran late as bars, due days and payments as points, under today and a deadline. Day, week or month zoom; the pinned columns stay while it scrolls. |
 | **Per-column menu** | Right-click a header, or use its ⋮ button: sort, pin, fit width, hide. A host's own utility column (a checkbox, a row-actions button) opts out with `meta: { menu: false }`, and names itself with `meta: { label }` where its header is drawn rather than written. A column that stands for a thing can put a mark before its name with `meta: { icon }`. |
 | **Edit a cell** | Right-click a body cell and choose **Edit**. Text, number, date, boolean and single-choice list editors. The edit is a request to your `onCellEdit` — the table never writes to its own data. |
 | **Remember all of it** | Per table, per user, wherever you choose to put it. |
@@ -1305,6 +1306,110 @@ read.
 
 ---
 
+## Timeline (Gantt)
+
+```tsx
+const table = useDataTable({
+  id: "stages",
+  data: departments,
+  columns,
+  getSubRows: (row) => row.children,
+  timeline: {
+    start: "2026-08-31",
+    end: "2026-12-07",
+    zoom: "week", // "day" | "week" | "month"
+    scrollTo: today,
+    getItems: (row) => [
+      { kind: "bar", variant: "plan", start: row.planStart, end: row.planEnd },
+      { kind: "bar", variant: "actual", start: row.started, end: row.finished ?? today, progress: row.percent },
+    ],
+    markers: [
+      { date: today, label: `Today ${short(today)}`, tone: "danger" },
+      { date: deadline, label: `Deadline ${short(deadline)}`, tone: "neutral", dashed: true, at: "end" },
+    ],
+  },
+})
+
+<DataTable instance={table} getRowTone={(row) => (row.level === 0 ? "strong" : row.level === 1 ? "soft" : undefined)} />
+```
+
+A time scale after your columns: each row draws bars and points on it, under
+markers that run the height of the body.
+
+**It is one more column, not a second component beside the table.** The pane
+is appended after your columns, unpinned, so a column you pinned stays put
+while the timeline scrolls under it — and the tree, virtual rows, row heights,
+the totals row and detail panels line up with it because they are the table's
+own. Like the [row-number column](#row-numbers) it is chrome: it is not in the
+Columns panel, the saved layout or quick search, and it has no menu, sort,
+filter, resize or drag. Its width is the range's days × the day width — 30px a
+day at `"day"`, 14 at `"week"`, 5 at `"month"`, or your own `dayWidth` — so a
+zoom change rebuilds that one column and nothing else.
+
+**The library draws; your rows say what is drawn.** `getItems` turns a row into
+items, and it is read on every render, so it may be an inline function:
+
+| Item | Drawn as |
+|---|---|
+| `{ kind: "bar", variant: "plan" }` | A dashed outline: what was planned. |
+| `{ kind: "bar", variant: "actual", progress, tone }` | A track filled to `progress` while `tone` is `"primary"` (the default); a solid bar once `"success"`. |
+| `{ kind: "bar", variant: "overrun" }` | Red stripes: the days past the plan. Drawn over the actual bar whatever order you list them in. |
+| `size: "thick"` | A taller bar, for a row that sums the rows under it. |
+| `{ kind: "point", shape: "dot", date }` | A dot in the middle of its day — a payment. |
+| `{ kind: "point", shape: "tick", date }` | A capped line at the end of its day — a due day. |
+
+Dates are `YYYY-MM-DD` calendar days and both ends of a bar are **inclusive**:
+`start === end` is a one-day bar. They are counted in UTC, never in local time,
+so a bar lands on the same column for every user whatever their time zone. A bar
+that crosses the range is cut at the edge — squared off on the cut side — never
+dropped; a point outside the range is not drawn.
+
+**Markers** draw a line down every row and a chip in the header: `at: "middle"`
+(the default) for a moment such as today, `"end"` for a limit such as a
+deadline, which lasts the whole day; `dashed` for the latter. The header prints
+the months across the top — each month's name sticks at the edge of the
+visible pane while its month scrolls under your pinned columns — and the days
+(`"day"`) or the Mondays (`"week"`) below; weekends are shaded at `"day"`.
+Month names come from the labels, `timelineMonth(month)`, rather than from
+`Intl`: Chrome has no Latin Uzbek month names and prints "M09". The two lines
+share the header's height — 19px each at the default `--dt-header-height` of
+38px; set it to 52px or so if the scale should breathe.
+
+**`scrollTo`** brings a day into view — a third of the way into the visible
+pane — when the pane appears and whenever the day, the zoom or the range
+changes. Never on an ordinary render, which would drag the pane back from
+wherever the user had scrolled it.
+
+**Row tones** are a table feature the timeline wants: `<DataTable getRowTone>`
+returns `"strong"`, `"soft"` or nothing per row, and the whole row takes
+`--dt-row-strong-bg` or `--dt-row-soft-bg` — pinned cells, which paint their
+own background, and the timeline's cell included, so a department's band reads
+straight across the table.
+
+**A server-grouped page** draws the grid and the markers across each group
+header too — a group has no items of its own, and `getItems` is called for
+records only.
+
+**A day that is not a day** — `"29.09.2026"`, a `Date` passed whole, a bar that
+ends before it starts — draws nothing, like an item outside the range; in
+development it is also said, once, on the console.
+
+**Read-only.** Nothing is dragged. An item's `title` is its tooltip. Pass
+`onItemClick(item, row)` and every item becomes a button named by its title
+(give each one); without it a row's drawing is a single image named by its
+items' titles, and hidden from screen readers when none has one — your columns
+say the same dates in words. The header is named by `labels.timeline` and the
+markers' own labels.
+
+**Colours** are seven tokens — `--dt-timeline-plan`, `--dt-timeline-actual`,
+`--dt-timeline-success`, `--dt-timeline-danger`, `--dt-timeline-neutral`,
+`--dt-timeline-grid` and `--dt-timeline-weekend` — and every shade the pane
+draws is mixed from them where it is used. All but success and danger derive
+from your palette, so a theme that sets `--dt-accent` — `muiTokens` included —
+brands the bars, and dark mode needs nothing of its own.
+
+---
+
 ## Expandable rows
 
 Two shapes, one mechanism. Use either, or both together.
@@ -1484,6 +1589,8 @@ want that cell to end up with rather than expecting the layers to add.
 | `--dt-pinned-bg` | Resting fill of a pinned *body* cell — defaults to `--dt-bg`, set it to hold a frozen column apart from the ones scrolling under it. A pinned *header* cell stays on `--dt-header-bg`. The row's own state wins: a striped, hovered, expanded or group row paints its cells its own colour, tint or no tint |
 | `--dt-footer-bg` `--dt-footer-fg` | The pagination band — default to `--dt-bg` / `--dt-muted-fg`. Set as a pair: the text is 13px, so a tinted band needs its foreground re-picked to stay at 4.5:1 |
 | `--dt-indent` `--dt-detail-bg` | Nested rows and detail panels |
+| `--dt-row-strong-bg` `--dt-row-soft-bg` | Row tones (`getRowTone`) — tints of `--dt-accent` over `--dt-bg` by default |
+| `--dt-timeline-plan` `--dt-timeline-actual` `--dt-timeline-success` `--dt-timeline-danger` `--dt-timeline-neutral` `--dt-timeline-grid` `--dt-timeline-weekend` | The [timeline](#timeline-gantt): a plan's outline, work under way, work done, what is late (and today), a plain fact (a due day, a deadline), a month's line, a weekend's shade |
 | `--dt-viewport-max-height` | Fallback height for a table nobody bounded; see [Large data](#large-data) |
 | `--dt-font` `--dt-font-size` | Typography |
 | `--dt-button-bg` `--dt-button-fg` `--dt-button-border` `--dt-button-radius` `--dt-button-hover-bg` | The toolbar/menu buttons, the pagination buttons and the side bar rail tabs — see [Buttons](#buttons) below |
@@ -1961,8 +2068,11 @@ to a docked bar, the component did not change.
 | `rowHeight` | `number` | `40` | Pixel height of a data row; also sets `--dt-row-height`. |
 | `getRowHeight` | `(row: TData) => number` | — | Height for particular rows, known ahead of render. A pure function of its row; may be inline. |
 | `heightVersion` | `string \| number` | — | Changes when `getRowHeight` starts answering differently, for a change too narrow for the table to sample. See [Large data](#large-data). |
+| `timeline` | `TimelineOptions` | — | A time scale after the columns — a Gantt. `{ start, end, zoom, getItems, dayWidth?, markers?, scrollTo?, onItemClick? }`. See [Timeline (Gantt)](#timeline-gantt). |
 
-Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, grouping, selection, tableHeight, rowHeight, getRowHeight, heightVersion }`.
+Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, expanded, mode, query, pagination, filtering, grouping, selection, tableHeight, rowHeight, getRowHeight, heightVersion, timeline }`.
+
+`timeline` is `{ options, scale }` — this render's options and the scale they make — or undefined without one; see [Timeline (Gantt)](#timeline-gantt).
 
 `grouping` is `{ enabled, columns, isGrouped, has, columnId, set, add, remove, clear, expanded, isExpanded, toggle, collapseAll, startPath }` — see [Row grouping](#row-grouping).
 
@@ -1989,6 +2099,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `stickyHeader` | `boolean` | `true` | Keep the header in view while the body scrolls. |
 | `onRowClick` | `(row: TData) => void` | — | |
 | `onRowContextMenu` | `(row: TData, event: MouseEvent) => void` | — | A right-click on a data row, for the host's own row menu. Call `event.preventDefault()` when you open one; group and totals rows do not call it. |
+| `getRowTone` | `(row: TData) => "strong" \| "soft" \| undefined` | — | A band across a record's whole row — pinned cells and the timeline included — in `--dt-row-strong-bg` / `--dt-row-soft-bg`. See [Timeline (Gantt)](#timeline-gantt). |
 | `footer` | `boolean` | `true` | Show the pagination footer when paging is on. |
 | `virtualize` | `boolean` | `true` | Render only the visible window of rows. `false` renders every row. |
 | `loading` | `boolean` | `false` | Rows are on their way. Skeleton rows with none yet, a progress bar once some are on screen. |

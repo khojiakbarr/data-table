@@ -5,10 +5,12 @@ import { groupValueLabel, type GroupRow } from "../core/grouping"
 import { pinnedStyle } from "../core/pinning"
 import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
 import { isSelectionColumn } from "../core/selection"
+import { isTimelineColumn, type TimelineState } from "../core/timeline"
 import type { CellEditing } from "../core/useCellEditing"
 import type { DataTableFeatures } from "../useDataTable"
 import type { DataTableLabels } from "../types"
 import { ExpandToggle } from "./ExpandToggle"
+import { TimelineBodyCell } from "./TimelineCell"
 
 interface GroupBodyRowProps<TData extends RowData> {
   /** The table row wrapping the group header, for its cells and its id. */
@@ -50,6 +52,12 @@ interface GroupBodyRowProps<TData extends RowData> {
    * aggregates records and has none of its own to write to.
    */
   editing?: CellEditing<TData> | undefined
+  /**
+   * The timeline pane, when the table has one. A group has no items of its
+   * own to draw, but its stretch of the pane keeps the grid and the markers,
+   * or every marker's line would break at each group header.
+   */
+  timeline?: TimelineState<TData> | undefined
 }
 
 /**
@@ -83,6 +91,7 @@ export function GroupBodyRow<TData extends RowData>({
   fillerAt,
   labels,
   editing,
+  timeline,
 }: GroupBodyRowProps<TData>) {
   const depth = Math.max(0, group.path.length - 1)
   const key = group.path[group.path.length - 1]
@@ -110,10 +119,14 @@ export function GroupBodyRow<TData extends RowData>({
   const visible = row.getVisibleCells()
   /* The group's chevron and value belong beside the first real column; see BodyRow. */
   const leadIndex = visible.findIndex(
-    (cell) => !isRowNumberColumn(cell.column.id) && !isSelectionColumn(cell.column.id),
+    (cell) =>
+      !isRowNumberColumn(cell.column.id) && !isSelectionColumn(cell.column.id) && !isTimelineColumn(cell.column.id),
   )
 
   const cells = visible.map((cell, index) => {
+    if (isTimelineColumn(cell.column.id)) {
+      return <TimelineBodyCell key={cell.id} columnId={cell.column.id} timeline={timeline} />
+    }
     if (isSelectionColumn(cell.column.id)) {
       /*
        * The one row with no checkbox, and the cell is kept and left empty.

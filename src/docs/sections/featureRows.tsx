@@ -1,6 +1,8 @@
 import { CodeBlock } from "../CodeBlock"
 import { SelectionExample } from "../examples/SelectionExample"
 import selectionSource from "../examples/SelectionExample.tsx?raw"
+import { TimelineExample } from "../examples/TimelineExample"
+import timelineSource from "../examples/TimelineExample.tsx?raw"
 import { LiveExample } from "../LiveExample"
 import type { DocTopic } from "../model"
 import { Callout, ReadMore } from "../prose"
@@ -111,10 +113,55 @@ function TotalsFooter() {
   )
 }
 
+function Timeline() {
+  return (
+    <>
+      <p>
+        <code>timeline</code> adds a time scale after your columns — a Gantt. Each row draws bars (a plan, the work
+        done, the days past the plan) and points (a due day, a payment) under markers that run the height of the body
+        (today, a deadline). It is one more column, so pinned columns stay put while it scrolls, and the tree, virtual
+        rows and row heights are the table's own.
+      </p>
+      <LiveExample title="A project's stages on a timeline" source={timelineSource} file="TimelineExample.tsx">
+        <TimelineExample />
+      </LiveExample>
+      <p>The library draws; your rows say what is drawn. Turn each row into items in <code>getItems</code>:</p>
+      <CodeBlock
+        language="ts"
+        code={`
+type TimelineItem =
+  | { kind: "bar"; start: IsoDay; end: IsoDay;              // both inclusive
+      variant: "plan" | "actual" | "overrun";
+      tone?: "primary" | "success" | "danger" | "neutral";  // actual: under way, or done
+      progress?: number;                                    // 0–100, fills an actual bar
+      size?: "regular" | "thick"; title?: string }
+  | { kind: "point"; date: IsoDay; shape: "dot" | "tick"; tone?: …; title?: string }`}
+      />
+      <p>
+        <code>zoom</code> is <code>"day"</code> (30px a day, weekends shaded), <code>"week"</code> (14px, Mondays
+        labelled) or <code>"month"</code> (5px); <code>dayWidth</code> changes any of them. A bar crossing the range is
+        cut at the edge, never dropped. <code>scrollTo</code> brings a day into view when the pane appears and when
+        the zoom or the range changes — never on an ordinary render.
+      </p>
+      <p>
+        Give rows that head others a band with <code>{"<DataTable getRowTone>"}</code> — <code>"strong"</code> or{" "}
+        <code>"soft"</code>. The whole row takes it, pinned cells and the timeline's cell included.
+      </p>
+      <Callout>
+        Read-only: nothing is dragged. An item's <code>title</code> is its tooltip. With <code>onItemClick</code> each
+        item is a button named by its title; without it a row's drawing is one image named by its items' titles. Month
+        names come from the labels (<code>timelineMonth</code>), not <code>Intl</code>.
+      </Callout>
+      <ReadMore anchor="timeline-gantt">Timeline (Gantt)</ReadMore>
+    </>
+  )
+}
+
 /** The Features section's row topics, in the order the page shows them. */
 export const rowTopics: DocTopic[] = [
   { id: "row-selection", title: "Row selection", Body: RowSelection },
   { id: "row-numbers", title: "Row numbers", Body: RowNumbers },
   { id: "status-bar", title: "Status bar", Body: StatusBar },
   { id: "totals-footer", title: "Totals footer", Body: TotalsFooter },
+  { id: "timeline", title: "Timeline (Gantt)", Body: Timeline },
 ]

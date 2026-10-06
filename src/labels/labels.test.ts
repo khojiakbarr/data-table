@@ -269,6 +269,7 @@ describe("Uzbek orthography", () => {
     uzLabels.selectAllRows("1 000", 1000),
     uzLabels.selectAllRows(undefined, undefined),
     uzLabels.activeFiltersCount(2),
+    ...Array.from({ length: 12 }, (_, month) => uzLabels.timelineMonth(month)),
   ]
 
   it("writes every label with the modifier letters, never the ASCII apostrophe", () => {
@@ -314,6 +315,7 @@ describe("Uzbek orthography", () => {
       "statusBarGroupedBy",
       "statusBarRows",
       "tableHeight",
+      "timelineMonth",
       "ungroupColumn",
     ])
   })

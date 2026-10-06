@@ -3,6 +3,55 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## Unreleased
+
+### Added
+
+- **A timeline pane — a Gantt — after the columns: `useDataTable({ timeline })`.**
+  Each row draws bars (a plan's dashed outline, the work done filled to its
+  progress, the days past the plan in red stripes) and points (a due day's tick
+  at the end of its day, a payment's dot in the middle of it) under markers that
+  run the height of the body — today, a deadline — each named by a chip in the
+  header. The header prints the months, their names sticking at the visible
+  edge as their month scrolls under the pinned columns, and the days (`"day"`
+  zoom, weekends shaded) or the Mondays (`"week"`); `"month"` prints the months
+  alone. The pane is one more column, appended after the host's own and
+  unpinned, so pinning, the tree, virtual rows, row heights and the totals and
+  detail rows line up with no layout of their own; like the row-number column
+  it is chrome — absent from the Columns panel, the saved layout and quick
+  search, with no menu, sort, filter, resize or drag. Days are calendar days
+  counted in UTC, bars inclusive at both ends and cut — never dropped — at the
+  range's edges. `scrollTo` brings a day into view when the pane appears and
+  when the zoom or the range changes, and waits for the viewport's first real
+  width if it has none yet. Read-only: `title` is an item's tooltip, and
+  `onItemClick` turns every item into a button named by it. A group header of a
+  server-grouped page keeps the grid and the markers, with no items of its
+  own. In development an item whose days are not days — `"29.09.2026"`, an end
+  before its start — is said once on the console; one merely outside the range
+  is not drawn and not reported. `TimelineHeader`,
+  `TimelineCell` and the arithmetic behind them (`timelineScale`, `barBox`,
+  `pointX`, `monthSpans`, `dayMarks`, `dayNumber`) are exported for a shell of
+  its own. `Timeline.test.tsx` and `core/timeline.test.ts` cover it; the docs
+  page has a live example.
+- **`<DataTable getRowTone>` — a band across a row.** `"strong"` for a row that
+  heads others, `"soft"` a level down. Every cell of the row takes
+  `--dt-row-strong-bg` / `--dt-row-soft-bg`, pinned cells and the timeline's
+  included; a hovered row still shows it is hovered.
+- **Tokens.** `--dt-row-strong-bg`, `--dt-row-soft-bg` and seven `--dt-timeline-*`
+  colours. All but `--dt-timeline-success` and `--dt-timeline-danger` are mixed
+  from the palette, so a theme that sets `--dt-accent` brands them and the dark
+  theme needs no entry for them. Both shadcn presets restate the tones, the
+  plan, actual and neutral colours, the grid and the weekend over their own
+  `--dt-accent`, `--dt-bg` and `--dt-fg`; success and danger stay the base
+  sheet's — shadcn has no success colour, and its `--destructive` is too light
+  for the white text of a chip printed on it.
+- **Labels.** `timeline` (the pane's name for a screen reader) and
+  `timelineMonth(month)` (a month's short name), in all three shipped sets.
+  Month names are labels, not `Intl`, because Chrome prints "M09" for every
+  Latin Uzbek month. Hosts using the documented `{ ...defaultLabels, ...mine }`
+  recipe are unaffected; a host hand-building a complete `DataTableLabels`
+  object has to add the two keys.
+
 ## 0.12.6
 
 ### Changed

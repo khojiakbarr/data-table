@@ -5,13 +5,15 @@ import { classNames, insertAt } from "../core/classNames"
 import { pinnedStyle } from "../core/pinning"
 import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
 import { isSelectionColumn } from "../core/selection"
+import { isTimelineColumn, type TimelineState } from "../core/timeline"
 import type { CellEditing } from "../core/useCellEditing"
 import type { SelectionApi } from "../core/useSelection"
 import type { DataTableFeatures } from "../useDataTable"
-import type { DataTableLabels } from "../types"
+import type { DataTableLabels, RowTone } from "../types"
 import { CellEditor } from "./CellEditor"
 import { DepthSpacer, ExpandToggle } from "./ExpandToggle"
 import { SelectionCheckbox } from "./SelectionCheckbox"
+import { TimelineBodyCell } from "./TimelineCell"
 
 interface BodyRowProps<TData extends RowData> {
   row: Row<DataTableFeatures, TData>
@@ -56,6 +58,10 @@ interface BodyRowProps<TData extends RowData> {
    * this component unchanged.
    */
   selection?: SelectionApi | undefined
+  /** The timeline pane, for the one cell that draws this row on it. */
+  timeline?: TimelineState<TData> | undefined
+  /** The row's tone (`DataTableProps.getRowTone`), painted on every one of its cells. */
+  tone?: RowTone | undefined
 }
 
 /**
@@ -90,6 +96,8 @@ export function BodyRow<TData extends RowData>({
   onRowContextMenu,
   editing,
   selection,
+  timeline,
+  tone,
 }: BodyRowProps<TData>) {
   const cells = row.getVisibleCells()
   const expandable = row.subRows.length > 0 || hasDetail
@@ -107,10 +115,14 @@ export function BodyRow<TData extends RowData>({
    * position. Everything that used to ask `index === 0` asks this instead.
    */
   const leadIndex = cells.findIndex(
-    (cell) => !isRowNumberColumn(cell.column.id) && !isSelectionColumn(cell.column.id),
+    (cell) =>
+      !isRowNumberColumn(cell.column.id) && !isSelectionColumn(cell.column.id) && !isTimelineColumn(cell.column.id),
   )
 
   const rendered = cells.map((cell, index) => {
+    if (isTimelineColumn(cell.column.id)) {
+      return <TimelineBodyCell key={cell.id} columnId={cell.column.id} timeline={timeline} row={row.original} />
+    }
     if (isSelectionColumn(cell.column.id)) {
       return (
         <td
@@ -278,6 +290,7 @@ export function BodyRow<TData extends RowData>({
   return (
     <tr
       className={isExpanded ? "dt-tr dt-tr-expanded" : "dt-tr"}
+      data-dt-tone={tone}
       data-depth={row.depth}
       data-parity={position % 2 === 0 ? "even" : "odd"}
       aria-rowindex={number + headerRowCount}

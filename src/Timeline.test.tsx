@@ -296,6 +296,34 @@ describe("the scale", () => {
     expect(within(pane()).getByText("21.09")).not.toHaveClass("dt-timeline-day-covered")
   })
 
+  it("hides a month's name while too little of its month is on screen to hold it", async () => {
+    // jsdom lays nothing out: a month's name is 64px, the viewport 300px, and the pane moves with the scroll.
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("dt-timeline-month-label") ? 64 : 0
+    })
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(function (this: Element) {
+      return this.classList.contains("dt-viewport") ? 300 : 0
+    })
+    const rect = Element.prototype.getBoundingClientRect
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (!this.classList.contains("dt-timeline-scale")) return rect.call(this)
+      const viewport = this.closest(".dt-viewport")
+      return new DOMRect(-(viewport?.scrollLeft ?? 0), 0, 0, 0)
+    })
+    render(<Harness />)
+    const name = (month: string) => within(pane()).getByText(month)
+    // 31.08 is the range's one day of August: 14px, never room for its name. September has all of its 420px.
+    expect(name("Aug 2026")).toHaveAttribute("data-dt-cut")
+    expect(name("Sep 2026")).not.toHaveAttribute("data-dt-cut")
+
+    // Scrolled until 40px of September is left on screen: its name goes, October's stays.
+    const viewport = document.querySelector<HTMLElement>(".dt-viewport")!
+    viewport.scrollLeft = 394
+    fireEvent.scroll(viewport)
+    await vi.waitFor(() => expect(name("Sep 2026")).toHaveAttribute("data-dt-cut"))
+    expect(name("Oct 2026")).not.toHaveAttribute("data-dt-cut")
+  })
+
   it("keeps a month's name past the pinned columns while its month scrolls under them", () => {
     render(<Harness pinStage />)
     const label = pane().querySelector<HTMLElement>(".dt-timeline-month-label")

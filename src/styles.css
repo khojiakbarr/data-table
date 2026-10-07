@@ -2853,6 +2853,11 @@
   white-space: nowrap;
 }
 
+/* A month whose name no longer fits the part of it on screen (`cutMonths`): the name goes, the month's line stays. */
+.dt-timeline-month-label[data-dt-cut] {
+  visibility: hidden;
+}
+
 .dt-timeline-day {
   position: absolute;
   inset-block: 0;

@@ -199,6 +199,7 @@ export {
   TIMELINE_COLUMN_ID,
   barBox,
   coveredMarks,
+  cutMonths,
   calendarParts,
   dayMarks,
   dayNumber,

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type RefObject } from "react"
 import { classNames } from "../core/classNames"
-import { coveredMarks, dayMarks, monthSpans, pointX, type TimelineMarker, type TimelineState } from "../core/timeline"
+import { coveredMarks, cutMonths, dayMarks, monthSpans, pointX, type MonthSpan, type TimelineMarker, type TimelineState } from "../core/timeline"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableLabels } from "../types"
 
@@ -36,6 +36,7 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
   const markers = placedMarkers(timeline)
   const scaleRef = useRef<HTMLDivElement>(null)
   const daysRef = useRef<HTMLDivElement>(null)
+  useMonthNamesThatFit(scaleRef, months, pinnedStartWidth)
   const covered = useCoveredDays(daysRef, `${scale.zoom}|${scale.first}|${scale.days}|${scale.dayWidth}|${markers.map(({ marker, x }) => `${x}:${marker.label}`).join(",")}`)
 
   /*
@@ -52,7 +53,7 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
     const viewport = element?.closest(".dt-viewport")
     if (x === null || !element || !(viewport instanceof HTMLElement)) return
     const scroll = (): void => {
-      const start = element.getBoundingClientRect().left - viewport.getBoundingClientRect().left + viewport.scrollLeft
+      const start = paneStart(element, viewport)
       const visible = Math.max(0, viewport.clientWidth - pinnedStartWidth)
       // A third of the way into the visible pane: the day, and some of what came before it.
       viewport.scrollLeft = Math.max(0, start + x - pinnedStartWidth - visible / 3)
@@ -116,6 +117,56 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
       </div>
     </>
   )
+}
+
+/**
+ * Where the pane starts inside the viewport's scrolled content, in pixels.
+ *
+ * @param scale - The scale's element.
+ * @param viewport - The table's scrolling viewport.
+ * @returns The pane's left edge, the same whatever the scroll.
+ */
+function paneStart(scale: HTMLElement, viewport: HTMLElement): number {
+  return scale.getBoundingClientRect().left - viewport.getBoundingClientRect().left + viewport.scrollLeft
+}
+
+/**
+ * Hides a month's name while the part of its month on screen is narrower than
+ * the name (`cutMonths`), as the pane scrolls, the viewport resizes or the
+ * months change. Written to the DOM as `data-dt-cut`, not through React state:
+ * a scroll is many events a second, and a render per event for a few names
+ * would cost the whole header.
+ *
+ * @param scaleRef - The scale's element.
+ * @param months - The months drawn, in order.
+ * @param pinnedStartWidth - The pinned columns' width, which hides the pane's start.
+ */
+function useMonthNamesThatFit(scaleRef: RefObject<HTMLDivElement | null>, months: readonly MonthSpan[], pinnedStartWidth: number): void {
+  useIsomorphicLayoutEffect(() => {
+    const element = scaleRef.current
+    const viewport = element?.closest(".dt-viewport")
+    if (!element || !(viewport instanceof HTMLElement)) return
+    let frame = 0
+    const fit = (): void => {
+      frame = 0
+      const labels = [...element.querySelectorAll<HTMLElement>(".dt-timeline-month-label")]
+      const from = viewport.scrollLeft + pinnedStartWidth - paneStart(element, viewport)
+      const cut = new Set(cutMonths(months, labels.map((label) => label.offsetWidth), from, from - pinnedStartWidth + viewport.clientWidth))
+      labels.forEach((label, index) => label.toggleAttribute("data-dt-cut", cut.has(index)))
+    }
+    const schedule = (): void => {
+      if (frame === 0) frame = requestAnimationFrame(fit)
+    }
+    fit()
+    viewport.addEventListener("scroll", schedule, { passive: true })
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(schedule)
+    observer?.observe(viewport)
+    return () => {
+      viewport.removeEventListener("scroll", schedule)
+      observer?.disconnect()
+      if (frame !== 0) cancelAnimationFrame(frame)
+    }
+  }, [scaleRef, months, pinnedStartWidth])
 }
 
 /**

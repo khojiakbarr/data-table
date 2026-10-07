@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   coveredMarks,
+  cutMonths,
   DEFAULT_DAY_WIDTH,
   MIN_BAR_WIDTH,
   TIMELINE_COLUMN_ID,
@@ -197,5 +198,25 @@ describe("coveredMarks", () => {
     // 165 + 30 + 2 = 197 reaches the third date's first pixel; 165 − 30 − 2 = 133 stops short of the second's end.
     expect(coveredMarks(marks, [{ center: 165, width: 60 }])).toEqual([2])
     expect(coveredMarks(marks, [])).toEqual([])
+  })
+})
+
+describe("cutMonths", () => {
+  const spans = [
+    { left: 0, width: 420 },
+    { left: 420, width: 434 },
+    { left: 854, width: 420 },
+  ]
+
+  it("hides a name its month no longer has room for, and only that one", () => {
+    // 40px of September left past the pinned columns: "SEP 2026" (64px) would be cut.
+    expect(cutMonths(spans, [64, 64, 64], 380, 854)).toEqual([0])
+    // 46px of November on screen at the right edge: its name starts there and runs off — cut too.
+    expect(cutMonths(spans, [64, 64, 64], 500, 900)).toEqual([2])
+  })
+
+  it("leaves alone a month wide enough on screen, or not on screen at all", () => {
+    expect(cutMonths(spans, [64, 64, 64], 0, 300)).toEqual([])
+    expect(cutMonths(spans, [64, 64, 64], 420, 854)).toEqual([])
   })
 })

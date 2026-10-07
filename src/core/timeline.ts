@@ -413,6 +413,34 @@ export function coveredMarks(marks: readonly MarkBox[], chips: readonly ChipBox[
 }
 
 /**
+ * Which months' names do not fit the part of their month on screen. A name
+ * sticks to the visible edge while its month scrolls by, and once less of the
+ * month is left than the name is wide it is pushed out under the pinned
+ * columns a letter at a time — "SEP 2026" read "P 2026". Such a name is hidden
+ * instead, until its month has room for it again.
+ *
+ * @param spans - Every month's span, as {@link monthSpans} gives them.
+ * @param labelWidths - Each month name's drawn width, in the same order.
+ * @param visibleFrom - The pane's first visible pixel, past the pinned columns.
+ * @param visibleTo - Its last visible pixel.
+ * @returns The indexes of the months whose name is cut.
+ *
+ * @example
+ * cutMonths([{ left: 0, width: 420 }, { left: 420, width: 434 }], [64, 64], 380, 900) // [0]: 40px of September left
+ */
+export function cutMonths(
+  spans: readonly Pick<MonthSpan, "left" | "width">[],
+  labelWidths: readonly number[],
+  visibleFrom: number,
+  visibleTo: number,
+): number[] {
+  return spans.flatMap((span, index) => {
+    const shown = Math.min(span.left + span.width, visibleTo) - Math.max(span.left, visibleFrom)
+    return shown > 0 && shown < (labelWidths[index] ?? 0) ? [index] : []
+  })
+}
+
+/**
  * The grid every row draws behind its items, as one set of CSS backgrounds.
  *
  * One element per row carries all of it — month lines, week lines, and at the

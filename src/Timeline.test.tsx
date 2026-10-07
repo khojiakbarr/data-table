@@ -281,6 +281,21 @@ describe("the scale", () => {
     expect(pane().querySelector(".dt-sr-only")).toHaveTextContent("Timeline: Сегодня 29.09, Срок проекта 30.11")
   })
 
+  it("hides the date a marker's chip lies over, and only that one", () => {
+    // jsdom lays nothing out: a date is as wide as 30px, a chip 80px, each where its style puts it.
+    vi.spyOn(HTMLElement.prototype, "offsetLeft", "get").mockImplementation(function (this: HTMLElement) {
+      return Number.parseFloat(this.style.left) || 0
+    })
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("dt-timeline-chip") ? 80 : this.classList.contains("dt-timeline-day") ? 30 : 0
+    })
+    render(<Harness />)
+    const covered = [...pane().querySelectorAll(".dt-timeline-day-covered")].map((day) => day.textContent)
+    // «Сегодня 29.09» stands at 413px over 28.09 (392–422); «Срок проекта 30.11» at 1288px over 30.11 (1288–1318).
+    expect(covered).toEqual(["28.09", "30.11"])
+    expect(within(pane()).getByText("21.09")).not.toHaveClass("dt-timeline-day-covered")
+  })
+
   it("keeps a month's name past the pinned columns while its month scrolls under them", () => {
     render(<Harness pinStage />)
     const label = pane().querySelector<HTMLElement>(".dt-timeline-month-label")

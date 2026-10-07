@@ -2882,6 +2882,11 @@
   color: var(--dt-header-fg);
 }
 
+/* A date a marker's chip lies over: its text goes, its line and its weekend shade stay. */
+.dt-timeline-day.dt-timeline-day-covered {
+  color: transparent;
+}
+
 /*
  * A marker's chip, centred on its line at the foot of the header. Its text
  * is picked per tone for 4.5:1: white on the danger red, the surface colour on

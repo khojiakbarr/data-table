@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  coveredMarks,
   DEFAULT_DAY_WIDTH,
   MIN_BAR_WIDTH,
   TIMELINE_COLUMN_ID,
@@ -182,5 +183,19 @@ describe("timelineColumnDef", () => {
     })
     expect(isTimelineColumn(TIMELINE_COLUMN_ID)).toBe(true)
     expect(isTimelineColumn("deadline")).toBe(false)
+  })
+})
+
+describe("coveredMarks", () => {
+  it("names the dates a chip lies over, keeping a little room on each side, and no others", () => {
+    const marks = [
+      { left: 0, width: 30 },
+      { left: 98, width: 30 },
+      { left: 196, width: 30 },
+    ]
+    expect(coveredMarks(marks, [{ center: 110, width: 60 }])).toEqual([1])
+    // 165 + 30 + 2 = 197 reaches the third date's first pixel; 165 − 30 − 2 = 133 stops short of the second's end.
+    expect(coveredMarks(marks, [{ center: 165, width: 60 }])).toEqual([2])
+    expect(coveredMarks(marks, [])).toEqual([])
   })
 })

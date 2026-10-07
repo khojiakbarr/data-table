@@ -379,6 +379,39 @@ export function dayMarks(scale: TimelineScale, mondaysOnly: boolean): DayMark[] 
   return marks
 }
 
+/** A day mark's text on the scale, as drawn: where it starts and how wide it is. */
+export interface MarkBox {
+  left: number
+  width: number
+}
+
+/** A marker's chip, as drawn: centred on its line. */
+export interface ChipBox {
+  center: number
+  width: number
+}
+
+/**
+ * Which day marks a marker's chip lies over. The chip sits on the same strip
+ * as the dates, so a "Today 29.09" over "28.09" leaves the date half shown
+ * under it — the scale hides those dates instead, keeping their lines.
+ *
+ * @param marks - Every day mark's box, in pixels from the pane's start.
+ * @param chips - Every chip's box.
+ * @param gap - Room kept clear on each side of a chip.
+ * @returns The indexes of the marks a chip covers.
+ *
+ * @example
+ * coveredMarks([{ left: 0, width: 30 }, { left: 98, width: 30 }], [{ center: 110, width: 60 }], 2) // [1]
+ */
+export function coveredMarks(marks: readonly MarkBox[], chips: readonly ChipBox[], gap = 2): number[] {
+  return marks.flatMap((mark, index) =>
+    chips.some((chip) => mark.left < chip.center + chip.width / 2 + gap && mark.left + mark.width > chip.center - chip.width / 2 - gap)
+      ? [index]
+      : [],
+  )
+}
+
 /**
  * The grid every row draws behind its items, as one set of CSS backgrounds.
  *

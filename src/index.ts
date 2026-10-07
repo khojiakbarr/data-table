@@ -198,6 +198,7 @@ export {
   MIN_BAR_WIDTH,
   TIMELINE_COLUMN_ID,
   barBox,
+  coveredMarks,
   calendarParts,
   dayMarks,
   dayNumber,

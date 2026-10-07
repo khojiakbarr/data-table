@@ -1,6 +1,6 @@
-import { useMemo, useRef } from "react"
+import { useMemo, useRef, useState, type RefObject } from "react"
 import { classNames } from "../core/classNames"
-import { dayMarks, monthSpans, pointX, type TimelineMarker, type TimelineState } from "../core/timeline"
+import { coveredMarks, dayMarks, monthSpans, pointX, type TimelineMarker, type TimelineState } from "../core/timeline"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableLabels } from "../types"
 
@@ -35,6 +35,8 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
   const ticks = useMemo(() => (scale.zoom === "month" ? [] : dayMarks(scale, scale.zoom === "week")), [scale])
   const markers = placedMarkers(timeline)
   const scaleRef = useRef<HTMLDivElement>(null)
+  const daysRef = useRef<HTMLDivElement>(null)
+  const covered = useCoveredDays(daysRef, `${scale.zoom}|${scale.first}|${scale.days}|${scale.dayWidth}|${markers.map(({ marker, x }) => `${x}:${marker.label}`).join(",")}`)
 
   /*
    * `scrollTo`, carried out when the pane appears and whenever the day it
@@ -90,14 +92,15 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
             </div>
           ))}
         </div>
-        <div className="dt-timeline-days">
-          {ticks.map((tick) => (
+        <div ref={daysRef} className="dt-timeline-days">
+          {ticks.map((tick, index) => (
             <span
               key={tick.day}
               className={classNames(
                 "dt-timeline-day",
                 scale.zoom === "day" && "dt-timeline-day-cell",
                 scale.zoom === "day" && tick.weekday >= 5 && "dt-timeline-weekend",
+                covered.has(index) && "dt-timeline-day-covered",
               )}
               style={scale.zoom === "day" ? { left: tick.left, width: scale.dayWidth } : { left: tick.left }}
             >
@@ -113,6 +116,31 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
       </div>
     </>
   )
+}
+
+/**
+ * The day marks a marker's chip covers, measured once the scale is drawn and
+ * again whenever what it holds changes (`layout`: the zoom, the range, the day
+ * width, the chips). A chip's width is its text's, which only the browser
+ * knows; a date half hidden under "Today 29.09" read as "05.1", so a covered
+ * date is hidden and its line kept.
+ *
+ * @param days - The strip holding the dates and the chips.
+ * @param layout - A key that changes whenever the dates or the chips move.
+ * @returns The indexes of the covered marks, in the strip's order.
+ */
+function useCoveredDays(days: RefObject<HTMLDivElement | null>, layout: string): ReadonlySet<number> {
+  const [covered, setCovered] = useState<ReadonlySet<number>>(() => new Set())
+  useIsomorphicLayoutEffect(() => {
+    const strip = days.current
+    if (!strip) return
+    const marks = [...strip.querySelectorAll<HTMLElement>(".dt-timeline-day")].map((mark) => ({ left: mark.offsetLeft, width: mark.offsetWidth }))
+    // A chip is centred on its line by a translate, which `offsetLeft` does not count: its left IS its centre.
+    const chips = [...strip.querySelectorAll<HTMLElement>(".dt-timeline-chip")].map((chip) => ({ center: chip.offsetLeft, width: chip.offsetWidth }))
+    const next = coveredMarks(marks, chips)
+    setCovered((current) => (current.size === next.length && next.every((index) => current.has(index)) ? current : new Set(next)))
+  }, [days, layout])
+  return covered
 }
 
 /** A marker with the x it stands at. */

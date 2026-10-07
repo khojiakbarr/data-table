@@ -3,6 +3,17 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.13.1
+
+### Fixed
+
+- **A marker's chip no longer sits over a date.** The chip shares the scale's
+  bottom strip with the days and the Mondays, so "Today 29.09" covered most of
+  "28.09" and left a sliver of it showing. The scale now measures the chips once
+  drawn and hides the text of every date one covers — its line, and at the day
+  zoom its weekend shade, stay. `coveredMarks` is the arithmetic, exported with
+  the rest of the scale's.
+
 ## 0.13.0
 
 ### Added

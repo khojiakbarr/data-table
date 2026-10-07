@@ -3,6 +3,17 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.13.2
+
+### Fixed
+
+- **A month's name no longer shows as a sliver.** It sticks to the visible
+  edge while its month scrolls by, and once less of the month was left on
+  screen than the name is wide, the name was pushed under the pinned columns a
+  letter at a time — "SEP 2026" read "P 2026"; a range's one-day first month
+  never had room at all. Such a name is now hidden until its month has room
+  again; the month's line stays. `cutMonths` is the arithmetic, exported.
+
 ## 0.13.1
 
 ### Fixed

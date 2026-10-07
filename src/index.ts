@@ -341,10 +341,19 @@ export type { UnboundedViewportOptions } from "./core/useUnboundedViewport"
 export { buildDisplayList, displayItemKey, spacerSizes } from "./core/virtualRows"
 export type { DisplayItem, SpacerSizes } from "./core/virtualRows"
 
+export { cardPlaces, isBlankCardValue, CARD_SLOTS } from "./core/cardLayout"
+export type { CardColumn, CardPlaces } from "./core/cardLayout"
+export { useCardLayout } from "./core/useCardLayout"
+export { CardContext, useInCard } from "./core/cardContext"
+export { CardList } from "./components/CardList"
+export type { CardListProps } from "./components/CardList"
+
 export type {
+  CardSlot,
   DataTableColumnMeta,
   DataTableFeatureFlags,
   DataTableLabels,
+  RowsLayout,
   LayoutStorage,
   RowTone,
   TableLayout,

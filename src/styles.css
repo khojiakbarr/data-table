@@ -193,6 +193,13 @@
   --dt-font: inherit;
   --dt-font-size: 14px;
 
+  /* cards (`layout="cards"`): the list's ground, each card, and the space between them */
+  --dt-cards-bg: var(--dt-header-bg);
+  --dt-card-bg: var(--dt-bg);
+  --dt-card-radius: 14px;
+  --dt-card-gap: 10px;
+  --dt-card-padding: 12px;
+
   /*
    * A row of two: `.dt-main` — the table's own column, toolbar through footer
    * — and `.dt-sidebar` beside it. Docking the side bar this way is what makes
@@ -2923,4 +2930,259 @@
 
 .dt-timeline-chip.dt-timeline-tone-success {
   color: #18181b;
+}
+
+/* ---------- cards (`layout="cards"`) ---------- *
+ * A row drawn as a card for a narrow table. Every size of type is a share of
+ * `--dt-font-size`, so a host that scales the table's type scales the cards
+ * with it. Colours are the table's own tokens, so a theme and dark mode reach
+ * the cards with nothing more.
+ */
+
+.dt-root[data-dt-layout="cards"] .dt-viewport {
+  background: var(--dt-cards-bg);
+}
+
+.dt-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dt-card-gap);
+  padding: var(--dt-card-gap);
+}
+
+.dt-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dt-card-gap);
+}
+
+/* Stale cards dim while a refetch is on its way, as the table's rows do. */
+.dt-loading .dt-cards-list {
+  opacity: 0.6;
+  transition: opacity 200ms ease;
+}
+
+/* The select-all box, heading the list as the header's box heads the table. */
+.dt-cards-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--dt-card-padding);
+  font-size: calc(var(--dt-font-size) * 13 / 14);
+  color: var(--dt-muted-fg);
+}
+
+.dt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: var(--dt-card-padding);
+  border: 1px solid var(--dt-border);
+  border-radius: var(--dt-card-radius);
+  background: var(--dt-card-bg);
+}
+
+.dt-card[data-clickable] {
+  cursor: pointer;
+}
+
+.dt-card[data-clickable]:hover {
+  border-color: color-mix(in srgb, var(--dt-accent) 45%, var(--dt-border));
+}
+
+.dt-card[data-selected] {
+  border-color: var(--dt-accent);
+  box-shadow: 0 0 0 1px var(--dt-accent);
+}
+
+.dt-card[data-dt-tone="strong"] {
+  background: var(--dt-row-strong-bg);
+}
+
+.dt-card[data-dt-tone="soft"] {
+  background: var(--dt-row-soft-bg);
+}
+
+.dt-card-top,
+.dt-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dt-card-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: calc(var(--dt-font-size) * 12 / 14);
+  color: var(--dt-muted-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dt-card-status,
+.dt-card-actions,
+.dt-card-chips,
+.dt-card-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dt-card-chips {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.dt-card-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dt-card-leading {
+  flex: none;
+  display: inline-flex;
+}
+
+.dt-card-heading {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dt-card-title {
+  font-size: calc(var(--dt-font-size) * 15 / 14);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.dt-card-subtitle,
+.dt-card-note {
+  margin-top: 2px;
+  font-size: calc(var(--dt-font-size) * 12 / 14);
+  color: var(--dt-muted-fg);
+}
+
+.dt-card-figure {
+  flex: none;
+  max-width: 55%;
+  text-align: end;
+}
+
+.dt-card-amount {
+  font-size: calc(var(--dt-font-size) * 15 / 14);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Two values in one line of text read as one with a dot between them. */
+.dt-card-title .dt-card-cell:not(:empty) ~ .dt-card-cell:not(:empty)::before,
+.dt-card-subtitle .dt-card-cell:not(:empty) ~ .dt-card-cell:not(:empty)::before,
+.dt-card-code .dt-card-cell:not(:empty) ~ .dt-card-cell:not(:empty)::before,
+.dt-card-amount .dt-card-cell:not(:empty) ~ .dt-card-cell:not(:empty)::before,
+.dt-card-note .dt-card-cell:not(:empty) ~ .dt-card-cell:not(:empty)::before {
+  content: " · ";
+  color: var(--dt-muted-fg);
+}
+
+/*
+ * A cell that rendered nothing on a card (`useInCard`) takes no room: its
+ * place goes when every cell in it is empty, a field's line when its value is.
+ */
+.dt-card-cell:empty,
+:is(.dt-card-code, .dt-card-status, .dt-card-actions, .dt-card-leading, .dt-card-title, .dt-card-subtitle,
+  .dt-card-amount, .dt-card-note, .dt-card-chips, .dt-card-trailing):not(:has(> .dt-card-cell:not(:empty))),
+.dt-card-field:has(> dd:empty),
+.dt-card-fields:not(:has(dd:not(:empty))),
+.dt-card-figure:not(:has(.dt-card-cell:not(:empty))),
+.dt-card-main:not(:has(.dt-card-cell:not(:empty))),
+.dt-card-top:not(:has(.dt-card-cell:not(:empty), input)) {
+  display: none;
+}
+
+/* A field with no name of its own takes the whole line. */
+.dt-card-field-bare dd {
+  grid-column: 1 / -1;
+  text-align: start;
+}
+
+.dt-card-fields {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  margin: 0;
+  font-size: calc(var(--dt-font-size) * 13 / 14);
+}
+
+.dt-card-field {
+  display: contents;
+}
+
+.dt-card-field dt {
+  color: var(--dt-muted-fg);
+}
+
+.dt-card-field dd {
+  margin: 0;
+  min-width: 0;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.dt-card-detail {
+  margin: 4px calc(var(--dt-card-padding) * -1) calc(var(--dt-card-padding) * -1);
+  padding: var(--dt-card-padding);
+  border-top: 1px solid var(--dt-border);
+  border-end-start-radius: var(--dt-card-radius);
+  border-end-end-radius: var(--dt-card-radius);
+  background: var(--dt-detail-bg);
+}
+
+.dt-card-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 2px;
+  font-weight: 600;
+}
+
+.dt-card-group-value {
+  overflow-wrap: anywhere;
+}
+
+/* The totals stay in view at the foot of the scrolling list, as the table's row does. */
+.dt-card-totals {
+  position: sticky;
+  bottom: 0;
+  border-color: color-mix(in srgb, var(--dt-accent) 35%, var(--dt-border));
+  background: color-mix(in srgb, var(--dt-accent) 8%, var(--dt-card-bg));
+}
+
+.dt-card-totals-label {
+  font-weight: 600;
+}
+
+.dt-card-skeleton {
+  gap: 10px;
+}
+
+.dt-card-bar {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--dt-row-hover);
+}
+
+/* The side bar's panel opens over the cards: beside them, a phone has no width to give it. */
+.dt-root[data-dt-layout="cards"] .dt-panel-docked {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 44px;
+  z-index: 5;
+  width: auto;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
 }

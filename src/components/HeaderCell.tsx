@@ -19,7 +19,7 @@ import type { SelectionApi } from "../core/useSelection"
 import { dropSideAt, type DropSide } from "../core/reorder"
 import type { DropSlot } from "../core/useDropSlot"
 import { clampColumnWidth } from "../core/sizing"
-import { formatCount } from "../core/formatCount"
+import { selectAllLabel } from "../core/selectAllLabel"
 import { isTimelineColumn, type TimelineState } from "../core/timeline"
 import { SelectionCheckbox } from "./SelectionCheckbox"
 import { TimelineHeader } from "./TimelineHeader"
@@ -193,18 +193,7 @@ export function HeaderCell<TData extends RowData>({
    * answered, because the label's job in that window is to leave the number
    * out rather than to print a placeholder into a spoken sentence.
    */
-  const selectAllName =
-    selection?.headerScope === "page"
-      ? // A header that reaches one page says so. The count is left out
-        // entirely here: the page is in front of the user, and "all 50" would
-        // be the one number a user cannot check against what the tick did.
-        labels.selectAllRowsOnPage
-      : labels.selectAllRows(
-          selection === undefined || selection.rowsMatching === undefined
-            ? undefined
-            : formatCount(selection.rowsMatching),
-          selection?.rowsMatching,
-        )
+  const selectAllName = selectAllLabel(selection, labels)
 
   const pinning = headerPinning(header)
   const pinned = pinning.side

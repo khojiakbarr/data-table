@@ -145,7 +145,56 @@ export interface DataTableColumnMeta {
    * meta: { groupLabel: (value) => statusLabels[String(value)] ?? String(value) }
    */
   groupLabel?: ((value: FilterValue) => string) | undefined
+  /**
+   * Where this column goes when a row is drawn as a card — the table's
+   * `layout="cards"`, or `"auto"` below its breakpoint. See {@link CardSlot}.
+   *
+   * Absent puts the column among the card's fields, as "label: value" — no
+   * column is lost on a phone because nobody placed it — except that, while
+   * no column of the table names a `title`, the first one is the title.
+   * `false` leaves it off the card: the column is still a column of the
+   * table, it only has no place on a small screen.
+   *
+   * @example
+   * meta: { card: "amount" }
+   */
+  card?: CardSlot | false | undefined
 }
+
+/**
+ * The places of a card, the row of a table drawn for a narrow screen:
+ *
+ * - `code` — the record's code, small, at the top left.
+ * - `status` — chips at the top right; `actions` — the row's ⋮, after them.
+ * - `leading` — an avatar or a picture beside the title.
+ * - `title` and `subtitle` — the name, and a line under it.
+ * - `amount` and `amountNote` — the figure on the right, and a line under it
+ *   (the same sum in another currency, a quantity reserved).
+ * - `chips` — a wrapping row at the foot (a date, a payment state);
+ *   `trailing` — the foot's far end (who it is assigned to).
+ * - `fields` — "label: value" lines between the head and the foot.
+ *
+ * Several columns may share a place; they are drawn in column order.
+ */
+export type CardSlot =
+  | "code"
+  | "status"
+  | "actions"
+  | "leading"
+  | "title"
+  | "subtitle"
+  | "amount"
+  | "amountNote"
+  | "chips"
+  | "trailing"
+  | "fields"
+
+/**
+ * How the rows are drawn: as a `table`, as a list of `cards`, or `auto` —
+ * cards while the table is narrower than its `cardBreakpoint`, a table
+ * otherwise. See {@link DataTableProps.layout}.
+ */
+export type RowsLayout = "table" | "cards" | "auto"
 
 /**
  * Where a table's layout is kept between visits.

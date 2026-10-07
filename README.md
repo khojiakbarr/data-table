@@ -1410,6 +1410,76 @@ brands the bars, and dark mode needs nothing of its own.
 
 ---
 
+## Cards on a narrow screen
+
+A table on a phone is a row of columns scrolled sideways, which nobody reads.
+`layout="cards"` draws each row as a card instead, and `layout="auto"` does it
+while the table is narrower than `cardBreakpoint` (640px by default) — the
+table's own width, so a table in a narrow side panel of a wide screen gets
+cards too. It switches live as the width changes.
+
+```tsx
+<DataTable instance={table} layout="auto" />
+```
+
+Each column says where it goes on the card with `meta.card`:
+
+| Place | Where | For |
+|---|---|---|
+| `code` | top left, small and monospace | the record's code |
+| `status` | top right | status chips |
+| `actions` | top right, last | the row's ⋮ |
+| `leading` | beside the title | an avatar, a picture |
+| `title`, `subtitle` | the name and a line under it | the partner, the product |
+| `amount`, `amountNote` | on the right, and a line under it | a sum, the same sum in another currency |
+| `fields` | "label: value" lines | everything else |
+| `chips` | the foot, wrapping | a date, a payment state |
+| `trailing` | the foot's far end | who it is assigned to |
+| `false` | not on the card | a column that only matters on a wide screen |
+
+```ts
+helper.accessor("code", { header: "Code", meta: { card: "code" } }),
+helper.accessor("partner", { header: "Partner", meta: { card: "title" } }),
+helper.accessor("total", { header: "Total", meta: { card: "amount" } }),
+```
+
+A column with no place is a field, so a table nobody has placed yet loses
+nothing on a phone; while no column is the `title`, the first one is. A cell
+renders through the column's own `cell`, exactly as in the table. A blank value
+— `null`, `""`, `[]` — draws no line at all, never a dash; a display column (a
+menu, a badge with no accessor) always draws its cell.
+
+What a card keeps: a click opens the row (`onRowClick`), except on a control
+inside it, inside its open detail, or in something a cell drew in a portal; the
+selection's checkbox leads the card, and a select-all box heads the list;
+`renderDetail` opens inside the card; `totals` are a card that stays at the foot
+of the list; skeleton cards while the first page loads, dimmed cards while a
+refetch runs; group headings of a grouped table, whose grouped column the cards
+under them do not repeat; the toolbar, the status bar and the pager; the side
+bar, whose panel opens over the cards. What it leaves to the table: a header to
+sort by, the column menu, cell editing, `onRowContextMenu` (a phone has no
+right click), the timeline. A card is not a Tab stop of its own — the keyboard
+reaches a record through a link a cell draws, as in the table. Every card of a
+page is drawn — a long client-side list in cards wants pagination. A place left
+empty is hidden with `:has()` (Chrome 105, Safari 15.4, Firefox 121); an older
+browser shows the empty line instead.
+
+A cell can tell it is on a card with `useInCard()` — a column's `cell` is
+rendered as a component, so the hook can be called in it — and say less there.
+A cell that renders nothing on a card takes no room: its place, or its field's
+line, goes with it. The base-currency sum under an amount is the case it was
+made for: on a card in the base currency it would only repeat the amount.
+
+```tsx
+cell: function TotalBase({ row }) {
+  return useInCard() && row.original.currency === base ? null : money(row.original.total_base)
+}
+```
+
+Tokens: `--dt-cards-bg` (the list's ground), `--dt-card-bg`, `--dt-card-radius`,
+`--dt-card-gap`, `--dt-card-padding`. Type sizes are shares of
+`--dt-font-size`.
+
 ## Expandable rows
 
 Two shapes, one mechanism. Use either, or both together.
@@ -2083,6 +2153,8 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | Prop | Type | Default | |
 |---|---|---|---|
 | `instance` | `DataTableInstance` | — | **Required.** From `useDataTable`. |
+| `layout` | `"table" \| "cards" \| "auto"` | `"table"` | Rows as a table, as cards, or as cards while the table is narrower than `cardBreakpoint`. See [Cards on a narrow screen](#cards-on-a-narrow-screen). |
+| `cardBreakpoint` | `number` | `640` | The width, px, below which `layout="auto"` draws cards. |
 | `striped` | `boolean` | `false` | |
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |

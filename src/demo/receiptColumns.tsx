@@ -93,14 +93,14 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
       columns: columnHelper.columns([
         /* Edits as text: the simplest of the five, and the one that proves
            the round trip without a parse in the way. */
-        columnHelper.accessor("code", { header: headers.code, size: 130, meta: { editable: "text" } }),
+        columnHelper.accessor("code", { header: headers.code, size: 130, meta: { editable: "text", card: "code" } }),
         // Edits as a LIST: one of four known partners, or empty. The choices
         // are fixed rather than faceted, because a list editor asks which
         // values may be WRITTEN and a facet endpoint only knows which exist.
         columnHelper.accessor("partner", {
           header: headers.partner,
           size: 260,
-          meta: { editable: "list", values: PARTNER_OPTIONS },
+          meta: { editable: "list", values: PARTNER_OPTIONS, card: "title" },
           // Both blank shapes render as nothing on their own — React skips
           // `null` and `""` alike — so the rows a `blank` filter selects would
           // look like a broken cell rather than an empty column.
@@ -126,7 +126,7 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
         columnHelper.accessor("amount", {
           header: headers.amount,
           size: 150,
-          meta: { editable: (row: ServerReceipt) => row.status !== "closed" },
+          meta: { editable: (row: ServerReceipt) => row.status !== "closed", card: "amount" },
           cell: (info) => {
             const amount: number | null = info.getValue()
             return <span className="num">{amount === null ? BLANK_CELL : numberFormat.format(amount)}</span>
@@ -142,7 +142,7 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
           // it: a cell renderer returns a `ReactNode` and this has to return a
           // `string` — it is also the group row's accessible name, and the
           // two must not be free to diverge.
-          meta: { filter: "list", groupLabel: (value) => statusLabels[String(value)] ?? String(value) },
+          meta: { filter: "list", groupLabel: (value) => statusLabels[String(value)] ?? String(value), card: "status" },
           cell: (info) => statusLabels[info.getValue()] ?? info.getValue(),
         }),
       ]),
@@ -158,7 +158,7 @@ export function buildReceiptColumns(language: Language): ColumnDef<DataTableFeat
     columnHelper.accessor("date", {
       header: headers.date,
       size: 130,
-      meta: { filter: "date" },
+      meta: { filter: "date", card: "chips" },
       cell: (info) => dateFormat.format(new Date(`${info.getValue()}T00:00:00`)),
     }),
   ]

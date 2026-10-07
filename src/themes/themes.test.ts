@@ -28,7 +28,9 @@ const baseTokens = [...read("../styles.css").matchAll(/^\s*(--dt-[a-z0-9-]+)\s*:
  * stop a host from changing it with a plain `.dt-root {}` rule. They stay with
  * the base sheet instead. So does the timeline's danger red: shadcn's
  * `--destructive` is light enough (3.6–3.8:1) that the white text the "today"
- * chip prints on it would fail 4.5:1.
+ * chip prints on it would fail 4.5:1. The cards' tokens are made of the
+ * table's own (`--dt-bg`, `--dt-header-bg`) or are sizes shadcn has no word
+ * for, so a preset reaches the cards through those already.
  */
 const INHERITED_TOKENS = [
   "--dt-header-height",
@@ -38,6 +40,11 @@ const INHERITED_TOKENS = [
   "--dt-viewport-max-height",
   "--dt-timeline-success",
   "--dt-timeline-danger",
+  "--dt-cards-bg",
+  "--dt-card-bg",
+  "--dt-card-radius",
+  "--dt-card-gap",
+  "--dt-card-padding",
 ]
 
 /** A preset with its comments removed, so prose cannot pass for a mapping. */
@@ -150,7 +157,7 @@ describe("base stylesheet token extraction", () => {
   // preset tests below passing vacuously with an empty token list.
   it("finds the base tokens", () => {
     expect(baseTokens.length).toBeGreaterThan(0)
-    expect(new Set(baseTokens).size).toBe(44)
+    expect(new Set(baseTokens).size).toBe(49)
   })
 
   it("matches digit-suffixed token names", () => {

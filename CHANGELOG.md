@@ -3,6 +3,30 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.14.0
+
+### Added
+
+- **Cards on a narrow screen.** `<DataTable layout="cards">` draws each row as
+  a card, and `layout="auto"` does it while the table is narrower than
+  `cardBreakpoint` (640px) — the table's own width, measured live. A column
+  places itself with `meta.card` (`code`, `status`, `actions`, `leading`,
+  `title`, `subtitle`, `amount`, `amountNote`, `fields`, `chips`, `trailing`,
+  or `false`); an unplaced column is a "label: value" field, and the first one
+  is the title while none is named. A blank value draws nothing. Cards keep
+  row clicks (not from a control, an open detail or a portal), selection with a
+  select-all box heading the list, detail panels, totals (a card at the foot),
+  skeletons, dimming while a refetch runs, group headings, the toolbar, the side
+  bar (its panel over the cards), the status bar and the pager. The type of the
+  prop is `RowsLayout`. New tokens:
+  `--dt-cards-bg`, `--dt-card-bg`, `--dt-card-radius`, `--dt-card-gap`,
+  `--dt-card-padding`. `CardList`, `cardPlaces`, `isBlankCardValue` and
+  `useCardLayout` are exported for a headless host.
+- **`useInCard()`** tells a cell it is on a card, so it can say less there; a
+  cell that renders nothing on a card takes no room, its place or its field's
+  line going with it.
+- The playground uses `layout="auto"`: narrow the window to see its cards.
+
 ## 0.13.2
 
 ### Fixed

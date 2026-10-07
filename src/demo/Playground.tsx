@@ -240,6 +240,7 @@ export function Playground() {
             <style>{themeStyleRule(theme)}</style>
             <DataTable
               instance={table}
+              layout="auto"
               className={THEME_CLASS}
               height={START_HEIGHT}
               striped={features.striped}

@@ -18,12 +18,14 @@ import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
+import { useCardLayout } from "../core/useCardLayout"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import { defaultCellEditingLabels } from "../labels/editing"
-import type { DataTableLabels, FiltersPanelSlot, RowTone } from "../types"
+import type { CardSlot, DataTableLabels, RowsLayout, FiltersPanelSlot, RowTone } from "../types"
 
 export type { FiltersPanelSlot } from "../types"
+import { CardList } from "./CardList"
 import { CellEditNotice } from "./CellEditNotice"
 import { CellMenu } from "./CellMenu"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
@@ -193,8 +195,30 @@ interface PanelState {
   focusNonce?: number | undefined
 }
 
+/** Below this width, px, `layout="auto"` draws cards: a phone held upright, and a narrow side panel. */
+const DEFAULT_CARD_BREAKPOINT = 640
+
 export interface DataTableProps<TData extends RowData> {
   instance: DataTableInstance<TData>
+  /**
+   * How the rows are drawn. `"table"`, the default, is the table. `"cards"`
+   * draws each row as a card laid out from its columns' `meta.card` (see
+   * {@link CardSlot}) — the shape of a list on a phone. `"auto"` draws cards
+   * while the table is narrower than `cardBreakpoint`, and the table
+   * otherwise; the table's own width decides, not the window's.
+   *
+   * Cards keep the toolbar, the side bar (its panel opens over the cards),
+   * selection (a select-all box heads the list), detail panels, the totals,
+   * the status bar and the pager. They have no header, so no sorting by a
+   * header and no column menu; no cell editing; and no `onRowContextMenu`, a
+   * phone having no right click.
+   *
+   * @example
+   * <DataTable instance={table} layout="auto" />
+   */
+  layout?: RowsLayout | undefined
+  /** Below this width, px, `layout="auto"` draws cards. Default 640. */
+  cardBreakpoint?: number | undefined
   /** Shade alternate rows. */
   striped?: boolean
   /**
@@ -501,6 +525,8 @@ function headerFocusOrder<TData extends RowData>(
  */
 export function DataTable<TData extends RowData>({
   instance,
+  layout = "table",
+  cardBreakpoint = DEFAULT_CARD_BREAKPOINT,
   striped = false,
   height,
   stickyHeader = true,
@@ -542,6 +568,7 @@ export function DataTable<TData extends RowData>({
   // clears itself out of existence — see the click handler below.
   const searchInputRef = useRef<HTMLInputElement>(null)
   const labels = { ...defaultLabels, ...labelOverrides }
+  const isCards = useCardLayout(rootRef, layout, cardBreakpoint)
   const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 
   /*
@@ -796,7 +823,7 @@ export function DataTable<TData extends RowData>({
      * every further drag. The latch never clears, so the attribute below is
      * gated on the same condition rather than on the latch alone.
      */
-    enabled: virtualize && !showSkeleton && resolvedHeight === undefined,
+    enabled: virtualize && !isCards && !showSkeleton && resolvedHeight === undefined,
     id: instance.id,
   })
   /*
@@ -873,6 +900,7 @@ export function DataTable<TData extends RowData>({
       className={classNames("dt-root", className, isResizing && "dt-is-resizing")}
       style={rootStyle}
       data-dt-theme={theme}
+      data-dt-layout={isCards ? "cards" : undefined}
     >
       {/*
         The table's own column — toolbar, status, viewport, footer. It is one
@@ -956,6 +984,19 @@ export function DataTable<TData extends RowData>({
           tabIndex={0}
           aria-label={labels.tableBody}
         >
+          {isCards ? (
+            <CardList
+              instance={instance}
+              rows={rows}
+              rowIndexOffset={rowIndexOffset}
+              labels={labels}
+              skeleton={showSkeleton ? Math.min(instance.pagination.pageSize, 6) : undefined}
+              renderDetail={renderDetail}
+              onRowClick={onRowClick}
+              getRowTone={getRowTone}
+              totals={totals}
+            />
+          ) : (
           <table
             ref={tableRef}
             className={classNames("dt-table", striped && "dt-striped")}
@@ -1076,6 +1117,7 @@ export function DataTable<TData extends RowData>({
               <TotalsFooter instance={instance} totals={totals} labels={labels} />
             )}
           </table>
+          )}
 
           {showEmpty ? (
             <div className="dt-empty">
@@ -1205,7 +1247,8 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
 
-      {menu ? (
+      {/* The header's and the cells' menus anchor to a table that cards do not draw: they wait for it. */}
+      {menu && !isCards ? (
         <HeaderMenu
           column={table.getColumn(menu.columnId)!}
           position={menu.at}
@@ -1234,7 +1277,7 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
 
-      {cellEditing.menu ? (
+      {cellEditing.menu && !isCards ? (
         <CellMenu
           position={cellEditing.menu.at}
           labels={labels}
@@ -1247,7 +1290,7 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
 
-      {filterAt ? (
+      {filterAt && !isCards ? (
         <FilterPopover
           instance={instance}
           column={table.getColumn(filterAt.columnId)!}

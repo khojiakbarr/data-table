@@ -3176,13 +3176,21 @@
   background: var(--dt-row-hover);
 }
 
-/* The side bar's panel opens over the cards: beside them, a phone has no width to give it. */
-.dt-root[data-dt-layout="cards"] .dt-panel-docked {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-start: 0;
-  inset-inline-end: 44px;
-  z-index: 5;
-  width: auto;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+/*
+ * The side bar's panel opens over the cards, beside its upright rail, where a
+ * narrow table in a wide window has no width to give it. Not on a phone
+ * (640px and below): there the open side bar already covers the table with
+ * its tabs across the top (see the rail's media query) — an overlay of the
+ * panel alone would bury those tabs, and with them the way to close it.
+ */
+@media (min-width: 641px) {
+  .dt-root[data-dt-layout="cards"] .dt-panel-docked {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inset-inline-end: 44px;
+    z-index: 5;
+    width: auto;
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.14);
+  }
 }

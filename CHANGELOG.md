@@ -3,6 +3,15 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.14.1
+
+### Fixed
+
+- **The side bar closes again on a phone in cards.** At 640px and below the
+  open side bar covers the table with its tabs across the top; the cards'
+  overlay of the panel was laid over those tabs too, so neither tab could be
+  pressed to close it. The overlay is now for a wider window only.
+
 ## 0.14.0
 
 ### Added

@@ -1295,6 +1295,15 @@
     min-height: 0;
     padding: 6px 12px;
   }
+
+  /*
+   * The tab reads across here, so its count follows the label instead of
+   * standing under it: the gap moves from above the count to before it.
+   */
+  .dt-sidebar .dt-sidebar-tab-count {
+    margin-block-start: 0;
+    margin-inline-start: 6px;
+  }
 }
 
 .dt-panel-head {

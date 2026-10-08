@@ -3,6 +3,15 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.14.4
+
+### Fixed
+
+- **A rail tab's count keeps its distance on a phone.** Below 640px the rail's
+  tabs read across, and the active-filter count sat flush against "Filters":
+  its gap was above it, as the rotated tab needs. It now stands 6px after the
+  label.
+
 ## 0.14.3
 
 ### Fixed

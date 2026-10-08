@@ -90,8 +90,9 @@ describe("the rail", () => {
     // The tablist precedes its tabpanel, so Tab reaches the tabs first — and
     // the rail is outside the panel, so nothing in it scrolls away with the
     // column list.
+    // The rail leads the side bar's head — a row on a phone, no box at all beside the table (0.15.0).
     const sidebar = document.querySelector(".dt-sidebar")!
-    expect(sidebar.firstElementChild).toBe(rail())
+    expect(sidebar.firstElementChild?.firstElementChild).toBe(rail())
     expect(rail().contains(panel())).toBe(false)
     expect(panel()!.querySelector("[role='tab']")).toBeNull()
   })

@@ -161,6 +161,7 @@ export const uzLabels: DataTableLabels = {
   filtersTab: "Filtrlar",
   hiddenColumn: "Yashirilgan",
   activeFiltersCount: (count) => `${count} ta faol`,
+  shownOfTotal: (shown, total) => `${total} tadan ${shown} tasi koʻrsatilgan`,
   noFilters: "Filtr qoʻyilmagan",
   clearAllFilters: "Barcha filtrlarni tozalash",
   noMatches: "Filtrlarga mos qator topilmadi",

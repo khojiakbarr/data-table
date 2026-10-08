@@ -1,6 +1,8 @@
 import { createColumnHelper } from "@tanstack/react-table"
-import { fireEvent, render, screen, within } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { useState } from "react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { DataTable } from "./components/DataTable"
 import { useInCard } from "./core/cardContext"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
@@ -176,6 +178,101 @@ describe("skeleton cards", () => {
     expect(first.querySelector(".dt-card-top")).toBeNull()
     expect(first.querySelector(".dt-card-title .dt-card-bar")).not.toBeNull()
     expect(first.querySelector(".dt-card-amount .dt-card-bar")).not.toBeNull()
+  })
+})
+
+describe("cards that scroll on", () => {
+  interface Item {
+    id: string
+    name: string
+  }
+  const itemHelper = createColumnHelper<DataTableFeatures, Item>()
+  const itemColumns = [itemHelper.accessor("name", { header: "Name", meta: { card: "title" } })]
+  const ALL: Item[] = Array.from({ length: 5 }, (_, index) => ({ id: `r${index}`, name: `Row ${index}` }))
+
+  /** A server host that answers each page asked for, as a list screen does — with no `loading` of its own. */
+  function ServerCards() {
+    const [page, setPage] = useState(0)
+    const instance = useDataTable<Item>({
+      id: "infinite",
+      columns: itemColumns,
+      data: ALL.slice(page * 2, page * 2 + 2),
+      mode: "server",
+      rowCount: ALL.length,
+      getRowId: (row) => row.id,
+      pagination: { pageSize: 2 },
+      onQueryChange: (query) => setPage(query.pagination.pageIndex),
+    })
+    return <DataTable instance={instance} layout="cards" virtualize={false} />
+  }
+
+  // jsdom has no IntersectionObserver: this one is told by the test when the mark after the last card is in view.
+  let watchers: { callback: IntersectionObserverCallback; target: Element | null }[] = []
+  beforeEach(() => {
+    watchers = []
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        private readonly watcher: { callback: IntersectionObserverCallback; target: Element | null }
+        constructor(callback: IntersectionObserverCallback) {
+          this.watcher = { callback, target: null }
+          watchers.push(this.watcher)
+        }
+        observe(target: Element) {
+          this.watcher.target = target
+        }
+        disconnect() {
+          watchers = watchers.filter((watcher) => watcher !== this.watcher)
+        }
+        unobserve() {}
+        takeRecords() {
+          return []
+        }
+      },
+    )
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+  const reachTheEnd = () =>
+    act(() => {
+      for (const watcher of [...watchers]) {
+        watcher.callback([{ isIntersecting: true, target: watcher.target } as IntersectionObserverEntry], {} as IntersectionObserver)
+      }
+    })
+  const titles = () => [...document.querySelectorAll(".dt-card:not(.dt-card-skeleton) .dt-card-title")].map((title) => title.textContent)
+  const count = () => document.querySelector(".dt-sidebar-shown [aria-hidden]")?.textContent
+
+  it("draws the next page under the last as the last card comes into view, and counts what it draws", () => {
+    render(<ServerCards />)
+    expect(titles()).toEqual(["Row 0", "Row 1"])
+    expect(count()).toBe("2/5")
+    expect(screen.getByText("Showing 2 of 5")).toBeInTheDocument()
+
+    reachTheEnd()
+    expect(titles()).toEqual(["Row 0", "Row 1", "Row 2", "Row 3"])
+    expect(count()).toBe("4/5")
+
+    reachTheEnd()
+    expect(titles()).toEqual(["Row 0", "Row 1", "Row 2", "Row 3", "Row 4"])
+    expect(count()).toBe("5/5")
+    // Every row is drawn: nothing is left to ask for.
+    expect(document.querySelector(".dt-cards-more")).toBeNull()
+  })
+
+  it("draws no pager and offers no Columns tab over cards", () => {
+    render(<ServerCards />)
+    expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull()
+    expect(screen.queryByRole("tab", { name: /Columns/ })).toBeNull()
+  })
+
+  it("starts over from the first page when the search changes", async () => {
+    const user = userEvent.setup()
+    render(<ServerCards />)
+    reachTheEnd()
+    expect(titles()).toHaveLength(4)
+    await user.type(screen.getByRole("searchbox"), "R")
+    await vi.waitFor(() => expect(titles()).toEqual(["Row 0", "Row 1"]))
   })
 })
 

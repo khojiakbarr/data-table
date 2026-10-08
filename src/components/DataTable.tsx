@@ -25,6 +25,7 @@ import { defaultCellEditingLabels } from "../labels/editing"
 import type { CardSlot, DataTableLabels, RowsLayout, FiltersPanelSlot, RowTone } from "../types"
 
 export type { FiltersPanelSlot } from "../types"
+import { useInfiniteRows } from "../core/useInfiniteRows"
 import { CardList } from "./CardList"
 import { CellEditNotice } from "./CellEditNotice"
 import { CellMenu } from "./CellMenu"
@@ -153,6 +154,7 @@ export const defaultLabels: DataTableLabels = {
   filtersTab: "Filters",
   hiddenColumn: "Hidden",
   activeFiltersCount: (count) => `${count} active`,
+  shownOfTotal: (shown, total) => `Showing ${shown} of ${total}`,
   noFilters: "No filters applied",
   clearAllFilters: "Clear all filters",
   noMatches: "No rows match the current filters",
@@ -207,9 +209,10 @@ export interface DataTableProps<TData extends RowData> {
    * while the table is narrower than `cardBreakpoint`, and the table
    * otherwise; the table's own width decides, not the window's.
    *
-   * Cards keep the toolbar, the side bar (its panel opens over the cards),
-   * selection (a select-all box heads the list), detail panels, the totals,
-   * the status bar and the pager. They have no header, so no sorting by a
+   * Cards keep the toolbar, the side bar (its panel opens over the cards,
+   * with no Columns tab), selection (a select-all box heads the list), detail
+   * panels, the totals and the status bar; a paged table's cards scroll on
+   * instead of turning pages (`infiniteCards`). They have no header, so no sorting by a
    * header and no column menu; no cell editing; and no `onRowContextMenu`, a
    * phone having no right click.
    *
@@ -219,6 +222,17 @@ export interface DataTableProps<TData extends RowData> {
   layout?: RowsLayout | undefined
   /** Below this width, px, `layout="auto"` draws cards. Default 640. */
   cardBreakpoint?: number | undefined
+  /**
+   * Cards of a paged table scroll on (0.15.0, default on): the pages scrolled
+   * through are kept and drawn one after another, the next asked for as the
+   * last card comes into view, and the pager is not drawn — a phone's list,
+   * where a pager under the cards took a screen's foot. The rail drops its
+   * Columns tab (a card is laid out by its places, not by the columns shown)
+   * and says how many rows are drawn of how many, «20/200». A server table
+   * passes `loading` while a page is on its way, so the rows still on hand
+   * are not taken for the new page's. Off, cards keep the pager.
+   */
+  infiniteCards?: boolean | undefined
   /** Shade alternate rows. */
   striped?: boolean
   /**
@@ -527,6 +541,7 @@ export function DataTable<TData extends RowData>({
   instance,
   layout = "table",
   cardBreakpoint = DEFAULT_CARD_BREAKPOINT,
+  infiniteCards = true,
   striped = false,
   height,
   stickyHeader = true,
@@ -629,6 +644,19 @@ export function DataTable<TData extends RowData>({
   }
 
   const rows = table.getRowModel().rows
+  // Cards scroll on: the pages seen are kept, one after another (`infiniteCards`).
+  const infiniteOn = isCards && infiniteCards && instance.pagination.enabled
+  const { sorting: querySorting, filters: queryFilters, search: querySearch, grouping: queryGrouping } = instance.query
+  const infinite = useInfiniteRows({
+    enabled: infiniteOn,
+    rows,
+    pageIndex: instance.pagination.pageIndex,
+    pageSize: instance.pagination.pageSize,
+    rowCount: instance.pagination.rowCount,
+    loading,
+    queryKey: JSON.stringify([querySorting, queryFilters, querySearch, queryGrouping, instance.pagination.pageSize]),
+    setPageIndex: instance.pagination.setPageIndex,
+  })
   const leafColumns = renderedLeafColumns(table)
   const fillerAt = fillerIndex(table)
   /*
@@ -748,6 +776,8 @@ export function DataTable<TData extends RowData>({
    * than added to a header count.
    */
   const totalRowCount = instance.pagination.enabled ? instance.pagination.rowCount : rows.length
+  // What the rail's «20/200» counts against on cards: every row there is, once a server table has said.
+  const shownTotal = totalRowCount
   const isResizing = Boolean(table.state.columnResizing?.isResizingColumn)
   /*
    * Cell editing. It is handed the rows it will be asked about and the labels
@@ -852,7 +882,8 @@ export function DataTable<TData extends RowData>({
    * in since the toolbar's Columns button was dropped.
    */
   const sideBarTabs: PanelTab[] = []
-  if (flags.hiding || flags.pinning) sideBarTabs.push("columns")
+  // Cards are laid out by their places, not by the columns shown: no Columns tab over them.
+  if ((flags.hiding || flags.pinning) && !isCards) sideBarTabs.push("columns")
   /*
    * Independent of Columns: the header menu's "Filter in panel…" always
    * offers this tab when a column can be filtered, whether or not hiding or
@@ -987,14 +1018,19 @@ export function DataTable<TData extends RowData>({
           {isCards ? (
             <CardList
               instance={instance}
-              rows={rows}
-              rowIndexOffset={rowIndexOffset}
+              rows={infinite.rows}
+              rowIndexOffset={infiniteOn ? infinite.firstPageIndex * instance.pagination.pageSize : rowIndexOffset}
               labels={labels}
               skeleton={showSkeleton ? Math.min(instance.pagination.pageSize, 6) : undefined}
               renderDetail={renderDetail}
               onRowClick={onRowClick}
               getRowTone={getRowTone}
               totals={totals}
+              infinite={
+                infiniteOn
+                  ? { hasMore: infinite.hasMore, isLoadingMore: infinite.isLoadingMore && loading, loadMore: infinite.loadMore }
+                  : undefined
+              }
             />
           ) : (
           <table
@@ -1198,7 +1234,8 @@ export function DataTable<TData extends RowData>({
         */}
         {flags.statusBar !== false ? <StatusBar instance={instance} labels={labels} /> : null}
 
-        {footer ? <TablePagination instance={instance} labels={labels} /> : null}
+        {/* Cards that scroll on have no pages to turn. */}
+        {footer && !infiniteOn ? <TablePagination instance={instance} labels={labels} /> : null}
       </div>
 
       {sideBarTabs.length > 0 ? (
@@ -1208,8 +1245,12 @@ export function DataTable<TData extends RowData>({
           onReorder={handleReorder}
           tabs={sideBarTabs}
           filtersPanel={filtersPanel}
-          open={panelOpen.open}
-          tab={panelOpen.tab}
+          // A tab the rail no longer offers — Columns, once the rows turned to cards — is not the one open.
+          open={panelOpen.open && sideBarTabs.includes(panelOpen.tab)}
+          tab={sideBarTabs.includes(panelOpen.tab) ? panelOpen.tab : (sideBarTabs[0] ?? panelOpen.tab)}
+          shown={
+            isCards && shownTotal !== undefined && !showSkeleton ? { count: infinite.rows.length, total: shownTotal } : undefined
+          }
           onToggle={toggleSideBarTab}
           /*
            * Switching tabs drops any pending `focusColumnId`: it belongs to

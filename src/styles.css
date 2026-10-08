@@ -1297,6 +1297,39 @@
   }
 
   /*
+   * The tabs and, at the row's end, how many rows of how many: «20/200». A step
+   * more specific than the upright rail's rules below, which come later.
+   */
+  .dt-sidebar > .dt-sidebar-head {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .dt-sidebar-head > .dt-sidebar-rail {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .dt-sidebar-head > .dt-sidebar-shown {
+    display: block;
+    flex: none;
+    padding-inline: 12px;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    color: var(--dt-muted-fg);
+  }
+
+  /* Open, the line under the tabs runs under the count too. */
+  .dt-sidebar[data-dt-open] .dt-sidebar-head {
+    border-bottom: 1px solid var(--dt-border);
+  }
+
+  .dt-sidebar[data-dt-open] .dt-sidebar-head > .dt-sidebar-rail {
+    border-bottom: 0;
+  }
+
+  /*
    * The tab reads across here, so its count follows the label instead of
    * standing under it: the gap moves from above the count to before it.
    */
@@ -2534,6 +2567,24 @@
 .dt-filters-host:not(:last-child) {
   margin-bottom: 8px;
   border-bottom: 1px solid var(--dt-border);
+}
+
+/*
+ * The rail's row on a phone (0.15.0): the tabs and the count of rows drawn at
+ * its end. Where the rail stands upright the row is no box at all, and the
+ * count is not drawn — it reads across only.
+ */
+.dt-sidebar-head {
+  display: contents;
+}
+
+.dt-sidebar-shown {
+  display: none;
+}
+
+/* The mark after the last card that asks for the next page: a line of nothing. */
+.dt-cards-more {
+  height: 1px;
 }
 
 /* The count of a host's active filters, beside the rail tab's rotated label. */

@@ -179,6 +179,7 @@ export const ruLabels: DataTableLabels = {
   filtersTab: "Фильтры",
   hiddenColumn: "Скрыт",
   activeFiltersCount: (count) => `${count} ${plural(count, "активный", "активных", "активных")}`,
+  shownOfTotal: (shown, total) => `Показано ${shown} из ${total}`,
   noFilters: "Фильтры не заданы",
   clearAllFilters: "Очистить все фильтры",
   noMatches: "Нет строк, удовлетворяющих фильтрам",

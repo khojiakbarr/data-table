@@ -269,6 +269,7 @@ describe("Uzbek orthography", () => {
     uzLabels.selectAllRows("1 000", 1000),
     uzLabels.selectAllRows(undefined, undefined),
     uzLabels.activeFiltersCount(2),
+    uzLabels.shownOfTotal(20, 200),
     ...Array.from({ length: 12 }, (_, month) => uzLabels.timelineMonth(month)),
   ]
 
@@ -311,6 +312,7 @@ describe("Uzbek orthography", () => {
       "searchResults",
       "selectAllRows",
       "selectRow",
+      "shownOfTotal",
       "statusBarFiltered",
       "statusBarGroupedBy",
       "statusBarRows",

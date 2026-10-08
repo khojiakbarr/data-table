@@ -1449,6 +1449,17 @@ renders through the column's own `cell`, exactly as in the table. A blank value
 — `null`, `""`, `[]` — draws no line at all, never a dash; a display column (a
 menu, a badge with no accessor) always draws its cell.
 
+**Cards scroll on** (0.15.0, `infiniteCards`, on by default): on a paged
+table the pages scrolled through are kept and drawn one after another, the
+next asked for as the last card comes into view (a mark after it, watched in
+the list's own scrolling box), with skeleton cards where it will stand — and
+no pager. The rail drops its Columns tab over cards and says, at its end on a
+phone, how many rows are drawn of how many: «20/200». A change of the query
+apart from its page — sorting, filters, search, the page size — or a step
+back to an earlier page starts over. A server host passes `loading` while a
+page is on its way, so the rows still on hand are not kept as the new page's;
+a row met on two pages is drawn once. `infiniteCards={false}` keeps the pager.
+
 What a card keeps: a click opens the row (`onRowClick`), except on a control
 inside it, inside its open detail, or in something a cell drew in a portal; the
 selection's checkbox leads the card, and a select-all box heads the list;

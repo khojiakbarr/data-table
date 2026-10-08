@@ -50,6 +50,11 @@ export interface TableSideBarProps<TData extends RowData> {
   focusNonce?: number | undefined
   /** The host's own filters for the Filters tab; see `FiltersPanelSlot`. */
   filtersPanel?: FiltersPanelSlot | undefined
+  /**
+   * How many rows the cards draw of how many there are — «20/200» at the strip's
+   * end on a phone, where the rail reads across. Absent, nothing is counted.
+   */
+  shown?: { count: number; total: number } | undefined
 }
 
 /**
@@ -78,6 +83,7 @@ export function TableSideBar<TData extends RowData>({
   focusNonce,
   draggedColumnId,
   filtersPanel,
+  shown,
 }: TableSideBarProps<TData>) {
   const railRef = useRef<HTMLDivElement>(null)
   const activeCount = filtersPanel?.activeCount ?? 0
@@ -128,6 +134,11 @@ export function TableSideBar<TData extends RowData>({
 
   return (
     <div className="dt-sidebar" data-dt-open={open ? "" : undefined}>
+      {/*
+        The rail and, on a phone, the count at its end: one row there, and no
+        box at all where the rail stands upright (`display: contents`).
+      */}
+      <div className="dt-sidebar-head">
       <div
         className="dt-sidebar-rail"
         ref={railRef}
@@ -179,6 +190,14 @@ export function TableSideBar<TData extends RowData>({
             </button>
           )
         })}
+      </div>
+      {shown ? (
+        <span className="dt-sidebar-shown">
+          {/* Drawn for the eye, spoken as words: «20/200» read aloud is a fraction. */}
+          <span aria-hidden="true">{`${shown.count}/${shown.total}`}</span>
+          <span className="dt-sr-only">{labels.shownOfTotal(shown.count, shown.total)}</span>
+        </span>
+      ) : null}
       </div>
 
       {open ? (

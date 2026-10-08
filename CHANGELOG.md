@@ -3,6 +3,27 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.15.0
+
+### Added
+
+- **Cards scroll on.** On a paged table drawn as cards (`layout="cards"`, or
+  `"auto"` below its breakpoint) the pages scrolled through are kept and drawn
+  one after another: the next is asked for as the last card comes into view,
+  skeleton cards stand where it will come, and no pager is drawn. A change of
+  the query apart from its page, or a step back to an earlier page, starts
+  over; a server host's `loading` keeps the rows still on hand from being
+  taken for the new page's, and a row met on two pages is drawn once.
+  `infiniteCards={false}` keeps the pager.
+- **The rail counts the cards.** At the end of the rail's row on a phone,
+  «20/200»: the rows drawn of all there are, spoken as words
+  (`labels.shownOfTotal`, in English, Uzbek and Russian).
+
+### Changed
+
+- **No Columns tab over cards.** A card is laid out by its columns' places,
+  not by the columns shown, so the rail offers only Filters there.
+
 ## 0.14.5
 
 ### Changed

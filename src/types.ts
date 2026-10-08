@@ -593,6 +593,11 @@ export interface DataTableLabels extends CellEditingLabels {
    * this is what a screen reader hears instead of a bare digit.
    */
   activeFiltersCount: (count: number) => string
+  /**
+   * How many rows the cards show of how many there are, spoken where the rail
+   * draws «20/200» on a phone ("Showing 20 of 200").
+   */
+  shownOfTotal: (shown: number, total: number) => string
   /** Shown in the Filters tab while nothing is filtered. */
   noFilters: string
   /** Clears every column filter and the search at once, from the panel. */

@@ -159,14 +159,19 @@ export function CardRow<TData extends RowData>({
         <div className="dt-card-foot">
           {chips.length > 0 ? <span className="dt-card-chips">{chips}</span> : null}
           <span className="dt-spacer" />
-          {trailing.length > 0 ? <span className="dt-card-trailing">{trailing}</span> : null}
-          {expandable ? (
-            <ExpandToggle
-              expanded={isExpanded}
-              depth={0}
-              label={`${isExpanded ? labels.collapseRow : labels.expandRow}: ${number}`}
-              onToggle={() => row.toggleExpanded()}
-            />
+          {/* The trailing mark and the toggle wrap together, so the toggle is never alone on a line of its own. */}
+          {trailing.length > 0 || expandable ? (
+            <span className="dt-card-end">
+              {trailing.length > 0 ? <span className="dt-card-trailing">{trailing}</span> : null}
+              {expandable ? (
+                <ExpandToggle
+                  expanded={isExpanded}
+                  depth={0}
+                  label={`${isExpanded ? labels.collapseRow : labels.expandRow}: ${number}`}
+                  onToggle={() => row.toggleExpanded()}
+                />
+              ) : null}
+            </span>
           ) : null}
         </div>
       ) : null}

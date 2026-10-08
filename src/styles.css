@@ -3018,9 +3018,17 @@
   row-gap: 6px;
 }
 
-.dt-card-trailing {
+.dt-card-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
   max-width: 100%;
+  margin-inline-start: auto;
+}
+
+.dt-card-trailing {
+  min-width: 0;
 }
 
 .dt-card-code {

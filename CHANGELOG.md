@@ -3,6 +3,14 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.14.3
+
+### Fixed
+
+- **A card's toggle stays beside its trailing mark.** Once the foot wrapped,
+  the detail toggle could fall to a line of its own; the two now wrap together,
+  at the foot's end.
+
 ## 0.14.2
 
 ### Fixed

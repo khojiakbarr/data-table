@@ -3,6 +3,15 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.14.2
+
+### Fixed
+
+- **A card's foot wraps instead of overlapping.** The chips and the trailing
+  mark shared one line that never broke, so a long trailing value — three
+  people by name — was drawn over the date beside it. The foot now wraps, and
+  the trailing mark is held to the card's width.
+
 ## 0.14.1
 
 ### Fixed

@@ -3193,15 +3193,50 @@
   font-weight: 600;
 }
 
-.dt-card-skeleton {
-  gap: 10px;
+/*
+ * A skeleton card is laid out by the card's own rules (`CardSkeleton`): each
+ * bar stands in its place's element, so a line is as tall as its text. The
+ * host's controls — a status pill, the ⋮, an avatar — are sized by these
+ * three, for a host to match its own.
+ */
+.dt-root {
+  --dt-card-skeleton-pill-height: 22px;
+  --dt-card-skeleton-action-size: 24px;
+  --dt-card-skeleton-avatar-size: 24px;
 }
 
 .dt-card-bar {
-  display: block;
-  height: 10px;
-  border-radius: 5px;
-  background: var(--dt-row-hover);
+  display: inline-block;
+  max-width: 100%;
+  height: 0.8em;
+  vertical-align: middle;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--dt-row-hover) 25%, var(--dt-border) 50%, var(--dt-row-hover) 75%);
+  background-size: 200% 100%;
+  animation: dt-shimmer 1.2s ease-in-out infinite;
+}
+
+.dt-card-bar-pill {
+  width: 5.5em;
+  height: var(--dt-card-skeleton-pill-height);
+}
+
+.dt-card-bar-action {
+  width: var(--dt-card-skeleton-action-size);
+  height: var(--dt-card-skeleton-action-size);
+  border-radius: 50%;
+}
+
+.dt-card-bar-avatar {
+  width: var(--dt-card-skeleton-avatar-size);
+  height: var(--dt-card-skeleton-avatar-size);
+  border-radius: 50%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-card-bar {
+    animation: none;
+  }
 }
 
 /*

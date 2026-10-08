@@ -1453,8 +1453,9 @@ What a card keeps: a click opens the row (`onRowClick`), except on a control
 inside it, inside its open detail, or in something a cell drew in a portal; the
 selection's checkbox leads the card, and a select-all box heads the list;
 `renderDetail` opens inside the card; `totals` are a card that stays at the foot
-of the list; skeleton cards while the first page loads, dimmed cards while a
-refetch runs; group headings of a grouped table, whose grouped column the cards
+of the list; skeleton cards while the first page loads — in the cards' own
+shape, a bar in each place a column fills, so nothing jumps when the rows
+arrive — dimmed cards while a refetch runs; group headings of a grouped table, whose grouped column the cards
 under them do not repeat; the toolbar, the status bar and the pager; the side
 bar, whose panel opens over the cards. What it leaves to the table: a header to
 sort by, the column menu, cell editing, `onRowContextMenu` (a phone has no
@@ -1478,7 +1479,10 @@ cell: function TotalBase({ row }) {
 
 Tokens: `--dt-cards-bg` (the list's ground), `--dt-card-bg`, `--dt-card-radius`,
 `--dt-card-gap`, `--dt-card-padding`. Type sizes are shares of
-`--dt-font-size`.
+`--dt-font-size`. A skeleton card's controls are the host's, so their sizes are
+too: `--dt-card-skeleton-pill-height` (a status chip, 22px),
+`--dt-card-skeleton-action-size` (the ⋮, 24px) and
+`--dt-card-skeleton-avatar-size` (a leading picture or a trailing person, 24px).
 
 ## Expandable rows
 

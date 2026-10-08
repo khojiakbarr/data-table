@@ -3,6 +3,21 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.14.5
+
+### Changed
+
+- **Skeleton cards take the cards' shape.** While the first page is on its way,
+  each skeleton card is laid out from the same places as the cards — a bar for
+  the code, a pill for the status, the title and its subtitle, the amount and
+  its note, a line per field (the first three), the chips and the trailing mark
+  — each in its place's own element and type, so the list does not jump when
+  the rows arrive. The three bars a card left before were about two-thirds of a
+  card's height. A host sizes the controls it draws there with
+  `--dt-card-skeleton-pill-height`, `--dt-card-skeleton-action-size` and
+  `--dt-card-skeleton-avatar-size`. The bars shimmer as the table's skeleton
+  rows do, and hold still under reduced motion.
+
 ## 0.14.4
 
 ### Fixed

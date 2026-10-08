@@ -147,6 +147,38 @@ describe("cards", () => {
   })
 })
 
+describe("skeleton cards", () => {
+  function Loading({ shown = columns }: { shown?: typeof columns }) {
+    const instance = useDataTable<Doc>({ id: "cards-loading", columns: shown, data: [], getRowId: (row) => row.id })
+    return <DataTable instance={instance} layout="cards" virtualize={false} loading />
+  }
+
+  it("take the cards' shape while the first page is on its way: a bar in each place a column fills", () => {
+    render(<Loading />)
+    const skeletons = document.querySelectorAll(".dt-card-skeleton")
+    expect(skeletons.length).toBeGreaterThan(0)
+    const first = skeletons[0]!
+    for (const placed of ["dt-card-code", "dt-card-status", "dt-card-actions", "dt-card-title", "dt-card-amount", "dt-card-note"]) {
+      expect(first.querySelector(`.${placed} .dt-card-bar`), placed).not.toBeNull()
+    }
+    // The one column with no place is a field: its label and value are bars too.
+    expect(first.querySelectorAll(".dt-card-field")).toHaveLength(1)
+    // No column is the subtitle, the chips or the trailing mark: no bar stands for them.
+    expect(first.querySelector(".dt-card-subtitle")).toBeNull()
+    expect(first.querySelector(".dt-card-foot")).toBeNull()
+    expect(first).toHaveAttribute("aria-hidden", "true")
+  })
+
+  it("draw no top row for a table that places nothing there", () => {
+    // The partner (the title) and the total (the amount) alone.
+    render(<Loading shown={[columns[1]!, columns[2]!]} />)
+    const first = document.querySelector(".dt-card-skeleton")!
+    expect(first.querySelector(".dt-card-top")).toBeNull()
+    expect(first.querySelector(".dt-card-title .dt-card-bar")).not.toBeNull()
+    expect(first.querySelector(".dt-card-amount .dt-card-bar")).not.toBeNull()
+  })
+})
+
 describe("auto", () => {
   it("draws cards below the breakpoint and the table above it, by the table's own width", () => {
     const width = vi.spyOn(HTMLElement.prototype, "offsetWidth", "get")

@@ -12,6 +12,7 @@ import { isTimelineColumn } from "../core/timeline"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels, RowTone } from "../types"
 import { CardRow } from "./CardRow"
+import { CardSkeleton } from "./CardSkeleton"
 import { ExpandToggle } from "./ExpandToggle"
 import { SelectionCheckbox } from "./SelectionCheckbox"
 
@@ -36,8 +37,8 @@ export interface CardListProps<TData extends RowData> {
  * `"auto"` below its breakpoint). Each row is a {@link CardRow}, laid out
  * from the columns' `meta.card`; a group of a grouped table is a heading that
  * opens and closes it; the totals are a card that stays at the foot of the
- * scrolling list; while the first page is on its way, skeleton cards hold its
- * place.
+ * scrolling list; while the first page is on its way, skeleton cards in the
+ * cards' own shape hold its place (`CardSkeleton`).
  *
  * Every card of the page is drawn, none windowed: a card's height depends on
  * what it holds, and a page is at most what the server sends at once. A long
@@ -72,11 +73,7 @@ export function CardList<TData extends RowData>({
     return (
       <div className="dt-cards" aria-hidden="true">
         {Array.from({ length: skeleton }, (_, index) => (
-          <div key={index} className="dt-card dt-card-skeleton" aria-hidden="true">
-            <span className="dt-card-bar" style={{ width: "36%" }} />
-            <span className="dt-card-bar" style={{ width: "72%" }} />
-            <span className="dt-card-bar" style={{ width: "48%" }} />
-          </div>
+          <CardSkeleton key={index} places={places} />
         ))}
       </div>
     )

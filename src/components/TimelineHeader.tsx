@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState, type RefObject } from "react"
+import { useContext, useMemo, useRef, useState, type RefObject } from "react"
 import { classNames } from "../core/classNames"
+import { PinsScrollContext } from "../core/pinsScroll"
 import { coveredMarks, cutMonths, dayMarks, monthSpans, pointX, type MonthSpan, type TimelineMarker, type TimelineState } from "../core/timeline"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableLabels } from "../types"
@@ -46,6 +47,13 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
    * must not drag the pane back from wherever the user has scrolled it.
    */
   const scrollTo = options.scrollTo
+  /*
+   * Whether the pinned columns scroll with the rest is measured after the
+   * first commit (`usePinsScroll`), so the first scroll took the pinned width
+   * they no longer hide: it runs again when that flips, before the paint — a
+   * phone's Gantt opened on its first day, not on today, without it.
+   */
+  const pinsScroll = useContext(PinsScrollContext)
   useIsomorphicLayoutEffect(() => {
     if (scrollTo === undefined) return
     const x = pointX(scale, scrollTo, "middle")
@@ -75,8 +83,8 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
     })
     observer.observe(viewport)
     return () => observer.disconnect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- a pinned column resized is not a reason to scroll
-  }, [scrollTo, scale])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- a pinned column resized is not a reason to scroll; pins that start or stop scrolling are
+  }, [scrollTo, scale, pinsScroll])
 
   return (
     <>

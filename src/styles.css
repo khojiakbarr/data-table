@@ -274,6 +274,8 @@
   min-height: 0;
   overflow: auto;
   border-radius: inherit;
+  /* A control the keyboard brings into view lands clear of the scroll fades (0.16), its ring unfaded. */
+  scroll-padding-inline: var(--dt-edge-size, 0px);
 }
 
 /*
@@ -298,6 +300,98 @@
 .dt-viewport:has(~ .dt-status-bar) {
   border-end-start-radius: 0;
   border-end-end-radius: 0;
+}
+
+/*
+ * ---------- scroll fades (0.16) ----------
+ * A table wider than its viewport fades out at each edge that has more to
+ * scroll to: a phone draws no scrollbar, and a mouse's overlay scrollbar shows
+ * only while it scrolls, so the fade is what says the columns go on.
+ * `.dt-edges` is a box beside the viewport, out of flow, laid over what it
+ * shows — outside the scroller, so nothing scrolled moves it, and taking no
+ * room from it. `watchScrollEdges` keeps its box and `data-dt-more-start` /
+ * `data-dt-more-end` on it; the fades stand past the columns pinned to the
+ * start and before those pinned to the end: `--dt-edge-start-at` /
+ * `--dt-edge-end-at`. Over
+ * everything a row draws, under the progress bar, the menus and the panel.
+ * Only `opacity` moves.
+ *
+ * The fade is the colour the rows stand on, `--dt-edge-color` (the table's
+ * own `--dt-bg` unless a host says otherwise); `--dt-edge-size: 0` turns it off.
+ */
+.dt-root {
+  --dt-edge-size: 40px;
+  --dt-edge-color: var(--dt-bg);
+}
+
+.dt-edges {
+  position: absolute;
+  z-index: 5;
+  top: var(--dt-edges-top, 0px);
+  left: var(--dt-edges-left, 0px);
+  width: var(--dt-edges-width, 0px);
+  height: var(--dt-edges-height, 0px);
+  pointer-events: none;
+}
+
+.dt-edges::before,
+.dt-edges::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--dt-edge-size);
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.dt-edges::before {
+  inset-inline-start: var(--dt-edge-start-at, 0px);
+  background: linear-gradient(to right, var(--dt-edge-color), transparent);
+}
+
+.dt-edges::after {
+  inset-inline-end: var(--dt-edge-end-at, 0px);
+  background: linear-gradient(to left, var(--dt-edge-color), transparent);
+}
+
+.dt-edges:dir(rtl)::before {
+  background: linear-gradient(to left, var(--dt-edge-color), transparent);
+}
+
+.dt-edges:dir(rtl)::after {
+  background: linear-gradient(to right, var(--dt-edge-color), transparent);
+}
+
+.dt-edges[data-dt-more-start]::before,
+.dt-edges[data-dt-more-end]::after {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-edges::before,
+  .dt-edges::after {
+    transition: none;
+  }
+}
+
+/*
+ * Pinned columns wider than two thirds of the viewport scroll with the rest
+ * (`pinsOverflow`): held still, they would hide the columns behind them for
+ * good — a Gantt's five pinned columns on a phone left no way to its
+ * timeline. The cells keep their sticky `top` (a header stays a header) and
+ * lose only their sideways offset, and the seam that marks where pinned
+ * columns end goes with it. Over the offsets each cell carries inline. Child
+ * combinators all the way to the cell: a table nested in a row's detail sits
+ * inside this viewport too, and its own pins are its own viewport's to judge.
+ */
+.dt-viewport[data-dt-pins-scroll] > .dt-table > * > tr > .dt-pinned {
+  inset-inline-start: auto !important;
+  inset-inline-end: auto !important;
+}
+
+.dt-viewport[data-dt-pins-scroll] > .dt-table > * > tr > :is(.dt-pinned-start-last, .dt-pinned-end-first) {
+  box-shadow: none;
 }
 
 /* While a handle is dragged the pointer leaves it at once; keep the cursor. */

@@ -18,6 +18,8 @@ const TOKENS: RefRow[] = [
   ["--dt-footer-bg --dt-footer-fg", "The pagination band — set as a pair"],
   ["--dt-indent --dt-detail-bg", "Nested rows and detail panels"],
   ["--dt-viewport-max-height", "Fallback height for a table nobody bounded"],
+  ["--dt-edge-size", "Width of the fade at an edge with more to scroll to; 0 turns it off"],
+  ["--dt-edge-color", "Colour of that fade — the table's own --dt-bg by default"],
   ["--dt-font --dt-font-size", "Typography"],
   ["--dt-button-bg --dt-button-fg --dt-button-border --dt-button-radius --dt-button-hover-bg", "Toolbar, menu and pagination buttons, and the side bar rail tabs"],
   ["--dt-button-primary-bg --dt-button-primary-fg", "The one emphatic action on a surface — the filter editor's Apply"],

@@ -1,6 +1,7 @@
 import type { Column, Header, RowData } from "@tanstack/react-table"
 import { flexRender } from "@tanstack/react-table"
 import {
+  useContext,
   type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
@@ -13,6 +14,7 @@ import { classNames } from "../core/classNames"
 import { columnLabel } from "../core/columnLabel"
 import { dropRegionOf, isMovableRegion } from "../core/dropRegion"
 import { headerPinning, leafColumnsOf } from "../core/pinning"
+import { PinsScrollContext } from "../core/pinsScroll"
 import { isRowNumberColumn } from "../core/rowNumbers"
 import { isSelectionColumn } from "../core/selection"
 import type { SelectionApi } from "../core/useSelection"
@@ -119,6 +121,8 @@ export function HeaderCell<TData extends RowData>({
   timeline,
 }: HeaderCellProps<TData>) {
   const { column } = header
+  // Pinned columns that scroll with the rest hide none of the timeline's start: its month names stick to the edge.
+  const pinsScroll = useContext(PinsScrollContext)
 
   /*
    * The timeline's header is its scale and nothing else: no sort, no menu, no
@@ -137,7 +141,7 @@ export function HeaderCell<TData extends RowData>({
         data-column-id={column.id}
       >
         {timeline === undefined ? null : (
-          <TimelineHeader timeline={timeline} labels={labels} pinnedStartWidth={column.table.getStartTotalSize()} />
+          <TimelineHeader timeline={timeline} labels={labels} pinnedStartWidth={pinsScroll ? 0 : column.table.getStartTotalSize()} />
         )}
       </th>
     )

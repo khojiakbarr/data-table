@@ -19,6 +19,8 @@ import { useAutosize } from "../core/useAutosize"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useCardLayout } from "../core/useCardLayout"
+import { PinsScrollContext, usePinsScroll } from "../core/pinsScroll"
+import { watchScrollEdges } from "../core/scrollEdges"
 import { useUnboundedViewport } from "../core/useUnboundedViewport"
 import type { DataTableInstance } from "../useDataTable"
 import { defaultCellEditingLabels } from "../labels/editing"
@@ -584,6 +586,25 @@ export function DataTable<TData extends RowData>({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const labels = { ...defaultLabels, ...labelOverrides }
   const isCards = useCardLayout(rootRef, layout, cardBreakpoint)
+
+  /*
+   * The columns pinned to each edge, px — where the scroll fades stand (after
+   * the start's, before the end's), and what decides whether they may hold
+   * still in this viewport at all: wider than two thirds of it, they scroll
+   * with the rest (`pinsOverflow`), or a phone would never reach the columns
+   * behind them.
+   */
+  const startPinned = isCards ? 0 : table.getStartTotalSize()
+  const endPinned = isCards ? 0 : table.getEndTotalSize()
+  const pinsScroll = usePinsScroll(viewportRef, startPinned + endPinned, !isCards)
+  // The fades say which edge has more to scroll to — a phone draws no scrollbar (0.16).
+  const edgesRef = useRef<HTMLDivElement>(null)
+  useIsomorphicLayoutEffect(() => {
+    const viewport = viewportRef.current
+    const edges = edgesRef.current
+    if (isCards || !viewport || !edges) return
+    return watchScrollEdges(viewport, edges)
+  }, [isCards])
   const { autosize, autosizeAll } = useAutosize(instance, tableRef)
 
   /*
@@ -926,6 +947,7 @@ export function DataTable<TData extends RowData>({
   }
 
   return (
+    <PinsScrollContext.Provider value={pinsScroll}>
     <div
       ref={rootRef}
       className={classNames("dt-root", className, isResizing && "dt-is-resizing")}
@@ -1014,6 +1036,7 @@ export function DataTable<TData extends RowData>({
            */
           tabIndex={0}
           aria-label={labels.tableBody}
+          data-dt-pins-scroll={pinsScroll ? "" : undefined}
         >
           {isCards ? (
             <CardList
@@ -1226,6 +1249,28 @@ export function DataTable<TData extends RowData>({
         </div>
 
         {/*
+          The two fades over the viewport's visible edges (0.16): a box beside
+          it, out of flow and laid over what it shows, so it stands over what
+          is in view however far the rows are scrolled — outside the scroller,
+          where nothing it holds moves it — past the columns pinned to the
+          start and before those pinned to the end. Drawn only by CSS, from
+          what `watchScrollEdges` keeps on it.
+        */}
+        {isCards ? null : (
+          <div
+            ref={edgesRef}
+            className="dt-edges"
+            aria-hidden="true"
+            style={
+              {
+                "--dt-edge-start-at": `${pinsScroll ? 0 : startPinned}px`,
+                "--dt-edge-end-at": `${pinsScroll ? 0 : endPinned}px`,
+              } as CSSProperties
+            }
+          />
+        )}
+
+        {/*
           Anything but a bare `false` renders the band — see
           `DataTableFeatureFlags.statusBar`. Between the viewport and the
           footer, which is where AG Grid's own status bar sits relative to
@@ -1341,5 +1386,6 @@ export function DataTable<TData extends RowData>({
         />
       ) : null}
     </div>
+    </PinsScrollContext.Provider>
   )
 }

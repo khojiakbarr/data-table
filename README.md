@@ -1495,6 +1495,21 @@ too: `--dt-card-skeleton-pill-height` (a status chip, 22px),
 `--dt-card-skeleton-action-size` (the ⋮, 24px) and
 `--dt-card-skeleton-avatar-size` (a leading picture or a trailing person, 24px).
 
+### Scroll fades and pinned columns on a narrow screen
+
+A table wider than its viewport fades out at each edge that has more to scroll
+to (0.16) — past the columns pinned to the start, before those pinned to the
+end — so a phone, which draws no scrollbar, still shows that the columns go on.
+The fade is `--dt-edge-color` (your `--dt-bg` unless you set it) and
+`--dt-edge-size` wide (40px; `0` turns it off).
+
+Pinned columns hold still only while they leave the others room: where the
+columns pinned to both edges would take more than two thirds of the viewport,
+they scroll with the rest until it is wide enough again. The layout's pinning
+is not touched — widen the window and they stick again. A Gantt with five
+columns pinned beside its timeline is the case: held still on a phone they
+filled the viewport, and the timeline could not be scrolled into view.
+
 ## Expandable rows
 
 Two shapes, one mechanism. Use either, or both together.

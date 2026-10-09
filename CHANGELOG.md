@@ -3,6 +3,30 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.16.0
+
+### Added
+
+- **Scroll fades.** A table wider than its viewport fades out at each edge that
+  has more to scroll to — past the columns pinned to the start, before those
+  pinned to the end — so a phone, which draws no scrollbar, still shows that
+  the columns go on. `--dt-edge-color` (the table's `--dt-bg` by default) and
+  `--dt-edge-size` (40px; `0` turns the fades off) are the new tokens.
+  The viewport keeps that much `scroll-padding-inline`, so a control the
+  keyboard brings into view lands clear of a fade.
+
+### Changed
+
+- **Pinned columns too wide to hold still scroll with the rest.** Where the
+  columns pinned to both edges would take more than two thirds of the
+  viewport, they lose their sideways offset (keeping the header's sticky top)
+  until the viewport is wide enough again; the layout's pinning is left as it
+  was. A Gantt's five pinned columns on a phone had hidden its timeline for
+  good. The timeline's month names follow, sticking to the viewport's edge,
+  and its `scrollTo` is carried out again when the pins start or stop
+  scrolling, so the day lands a third into the viewport on a phone too. A
+  table nested in a row's detail judges its own pins.
+
 ## 0.15.0
 
 ### Added

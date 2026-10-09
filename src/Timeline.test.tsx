@@ -473,6 +473,25 @@ describe("scrollTo", () => {
     act(() => ResizeObserverStub.fire())
     expect(viewport.scrollLeft).toBe(50)
   })
+
+  it("brings the day a third into a phone's viewport, past pinned columns that scroll there rather than hide it (0.16)", () => {
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(function (this: Element) {
+      return this.classList.contains("dt-viewport") ? 240 : 0
+    })
+    // The pane moves with the scroll, as a browser's would: a first scroll does not count as the pane starting further in.
+    const rect = Element.prototype.getBoundingClientRect
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (!this.classList.contains("dt-timeline-scale")) return rect.call(this)
+      return new DOMRect(-(this.closest(".dt-viewport")?.scrollLeft ?? 0), 0, 0, 0)
+    })
+    render(<Harness pinStage scrollTo="2026-09-29" />)
+    const viewport = document.querySelector<HTMLElement>(".dt-viewport")
+    if (!viewport) throw new Error("no viewport")
+    // 200px pinned in a 240px viewport is past two thirds: they scroll with the rest, so none of the pane is behind them.
+    expect(viewport).toHaveAttribute("data-dt-pins-scroll")
+    expect(viewport.scrollLeft).toBe(29 * 14 + 7 - 240 / 3)
+    expect(pane().querySelector<HTMLElement>(".dt-timeline-month-label")?.style.insetInlineStart).toBe("0px")
+  })
 })
 
 interface Leaf {

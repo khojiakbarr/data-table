@@ -23,9 +23,13 @@ import { useClampedPlacement, type ClampedPoint } from "./useClampedPlacement"
  * its own item list to the hook.
  */
 
-/** Every `role="menuitem"` under `menu`, in DOM — i.e. visual — order. */
+/**
+ * Every item under `menu`, in DOM — i.e. visual — order: `menuitem`s, and the
+ * `menuitemradio`s of a menu that says which choice is in force (the cards'
+ * sort menu, 0.17.0).
+ */
 function menuItems(menu: HTMLElement): HTMLElement[] {
-  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"]'))
+  return Array.from(menu.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]'))
 }
 
 /**

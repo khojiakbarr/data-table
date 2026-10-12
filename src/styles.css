@@ -240,9 +240,13 @@
  * direct child — so it has nothing to be lifted out of the way of, and
  * lifting the whole table for a piece of its own furniture would reorder this
  * table against the page for as long as the bar stayed open.
+ *
+ * The cards' sort menu (0.17.0) hangs from the rail rather than the root, and
+ * is fixed like the header menu, so it lifts the table the same way.
  */
 .dt-root:has(> .dt-panel-floating),
 .dt-root:has(> .dt-menu),
+.dt-root:has(> .dt-sidebar .dt-card-sort-menu),
 .dt-root:has(> .dt-filter-popover) {
   z-index: 1;
 }
@@ -1431,6 +1435,35 @@
     margin-block-start: 0;
     margin-inline-start: 6px;
   }
+
+  /*
+   * The cards' sort control (0.17.0) reads across here too, between the tabs
+   * and the count, as tall as a tab. A long column name is cut short before
+   * it can push the count off the row.
+   */
+  .dt-sidebar > .dt-sidebar-head:has(> .dt-card-sort) {
+    flex-direction: row;
+    gap: 0;
+    width: auto;
+    padding-bottom: 0;
+    background: none;
+    border-radius: 0;
+  }
+
+  .dt-sidebar > .dt-sidebar-head > .dt-card-sort {
+    flex: 0 1 auto;
+    writing-mode: horizontal-tb;
+    max-width: 55%;
+    min-height: 0;
+    max-height: none;
+    margin: 4px 0;
+    padding: 6px 10px;
+  }
+
+  /* With no tab before it, the control leads the row and the count keeps its end. */
+  .dt-sidebar > .dt-sidebar-head > .dt-card-sort:first-child {
+    margin-inline: 4px auto;
+  }
 }
 
 .dt-panel-head {
@@ -1991,7 +2024,8 @@
   outline-offset: -2px;
 }
 
-.dt-menu-item[aria-current="true"] {
+.dt-menu-item[aria-current="true"],
+.dt-menu-item[aria-checked="true"] {
   /* --dt-accent-text: same accent-as-text pairing as .dt-link above. */
   color: var(--dt-accent-text);
   font-weight: 500;
@@ -2674,6 +2708,102 @@
 
 .dt-sidebar-shown {
   display: none;
+}
+
+/*
+ * The cards' sort control (0.17.0): a button naming the sort, in the rail's
+ * own type — a share of --dt-font-size, never pixels, so a host that scales
+ * the table's type scales it too. The column chosen is said in the accent, as
+ * a chosen rail tab is.
+ */
+.dt-card-sort {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--dt-button-radius);
+  background: none;
+  color: var(--dt-muted-fg);
+  font: inherit;
+  font-size: calc(var(--dt-font-size) * 12 / 14);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dt-card-sort:hover {
+  background: var(--dt-button-hover-bg);
+  color: var(--dt-fg);
+}
+
+.dt-card-sort[data-dt-sorted] {
+  color: var(--dt-accent-text);
+}
+
+.dt-card-sort:focus-visible {
+  outline: 2px solid var(--dt-focus-ring);
+  outline-offset: -2px;
+}
+
+.dt-card-sort-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dt-card-sort-dir {
+  flex: none;
+}
+
+/*
+ * Where the rail stands upright, the control stands under its tabs, read top
+ * to bottom as they are: the row that is no box elsewhere becomes the rail's
+ * column, in the rail's colour. Only while the control is there — a table
+ * without it keeps the rail exactly as it was. The narrow-width block lays
+ * the same row across again, a step more specific than these.
+ */
+.dt-sidebar-head:has(> .dt-card-sort) {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 44px;
+  padding-bottom: 6px;
+  background: var(--dt-header-bg);
+  border-start-end-radius: var(--dt-radius);
+  border-end-end-radius: var(--dt-radius);
+}
+
+.dt-sidebar-head > .dt-card-sort {
+  writing-mode: vertical-rl;
+  min-height: 72px;
+  max-height: 240px;
+  margin: 0 2px;
+  padding: 10px 0;
+}
+
+/* With no tab above it, it keeps the rail's top inset. */
+.dt-sidebar-head > .dt-card-sort:first-child {
+  margin-top: 6px;
+}
+
+/*
+ * A finger's target is at least 40 by 40 CSS pixels, through a layer nobody
+ * sees: the button is drawn as small as the tabs beside it, and nothing moves.
+ */
+@media (pointer: coarse) {
+  .dt-card-sort::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 40px);
+    height: max(100%, 40px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* The mark after the last card that asks for the next page: a line of nothing. */

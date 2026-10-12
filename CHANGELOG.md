@@ -3,6 +3,29 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.17.0
+
+### Added
+
+- **A sort for cards.** Cards draw no header, so while sorting is on and a
+  column shown can sort, the rail offers the sort: a button naming it —
+  «Expiry ↑», or «Sort» while nothing is sorted — that opens the table's menu
+  with each sortable column by its name, the one in force checked, then
+  Ascending, Descending and No sorting. On a phone it stands between the
+  Filters tab and «20/200»; where the rail stands upright, under its tabs; and
+  the rail is drawn for it alone when there is no tab. It writes the table's
+  own sorting, as a header click does, so `onQueryChange` reports it, the
+  cards start over, the layout keeps it and the table shows the same arrow. It
+  sorts by one column: a choice replaces a multi-column sort. A coarse pointer
+  gets a 40×40 target through an invisible layer; its text is a share of
+  `--dt-font-size`. New labels `cardSort`, `cardSortAscending`,
+  `cardSortDescending` and `cardSortClear` (English, Russian, Uzbek).
+
+### Changed
+
+- The table's menus rove `menuitemradio` items as well as `menuitem`s, and a
+  checked one is drawn as a current one is.
+
 ## 0.16.0
 
 ### Added

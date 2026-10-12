@@ -1,5 +1,5 @@
 import type { RowData } from "@tanstack/react-table"
-import { useRef, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
 import type { DropSide } from "../core/reorder"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -21,7 +21,10 @@ export interface TableSideBarProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   labels: DataTableLabels
   onReorder: (draggedId: string, targetId: string, side: DropSide) => void
-  /** Which tabs the rail offers, in rail order. At least one. */
+  /**
+   * Which tabs the rail offers, in rail order. At least one — unless a
+   * `sortControl` is drawn, which cards may hold with no tab at all.
+   */
   tabs: readonly PanelTab[]
   /** Whether the panel beside the rail is showing. */
   open: boolean
@@ -55,6 +58,12 @@ export interface TableSideBarProps<TData extends RowData> {
    * end on a phone, where the rail reads across. Absent, nothing is counted.
    */
   shown?: { count: number; total: number } | undefined
+  /**
+   * The cards' sort control (0.17.0), drawn after the tabs: at the row's end,
+   * before the count, on a phone; under the tabs where the rail stands upright.
+   * Outside the `tablist`, which holds tabs only.
+   */
+  sortControl?: ReactNode
 }
 
 /**
@@ -84,6 +93,7 @@ export function TableSideBar<TData extends RowData>({
   draggedColumnId,
   filtersPanel,
   shown,
+  sortControl,
 }: TableSideBarProps<TData>) {
   const railRef = useRef<HTMLDivElement>(null)
   const activeCount = filtersPanel?.activeCount ?? 0
@@ -139,6 +149,7 @@ export function TableSideBar<TData extends RowData>({
         box at all where the rail stands upright (`display: contents`).
       */}
       <div className="dt-sidebar-head">
+      {tabs.length > 0 ? (
       <div
         className="dt-sidebar-rail"
         ref={railRef}
@@ -191,6 +202,8 @@ export function TableSideBar<TData extends RowData>({
           )
         })}
       </div>
+      ) : null}
+      {sortControl}
       {shown ? (
         <span className="dt-sidebar-shown">
           {/* Drawn for the eye, spoken as words: «20/200» read aloud is a fraction. */}
@@ -200,7 +213,7 @@ export function TableSideBar<TData extends RowData>({
       ) : null}
       </div>
 
-      {open ? (
+      {open && tabs.length > 0 ? (
         <TablePanel
           instance={instance}
           labels={labels}

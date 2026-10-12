@@ -70,6 +70,10 @@ export const uzLabels: DataTableLabels = {
   sortAscending: "Oʻsish boʻyicha saralash",
   sortDescending: "Kamayish boʻyicha saralash",
   clearSort: "Saralashni bekor qilish",
+  cardSort: "Saralash",
+  cardSortAscending: "Oʻsish boʻyicha",
+  cardSortDescending: "Kamayish boʻyicha",
+  cardSortClear: "Saralashsiz",
   empty: "Qator yoʻq",
   dragHint: "Tartibni oʻzgartirish uchun torting",
   reorderHint:

@@ -386,6 +386,18 @@ export interface DataTableLabels extends CellEditingLabels {
   sortAscending: string
   sortDescending: string
   clearSort: string
+  /**
+   * The sort control cards draw in the rail (0.17.0): its button while nothing
+   * is sorted, its menu's name, and what a screen reader hears before the
+   * column it names ("Sort: Expiry, Ascending").
+   */
+  cardSort: string
+  /** The card sort menu's ascending choice, and the direction spoken after the column on its button. */
+  cardSortAscending: string
+  /** The card sort menu's descending choice, and the direction spoken after the column on its button. */
+  cardSortDescending: string
+  /** The card sort menu's choice that clears the sort. */
+  cardSortClear: string
   empty: string
   dragHint: string
   /**

@@ -85,6 +85,10 @@ export const ruLabels: DataTableLabels = {
   sortAscending: "Сортировать по возрастанию",
   sortDescending: "Сортировать по убыванию",
   clearSort: "Отменить сортировку",
+  cardSort: "Сортировка",
+  cardSortAscending: "По возрастанию",
+  cardSortDescending: "По убыванию",
+  cardSortClear: "Без сортировки",
   empty: "Нет строк",
   dragHint: "Перетащите, чтобы изменить порядок",
   reorderHint:

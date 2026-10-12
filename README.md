@@ -1460,6 +1460,24 @@ back to an earlier page starts over. A server host passes `loading` while a
 page is on its way, so the rows still on hand are not kept as the new page's;
 a row met on two pages is drawn once. `infiniteCards={false}` keeps the pager.
 
+**The sort on cards** (0.17.0): cards draw no header, so the rail offers the
+sort instead — while sorting is on (`features.sorting`) and a column shown can
+sort. One button names it, «Срок годности ↑», or `labels.cardSort` («Sort»)
+while nothing is sorted; it opens the table's menu with each column that can
+sort by its name (`meta.label` for one whose header is drawn), the sort in
+force checked, and once a column is sorted «Ascending», «Descending» and «No
+sorting». On a phone it stands in the rail's row between the Filters tab and
+«20/200»; where the rail stands upright, under its tabs. It writes the table's
+own sorting — the state a header click writes — so a server host hears it in
+`onQueryChange`'s `sorting` with nothing to add, the cards start over from the
+first page, the saved layout keeps it, and a table drawn again shows the same
+arrow. It sorts by one column: a choice made while a header's Shift+click had
+sorted by several replaces them with one (the button names the first and
+counts the rest, «Amount ↑ +1»). A coarse pointer gets a 40×40 target through
+an invisible layer, so nothing drawn moves; its text is a share of
+`--dt-font-size`. The words are `cardSort`, `cardSortAscending`,
+`cardSortDescending` and `cardSortClear`, in all three label sets.
+
 What a card keeps: a click opens the row (`onRowClick`), except on a control
 inside it, inside its open detail, or in something a cell drew in a portal; the
 selection's checkbox leads the card, and a select-all box heads the list;
@@ -1468,8 +1486,8 @@ of the list; skeleton cards while the first page loads — in the cards' own
 shape, a bar in each place a column fills, so nothing jumps when the rows
 arrive — dimmed cards while a refetch runs; group headings of a grouped table, whose grouped column the cards
 under them do not repeat; the toolbar, the status bar and the pager; the side
-bar, whose panel opens over the cards. What it leaves to the table: a header to
-sort by, the column menu, cell editing, `onRowContextMenu` (a phone has no
+bar, whose panel opens over the cards; and the sort (below). What it leaves to
+the table: the column menu, cell editing, `onRowContextMenu` (a phone has no
 right click), the timeline. A card is not a Tab stop of its own — the keyboard
 reaches a record through a link a cell draws, as in the table. Every card of a
 page is drawn — a long client-side list in cards wants pagination. A place left

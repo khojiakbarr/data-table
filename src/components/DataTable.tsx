@@ -28,7 +28,10 @@ import type { CardSlot, DataTableLabels, RowsLayout, FiltersPanelSlot, RowTone }
 
 export type { FiltersPanelSlot } from "../types"
 import { useInfiniteRows } from "../core/useInfiniteRows"
+import { cardSortOptions } from "../core/cardSort"
+import { columnLabel } from "../core/columnLabel"
 import { CardList } from "./CardList"
+import { CardSortControl } from "./CardSortControl"
 import { CellEditNotice } from "./CellEditNotice"
 import { CellMenu } from "./CellMenu"
 import { HeaderMenu, type HeaderMenuPosition } from "./HeaderMenu"
@@ -67,6 +70,10 @@ export const defaultLabels: DataTableLabels = {
   sortAscending: "Sort ascending",
   sortDescending: "Sort descending",
   clearSort: "Clear sort",
+  cardSort: "Sort",
+  cardSortAscending: "Ascending",
+  cardSortDescending: "Descending",
+  cardSortClear: "No sorting",
   empty: "No rows",
   dragHint: "Drag to reorder",
   reorderHint: "Press Space to pick up, arrow keys to move, Space to drop, Escape to cancel",
@@ -214,8 +221,8 @@ export interface DataTableProps<TData extends RowData> {
    * Cards keep the toolbar, the side bar (its panel opens over the cards,
    * with no Columns tab), selection (a select-all box heads the list), detail
    * panels, the totals and the status bar; a paged table's cards scroll on
-   * instead of turning pages (`infiniteCards`). They have no header, so no sorting by a
-   * header and no column menu; no cell editing; and no `onRowContextMenu`, a
+   * instead of turning pages (`infiniteCards`). They have no header, so the
+   * rail offers the sort instead (0.17.0) and there is no column menu; no cell editing; and no `onRowContextMenu`, a
    * phone having no right click.
    *
    * @example
@@ -679,6 +686,22 @@ export function DataTable<TData extends RowData>({
     setPageIndex: instance.pagination.setPageIndex,
   })
   const leafColumns = renderedLeafColumns(table)
+  /*
+   * Cards draw no header to sort by, so the rail offers the sort instead
+   * (0.17.0): the columns shown that can sort. Asked only over cards — a table
+   * never draws the control, and never pays for the question.
+   */
+  const cardSort =
+    isCards && flags.sorting
+      ? cardSortOptions(
+          leafColumns.map((column) => ({
+            id: column.id,
+            header: column.columnDef.header,
+            label: column.columnDef.meta?.label,
+            canSort: column.getCanSort(),
+          })),
+        )
+      : []
   const fillerAt = fillerIndex(table)
   /*
    * The header as a tree, rebuilt from the RENDERED order — which is what the
@@ -1283,7 +1306,7 @@ export function DataTable<TData extends RowData>({
         {footer && !infiniteOn ? <TablePagination instance={instance} labels={labels} /> : null}
       </div>
 
-      {sideBarTabs.length > 0 ? (
+      {sideBarTabs.length > 0 || cardSort.length > 0 ? (
         <TableSideBar
           instance={instance}
           labels={labels}
@@ -1295,6 +1318,20 @@ export function DataTable<TData extends RowData>({
           tab={sideBarTabs.includes(panelOpen.tab) ? panelOpen.tab : (sideBarTabs[0] ?? panelOpen.tab)}
           shown={
             isCards && shownTotal !== undefined && !showSkeleton ? { count: infinite.rows.length, total: shownTotal } : undefined
+          }
+          sortControl={
+            cardSort.length > 0 ? (
+              <CardSortControl
+                options={cardSort}
+                sorting={instance.query.sorting}
+                onSortingChange={table.setSorting}
+                labelOf={(id) => {
+                  const column = table.getColumn(id)
+                  return columnLabel(id, column?.columnDef.header, column?.columnDef.meta?.label)
+                }}
+                labels={labels}
+              />
+            ) : undefined
           }
           onToggle={toggleSideBarTab}
           /*

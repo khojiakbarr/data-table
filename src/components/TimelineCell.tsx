@@ -220,7 +220,7 @@ function place(item: TimelineItem, scale: TimelineScale): Placed | null {
   if (x === null) return null
   const tone: TimelineTone = item.tone ?? (item.shape === "dot" ? "success" : "neutral")
   return {
-    className: classNames("dt-timeline-item", "dt-timeline-point", `dt-timeline-${item.shape}`, `dt-timeline-tone-${tone}`),
+    className: classNames("dt-timeline-item", "dt-timeline-point", `dt-timeline-${item.shape}`, `dt-timeline-tone-${tone}`, item.at === "start" && "dt-timeline-at-start"),
     style: { left: x },
     children: null,
   }

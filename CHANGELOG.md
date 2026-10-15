@@ -3,6 +3,13 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.18.1
+
+### Fixed
+
+- **A start dot stays in its day.** A dot at `at: "start"` stood centred on the day's edge, half over the day
+  before; its left edge is on the day's start now, inside the day, as the bar beside it.
+
 ## 0.18.0
 
 ### Added

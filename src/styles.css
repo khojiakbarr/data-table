@@ -3017,6 +3017,14 @@
   box-shadow: 0 0 0 1px var(--_dt-timeline-color);
 }
 
+/*
+ * A start (`at: "start"`) sits inside its day, its left edge on the day's start — where a bar starting that day
+ * begins — instead of straddling the day before.
+ */
+.dt-timeline-point.dt-timeline-dot.dt-timeline-at-start {
+  margin-inline-start: 0;
+}
+
 /* A limit — a due day — at its day's end, capped with a small pointer. */
 .dt-timeline-point.dt-timeline-tick {
   width: 2px;

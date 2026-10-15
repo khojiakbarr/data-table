@@ -3,6 +3,14 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.18.0
+
+### Added
+
+- **A day's start.** A timeline marker's `at` and a point's new `at` take `"start"` beside `"middle"` and `"end"`:
+  the line or the dot stands on the day's left edge, where a bar starting that day begins. A dot still defaults to the
+  middle and a tick to the end. `TimelineDayPart` names the three.
+
 ## 0.17.0
 
 ### Added

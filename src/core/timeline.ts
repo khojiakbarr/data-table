@@ -71,7 +71,15 @@ export interface TimelinePoint {
   tone?: TimelineTone | undefined
   /** The item's tooltip, and — with `onItemClick` — its accessible name. */
   title?: string | undefined
+  /**
+   * Where in the day it stands: a dot in the `middle` and a tick at the `end` by default; `start` puts a dot where a
+   * bar starting that day begins (a start that is a day's beginning, not a moment in it).
+   */
+  at?: TimelineDayPart | undefined
 }
+
+/** A place within one day's width: its left edge, its middle or its right edge. */
+export type TimelineDayPart = "start" | "middle" | "end"
 
 /** Anything a row draws on the timeline. */
 export type TimelineItem = TimelineBar | TimelinePoint
@@ -89,9 +97,10 @@ export interface TimelineMarker {
   dashed?: boolean | undefined
   /**
    * Where in the day the line stands. `middle` (default) for a moment — today
-   * is half over; `end` for a limit — a deadline lasts the whole day.
+   * is half over; `end` for a limit — a deadline lasts the whole day; `start`
+   * for the day's beginning, where a bar starting that day begins.
    */
-  at?: "middle" | "end" | undefined
+  at?: TimelineDayPart | undefined
 }
 
 /**
@@ -312,10 +321,11 @@ export function barBox(scale: TimelineScale, start: IsoDay, end: IsoDay): BarBox
  * @param at - Which point of the day.
  * @returns The x offset, or null when the day is not a day or lies outside the pane.
  */
-export function pointX(scale: TimelineScale, date: IsoDay, at: "middle" | "end"): number | null {
+export function pointX(scale: TimelineScale, date: IsoDay, at: TimelineDayPart): number | null {
   const day = dayNumber(date)
   if (day === null || day < scale.first || day >= scale.first + scale.days) return null
   const offset = (day - scale.first) * scale.dayWidth
+  if (at === "start") return offset
   return at === "middle" ? offset + scale.dayWidth / 2 : offset + scale.dayWidth
 }
 

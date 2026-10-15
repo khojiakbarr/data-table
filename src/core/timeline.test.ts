@@ -112,6 +112,10 @@ describe("pointX", () => {
     expect(pointX(scale, "2026-11-30", "end")).toBe(92 * 14)
   })
 
+  it("stands a start on its day's left edge, where a bar starting that day begins (0.18)", () => {
+    expect(pointX(scale, "2026-09-29", "start")).toBe(29 * 14)
+  })
+
   it("draws no point outside the pane", () => {
     expect(pointX(scale, "2026-08-30", "middle")).toBeNull()
     expect(pointX(scale, "2026-12-08", "end")).toBeNull()
@@ -220,3 +224,4 @@ describe("cutMonths", () => {
     expect(cutMonths(spans, [64, 64, 64], 420, 854)).toEqual([])
   })
 })
+

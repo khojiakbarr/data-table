@@ -216,7 +216,7 @@ function place(item: TimelineItem, scale: TimelineScale): Placed | null {
         ) : null,
     }
   }
-  const x = pointX(scale, item.date, item.shape === "dot" ? "middle" : "end")
+  const x = pointX(scale, item.date, item.at ?? (item.shape === "dot" ? "middle" : "end"))
   if (x === null) return null
   const tone: TimelineTone = item.tone ?? (item.shape === "dot" ? "success" : "neutral")
   return {

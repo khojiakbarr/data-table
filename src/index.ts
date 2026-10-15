@@ -218,6 +218,7 @@ export type {
   TimelineMarker,
   TimelineOptions,
   TimelinePoint,
+  TimelineDayPart,
   TimelineScale,
   TimelineState,
   TimelineTone,

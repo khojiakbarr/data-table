@@ -1254,6 +1254,13 @@
    * right-hand rail is read in.
    */
   writing-mode: vertical-rl;
+  /* The glyph, the word and a filter count in one run along the tab — down the
+     upright rail, across where the rail lies flat: a flex row follows the
+     writing mode's inline axis, so one rule serves both (0.19.0). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   /* 40px of width and at least 72px of height: a comfortable pointer target
      even though the text inside it is 12px. */
   width: 100%;
@@ -1425,15 +1432,6 @@
 
   .dt-sidebar[data-dt-open] .dt-sidebar-head > .dt-sidebar-rail {
     border-bottom: 0;
-  }
-
-  /*
-   * The tab reads across here, so its count follows the label instead of
-   * standing under it: the gap moves from above the count to before it.
-   */
-  .dt-sidebar .dt-sidebar-tab-count {
-    margin-block-start: 0;
-    margin-inline-start: 6px;
   }
 
   /*
@@ -2811,6 +2809,12 @@
   height: 1px;
 }
 
+/* A rail tab's glyph (0.19.0): upright whatever way the word runs. */
+.dt-sidebar-tab-icon {
+  flex: none;
+  display: block;
+}
+
 /* The count of a host's active filters, beside the rail tab's rotated label. */
 .dt-sidebar-tab-count {
   display: inline-flex;
@@ -2818,7 +2822,6 @@
   justify-content: center;
   min-inline-size: 18px;
   block-size: 18px;
-  margin-block-start: 6px;
   padding-inline: 4px;
   border-radius: 9px;
   background: var(--dt-accent);

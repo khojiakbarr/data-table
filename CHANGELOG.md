@@ -3,6 +3,14 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.19.0
+
+### Added
+
+- **A glyph on each rail tab.** Columns leads with three columns, Filters with a funnel — upright beside the rotated
+  word on the rail, before it where the rail lies across a phone's table. Hidden from a screen reader, so each tab is
+  still named by its word. The filter count now follows in the same run, 6px apart.
+
 ## 0.18.1
 
 ### Fixed

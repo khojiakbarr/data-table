@@ -82,6 +82,17 @@ describe("the rail", () => {
     expect(text?.textContent).toBe("Columns")
   })
 
+  it("leads each tab with a glyph hidden from a screen reader, so its name stays the word (0.19.0)", () => {
+    render(<Table />)
+
+    for (const name of ["Columns", "Filters"] as const) {
+      const icon = railTab(name).querySelector("svg.dt-sidebar-tab-icon")
+      expect(icon?.getAttribute("aria-hidden")).toBe("true")
+      expect(icon?.nextElementSibling?.classList.contains("dt-sidebar-tab-text")).toBe(true)
+    }
+    expect(railTab("Columns").querySelector("path")?.getAttribute("d")).not.toBe(railTab("Filters").querySelector("path")?.getAttribute("d"))
+  })
+
   it("comes before the panel it controls, and holds no part of it", async () => {
     const user = userEvent.setup()
     render(<Table />)

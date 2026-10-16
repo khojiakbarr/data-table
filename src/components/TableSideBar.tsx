@@ -185,6 +185,8 @@ export function TableSideBar<TData extends RowData>({
                 run of real text: selectable, findable, and read out as a word
                 rather than as a column of letters.
               */}
+              {/* An upright glyph before the word (0.19.0): which tab is which at a glance. */}
+              <RailTabIcon tab={name} />
               <span className="dt-sidebar-tab-text">{labelOf(name)}</span>
               {name === "filters" && activeCount > 0 ? (
                 <>
@@ -229,5 +231,34 @@ export function TableSideBar<TData extends RowData>({
         />
       ) : null}
     </div>
+  )
+}
+
+/**
+ * A rail tab's glyph: three columns for Columns, a funnel for Filters. An SVG is
+ * not turned by `writing-mode`, so it stays upright beside the rotated word.
+ *
+ * @param props.tab - Which tab it is drawn for.
+ */
+function RailTabIcon({ tab }: { tab: PanelTab }) {
+  return (
+    <svg
+      className="dt-sidebar-tab-icon"
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+    >
+      {tab === "columns" ? (
+        <path d="M1.5 2.5 H12.5 V11.5 H1.5 Z M5.2 2.5 V11.5 M8.8 2.5 V11.5" />
+      ) : (
+        <path d="M1.5 2.5 H12.5 L8.3 7.4 V11.5 L5.7 10.3 V7.4 Z" />
+      )}
+    </svg>
   )
 }

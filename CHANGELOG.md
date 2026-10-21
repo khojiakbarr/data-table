@@ -3,6 +3,17 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.20.1
+
+### Fixed
+
+- **A fitted column holds its chips whole.** Fitting a column — on load, from its menu or a double-click of its
+  handle — measured a cell's text alone, so a chip's or a badge's own padding and border and an icon beside a name
+  were left out: a column of status chips came out 20–30px too narrow and every chip was cut at its right edge. A
+  body cell is now walked as boxes: text through the canvas as before, each element's horizontal padding, border and
+  margin, a flex row's gap, and an icon or an image by its drawn width; hidden and absolutely placed elements count
+  for nothing.
+
 ## 0.19.0
 
 ### Added

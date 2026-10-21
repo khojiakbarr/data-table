@@ -405,6 +405,52 @@ describe("autosize", () => {
     expect(colWidths(container)[0]).toBe("119px")
   })
 
+  it("counts a chip's own padding and border, not only its label", async () => {
+    const chip = [
+      helper.accessor("code", {
+        header: "St",
+        size: 100,
+        cell: ({ getValue }) => (
+          <span style={{ display: "inline-flex", padding: "0 12px", border: "1px solid" }}>
+            <span>{getValue()}</span>
+          </span>
+        ),
+      }),
+    ]
+    const user = userEvent.setup()
+    const Table = makeTable({ columns: chip, data: [{ code: "Activee", partner: "", amount: 0 }] })
+    const { container } = render(<Table />)
+
+    await fit(user, /st: column actions/i)
+
+    // "Activee" 49 + the chip's 24 padding and 2 border + the cell's 28 = 103; as text alone it was 77.
+    expect(colWidths(container)[0]).toBe("103px")
+  })
+
+  it("lays a flex row's children side by side with their gap", async () => {
+    const row = [
+      helper.accessor("code", {
+        header: "St",
+        size: 100,
+        cell: ({ getValue }) => (
+          <div style={{ display: "flex", columnGap: "8px" }}>
+            <span style={{ display: "inline-block", width: "20px" }} />
+            <span>{getValue()}</span>
+            <span style={{ display: "none" }}>hidden text</span>
+          </div>
+        ),
+      }),
+    ]
+    const user = userEvent.setup()
+    const Table = makeTable({ columns: row, data: [{ code: "Name", partner: "", amount: 0 }] })
+    const { container } = render(<Table />)
+
+    await fit(user, /st: column actions/i)
+
+    // An empty 20px box, an 8px gap, "Name" 28, the cell's 28 = 84; the hidden span counts for nothing.
+    expect(colWidths(container)[0]).toBe("84px")
+  })
+
   it("clamps to the table's configured maximum width", async () => {
     const user = userEvent.setup()
     const Table = makeTable({

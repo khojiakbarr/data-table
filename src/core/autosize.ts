@@ -6,6 +6,16 @@
  * the reflows are visible as a stutter. A canvas measures text with no layout
  * at all.
  *
+ * A cell's text alone is not its width, though: a chip or a badge draws its
+ * label inside its own padding and border, and an icon beside a name takes
+ * room no text accounts for. Measured as text, a column of status chips was
+ * fitted 20–30px too narrow and every chip was cut at its right edge. So a
+ * body cell is walked as boxes: text through the canvas, each element's own
+ * horizontal padding, border and margin from its computed style, a row of
+ * flex children with their gap, and a replaced element (an icon, an image) by
+ * its drawn width. Nothing is written, so the one layout this may read is the
+ * one the browser owes the frame anyway.
+ *
  * Only the rows currently in the DOM are measured. Measuring the whole dataset
  * would mean rendering it, which defeats the point of not rendering it.
  *
@@ -45,6 +55,89 @@ function textOf(element: HTMLElement): string {
 function fontOf(element: Element): string {
   const style = getComputedStyle(element)
   return `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+}
+
+/** Elements whose width is their own, not their content's. */
+const REPLACED = new Set(["svg", "img", "canvas", "video", "input", "select", "textarea", "progress", "meter"])
+/** The lead cell's own parts, which `cellChrome` already counts. */
+const LEAD_PARTS = ".dt-expand, .dt-depth-spacer"
+
+function px(value: string): number {
+  const number = Number.parseFloat(value)
+  return Number.isFinite(number) ? number : 0
+}
+
+/** A border's width, which is none at all while it has no style — whatever `border-width` says. */
+function borderWidth(borderStyle: string, width: string): number {
+  return borderStyle === "" || borderStyle === "none" || borderStyle === "hidden" ? 0 : px(width)
+}
+
+/** An element's horizontal padding, border and margin. */
+function horizontalChrome(style: CSSStyleDeclaration): number {
+  return (
+    px(style.paddingLeft) +
+    px(style.paddingRight) +
+    borderWidth(style.borderLeftStyle, style.borderLeftWidth) +
+    borderWidth(style.borderRightStyle, style.borderRightWidth) +
+    px(style.marginLeft) +
+    px(style.marginRight)
+  )
+}
+
+/** Whether an element lays its children out side by side, as a flex row does. */
+function isRow(style: CSSStyleDeclaration): boolean {
+  return style.display.endsWith("flex") && !style.flexDirection.startsWith("column")
+}
+
+/** Whether an element starts a line of its own inside a block. */
+function isBlockLevel(style: CSSStyleDeclaration): boolean {
+  return ["block", "flex", "grid", "list-item", "table"].includes(style.display)
+}
+
+/**
+ * The width an element's children need laid out on one line, unwrapped and
+ * uncut: side by side with their gap in a flex row; in a block, the inline
+ * ones run together and each block-level one takes a line of its own.
+ */
+function childrenWidth(element: Element, style: CSSStyleDeclaration): number {
+  const widths: number[] = []
+  const blocks: number[] = []
+  let run = 0
+  for (const child of element.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      const collapsed = (child.textContent ?? "").replace(/\s+/g, " ")
+      // A lone text node's edges collapse away in a nowrap cell, as `innerText` trims them.
+      const text = element.childNodes.length === 1 ? collapsed.trim() : collapsed
+      if (text.trim() === "") continue
+      const width = measureText(text, fontOf(element))
+      widths.push(width)
+      run += width
+      continue
+    }
+    if (!(child instanceof Element) || child.matches(LEAD_PARTS)) continue
+    const childStyle = getComputedStyle(child)
+    if (childStyle.display === "none" || childStyle.position === "absolute" || childStyle.position === "fixed") continue
+    const width = boxWidth(child, childStyle)
+    widths.push(width)
+    if (isBlockLevel(childStyle)) blocks.push(width)
+    else run += width
+  }
+  if (isRow(style)) {
+    const gap = px(style.columnGap)
+    return widths.reduce((sum, width) => sum + width, 0) + (widths.length > 1 ? gap * (widths.length - 1) : 0)
+  }
+  return Math.max(run, ...blocks)
+}
+
+/** The width an element needs drawn whole: its content and its own horizontal chrome. */
+function boxWidth(element: Element, style: CSSStyleDeclaration): number {
+  if (REPLACED.has(element.localName)) {
+    const drawn = element.getBoundingClientRect().width
+    return (drawn > 0 ? drawn : px(style.width)) + px(style.marginLeft) + px(style.marginRight)
+  }
+  // An empty inline box (a spacer, an icon's frame) is as wide as it is drawn; a block one would read the cell's width.
+  const ownWidth = element.childNodes.length === 0 && !isBlockLevel(style) ? px(style.width) : 0
+  return Math.max(childrenWidth(element, style), ownWidth) + horizontalChrome(style)
 }
 
 /** Escape a column id for use inside a double-quoted attribute selector. */
@@ -124,7 +217,7 @@ export function measureColumnWidth(
 
   let widest = headerWidth ?? 0
   for (const cell of bodyCells) {
-    const width = measureText(textOf(cell), fontOf(cell)) + cellChrome(cell)
+    const width = childrenWidth(cell, getComputedStyle(cell)) + cellChrome(cell)
     if (width > widest) widest = width
   }
 

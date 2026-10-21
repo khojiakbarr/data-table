@@ -3,6 +3,13 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.20.2
+
+### Fixed
+
+- **A fitted column keeps a chip's `min-width`.** A theme that draws every chip at least 100px wide had its short
+  labels («Группа», «Активен») fitted to the label and cut; a pixel `min-width` is now a floor of the element's box.
+
 ## 0.20.1
 
 ### Fixed

@@ -427,6 +427,28 @@ describe("autosize", () => {
     expect(colWidths(container)[0]).toBe("103px")
   })
 
+  it("keeps a chip as wide as its min-width", async () => {
+    const chip = [
+      helper.accessor("code", {
+        header: "St",
+        size: 100,
+        cell: ({ getValue }) => (
+          <span style={{ display: "inline-flex", minWidth: "100px", boxSizing: "border-box", padding: "0 8px" }}>
+            {getValue()}
+          </span>
+        ),
+      }),
+    ]
+    const user = userEvent.setup()
+    const Table = makeTable({ columns: chip, data: [{ code: "Group", partner: "", amount: 0 }] })
+    const { container } = render(<Table />)
+
+    await fit(user, /st: column actions/i)
+
+    // "Group" 35 + 16 padding is under the 100px floor: 100 + the cell's 28 = 128.
+    expect(colWidths(container)[0]).toBe("128px")
+  })
+
   it("lays a flex row's children side by side with their gap", async () => {
     const row = [
       helper.accessor("code", {

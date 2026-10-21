@@ -11,7 +11,8 @@
  * room no text accounts for. Measured as text, a column of status chips was
  * fitted 20–30px too narrow and every chip was cut at its right edge. So a
  * body cell is walked as boxes: text through the canvas, each element's own
- * horizontal padding, border and margin from its computed style, a row of
+ * horizontal padding, border, margin and pixel `min-width` from its computed
+ * style, a row of
  * flex children with their gap, and a replaced element (an icon, an image) by
  * its drawn width. Nothing is written, so the one layout this may read is the
  * one the browser owes the frame anyway.
@@ -72,16 +73,19 @@ function borderWidth(borderStyle: string, width: string): number {
   return borderStyle === "" || borderStyle === "none" || borderStyle === "hidden" ? 0 : px(width)
 }
 
-/** An element's horizontal padding, border and margin. */
-function horizontalChrome(style: CSSStyleDeclaration): number {
+/** An element's horizontal padding and border — what stands between its border edge and its content. */
+function paddingAndBorder(style: CSSStyleDeclaration): number {
   return (
     px(style.paddingLeft) +
     px(style.paddingRight) +
     borderWidth(style.borderLeftStyle, style.borderLeftWidth) +
-    borderWidth(style.borderRightStyle, style.borderRightWidth) +
-    px(style.marginLeft) +
-    px(style.marginRight)
+    borderWidth(style.borderRightStyle, style.borderRightWidth)
   )
+}
+
+/** A `min-width` in pixels; `auto`, `0` and a percentage of a width still being found are no floor. */
+function minWidthOf(style: CSSStyleDeclaration): number {
+  return style.minWidth.endsWith("px") ? px(style.minWidth) : 0
 }
 
 /** Whether an element lays its children out side by side, as a flex row does. */
@@ -137,7 +141,12 @@ function boxWidth(element: Element, style: CSSStyleDeclaration): number {
   }
   // An empty inline box (a spacer, an icon's frame) is as wide as it is drawn; a block one would read the cell's width.
   const ownWidth = element.childNodes.length === 0 && !isBlockLevel(style) ? px(style.width) : 0
-  return Math.max(childrenWidth(element, style), ownWidth) + horizontalChrome(style)
+  const content = Math.max(childrenWidth(element, style), ownWidth)
+  const edges = paddingAndBorder(style)
+  // A chip a theme gives a `min-width` is drawn that wide whatever its label; the floor is the border box's or the content's.
+  const floor = minWidthOf(style)
+  const box = style.boxSizing === "border-box" ? Math.max(content + edges, floor) : Math.max(content, floor) + edges
+  return box + px(style.marginLeft) + px(style.marginRight)
 }
 
 /** Escape a column id for use inside a double-quoted attribute selector. */

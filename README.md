@@ -175,6 +175,13 @@ not the whole dataset: a wide value scrolled out of view is not accounted for
 until it is fitted again. *Fit all columns* also keeps every group label
 readable by widening the group's children when they come up short.
 
+**Fit on load.** `<DataTable fitColumnsOnLoad />` fits the columns to the first rows drawn,
+once: every column nobody has sized — no drag, no fit, nothing in the stored layout — takes
+the width of its widest drawn cell or its header, at most twice its declared `size`
+(`fitColumnsOnLoad={{ maxGrowth: 3 }}` for more; `maxSize` still wins). The widths go into
+the layout, so a stored layout keeps them and the columns hold still through a page, a
+search or a filter — the menu's fit and *Reset width* stay for later. Cards are not fitted.
+
 **Keyboard.** With a resize handle focused, ← and → change the width by 10px,
 Shift-← and Shift-→ by 50px, Enter fits the column.
 

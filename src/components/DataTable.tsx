@@ -16,6 +16,7 @@ import { useCellEditing } from "../core/useCellEditing"
 import type { SelectionSummary } from "../core/useSelection"
 import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
+import { useFitOnLoad, type FitColumnsOnLoad } from "../core/useFitOnLoad"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useCardLayout } from "../core/useCardLayout"
@@ -410,6 +411,15 @@ export interface DataTableProps<TData extends RowData> {
   /** Render only the visible window of rows; `false` renders every row (printing, very small tables). Default true. */
   virtualize?: boolean
   /**
+   * Fit the columns to the first rows drawn, once: every column the person
+   * has not sized — no drag, no fit, nothing stored — takes the width of its
+   * widest drawn cell or its header, at most `maxGrowth` (default 2) times
+   * its declared `size`. The widths are stored with the layout, so the
+   * columns hold still afterwards; the header menu's fit and reset stay.
+   * Cards are not fitted. Default false.
+   */
+  fitColumnsOnLoad?: boolean | FitColumnsOnLoad
+  /**
    * Rows are on their way. With no rows yet, skeleton rows show; with rows,
    * a progress bar and dimmed rows.
    *
@@ -571,6 +581,7 @@ export function DataTable<TData extends RowData>({
   filtersPanel,
   footer = true,
   virtualize = true,
+  fitColumnsOnLoad = false,
   loading = false,
   error,
   onRetry,
@@ -854,6 +865,7 @@ export function DataTable<TData extends RowData>({
   })
   const showSkeleton = (loading || awaitingFirstPage) && rows.length === 0 && !hasError
   const showEmpty = !loading && !awaitingFirstPage && !hasError && rows.length === 0
+  useFitOnLoad(instance, tableRef, fitColumnsOnLoad, !isCards && !loading && !awaitingFirstPage && !hasError && rows.length > 0)
   /*
    * The skeleton already communicates "loading" on its own; a progress bar
    * and dimmed rows on top of it would be a second, redundant signal (and

@@ -86,7 +86,14 @@ export function useInfiniteRows<TData extends RowData>(input: InfiniteRowsInput<
     pages = new Map([...pages].filter(([index]) => index <= pageIndex))
   }
   const topLevel = isKept ? rows.filter((row) => row.depth === 0) : rows
-  if (isKept && !loading && !sameRows(pages.get(pageIndex), topLevel)) {
+  /*
+   * The rows on hand are still the page before's: a host hears of the new page
+   * in an effect, so its `loading` comes a render late, and a query library
+   * keeping the previous data hands the same rows back meanwhile. No server
+   * sends the very same rows as two pages.
+   */
+  const isPageBefore = sameRows(pages.get(pageIndex - 1), topLevel)
+  if (isKept && !loading && !isPageBefore && !sameRows(pages.get(pageIndex), topLevel)) {
     pages = new Map(pages).set(pageIndex, topLevel)
   }
   // Kept during the render, as React allows for state derived from props: the next render reads it back unchanged.

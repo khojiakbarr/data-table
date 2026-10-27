@@ -7,7 +7,7 @@ import { groupValueLabel, isGroupRow } from "../core/grouping"
 import { renderedLeafColumns } from "../core/pinning"
 import { selectAllLabel } from "../core/selectAllLabel"
 import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
-import { isSelectionColumn } from "../core/selection"
+import { isSelectionColumn, pageHeaderState } from "../core/selection"
 import { isTimelineColumn } from "../core/timeline"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels, RowTone } from "../types"
@@ -80,6 +80,16 @@ export function CardList<TData extends RowData>({
   // A loop over a dozen columns: cheaper than the memo that would guard it.
   const places = cardPlaces(contentColumns.map((column) => ({ id: column.id, card: column.columnDef.meta?.card })))
   const selection = instance.selection.enabled && columns.some((column) => isSelectionColumn(column.id)) ? instance.selection : undefined
+  /*
+   * A page-scoped box over cards that scroll on stands for every card drawn, not
+   * the table's current page alone: the person sees one list, and a box that
+   * ticked only its last page would leave the cards above it as they were.
+   */
+  const drawnIds =
+    selection?.headerScope === "page" && infinite !== undefined
+      ? rows.filter((row) => !isGroupRow(row.original)).map((row) => row.id)
+      : undefined
+  const head = drawnIds === undefined || selection === undefined ? undefined : pageHeaderState(selection.model, drawnIds)
 
   if (skeleton !== undefined) {
     return (
@@ -96,13 +106,15 @@ export function CardList<TData extends RowData>({
     <div className="dt-cards">
       {selection === undefined ? null : (
         <div className="dt-cards-head">
-          <SelectionCheckbox
-            checked={selection.headerChecked}
-            indeterminate={selection.headerIndeterminate}
-            label={selectAllLabel(selection, labels)}
-            onChange={selection.toggleAll}
-          />
-          <span aria-hidden="true">{selectAllLabel(selection, labels)}</span>
+          <label className="dt-card-check">
+            <SelectionCheckbox
+              checked={head?.checked ?? selection.headerChecked}
+              indeterminate={head?.indeterminate ?? selection.headerIndeterminate}
+              label={selectAllLabel(selection, labels)}
+              onChange={(selected) => (drawnIds === undefined ? selection.toggleAll(selected) : selection.toggleRows(drawnIds, selected))}
+            />
+            <span aria-hidden="true">{selectAllLabel(selection, labels)}</span>
+          </label>
         </div>
       )}
       <div role="list" className="dt-cards-list">

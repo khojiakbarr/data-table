@@ -127,11 +127,14 @@ export function CardRow<TData extends RowData>({
       {hasTop ? (
         <div className="dt-card-top">
           {selection === undefined ? null : (
-            <SelectionCheckbox
-              checked={isSelected}
-              label={labels.selectRow(number)}
-              onChange={(selected) => selection.toggleRow(row.id, selected)}
-            />
+            // A label around the box, so a finger's target larger than it ticks it (the card's own click leaves a label alone).
+            <label className="dt-card-check">
+              <SelectionCheckbox
+                checked={isSelected}
+                label={labels.selectRow(number)}
+                onChange={(selected) => selection.toggleRow(row.id, selected)}
+              />
+            </label>
           )}
           {code.length > 0 ? <span className="dt-card-code">{code}</span> : null}
           <span className="dt-spacer" />

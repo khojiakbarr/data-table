@@ -116,6 +116,16 @@ describe("cards", () => {
     expect(onRowClick).not.toHaveBeenCalled()
   })
 
+  it("ticks a card from the label around its checkbox — a finger's larger target — without opening the row", async () => {
+    const user = userEvent.setup()
+    const onRowClick = vi.fn()
+    render(<Harness selection onRowClick={onRowClick} />)
+    const first = cards()[0]!
+    await user.click(first.querySelector<HTMLElement>(".dt-card-check")!)
+    expect(within(first).getByRole("checkbox")).toBeChecked()
+    expect(onRowClick).not.toHaveBeenCalled()
+  })
+
   it("leads each card with its checkbox when rows are selected, and marks the selected card", () => {
     render(<Harness selection />)
     const first = cards()[0]!
@@ -330,6 +340,65 @@ describe("cards that scroll on", () => {
     expect(titles()).toEqual(["Row 0", "Row 1", "Row 2", "Row 3"])
     fireEvent.click(screen.getByRole("button", { name: "edit" }))
     expect(titles()).toEqual(["Row 0 edited", "Row 1", "Row 2", "Row 3"])
+  })
+
+  it("leaves the cards drawn undimmed while the next page is on its way, with skeleton cards where it will stand", () => {
+    /** A host whose pages arrive when the test says so, `loading` meanwhile — the README's server recipe. */
+    function SlowCards() {
+      const [asked, setAsked] = useState(0)
+      const [delivered, setDelivered] = useState(0)
+      const instance = useDataTable<Item>({
+        id: "infinite-slow",
+        columns: itemColumns,
+        data: ALL.slice(delivered * 2, delivered * 2 + 2),
+        mode: "server",
+        rowCount: ALL.length,
+        getRowId: (row) => row.id,
+        pagination: { pageSize: 2 },
+        onQueryChange: (query) => setAsked(query.pagination.pageIndex),
+      })
+      return (
+        <>
+          <button type="button" onClick={() => setDelivered(asked)}>
+            deliver
+          </button>
+          <DataTable instance={instance} layout="cards" virtualize={false} loading={asked !== delivered} />
+        </>
+      )
+    }
+    render(<SlowCards />)
+    reachTheEnd()
+    expect(document.querySelectorAll(".dt-card-skeleton")).toHaveLength(2)
+    expect(document.querySelector(".dt-viewport")).not.toHaveClass("dt-loading")
+    fireEvent.click(screen.getByRole("button", { name: "deliver" }))
+    expect(titles()).toEqual(["Row 0", "Row 1", "Row 2", "Row 3"])
+  })
+
+  it("ticks every card drawn with a page-scoped select-all, not only the last page's", () => {
+    function SelectableCards() {
+      const [page, setPage] = useState(0)
+      const instance = useDataTable<Item>({
+        id: "infinite-select",
+        columns: itemColumns,
+        data: ALL.slice(page * 2, page * 2 + 2),
+        mode: "server",
+        rowCount: ALL.length,
+        getRowId: (row) => row.id,
+        pagination: { pageSize: 2 },
+        features: { selection: { scope: "page" } },
+        onQueryChange: (query) => setPage(query.pagination.pageIndex),
+      })
+      return <DataTable instance={instance} layout="cards" virtualize={false} />
+    }
+    render(<SelectableCards />)
+    reachTheEnd()
+    const head = document.querySelector<HTMLInputElement>(".dt-cards-head input[type='checkbox']")
+    if (!head) throw new Error("no select-all")
+    fireEvent.click(head)
+    const boxes = [...document.querySelectorAll<HTMLInputElement>(".dt-card input[type='checkbox']")]
+    expect(boxes).toHaveLength(4)
+    expect(boxes.every((box) => box.checked)).toBe(true)
+    expect(head.checked).toBe(true)
   })
 
   it("starts over from the first page when the search changes", async () => {

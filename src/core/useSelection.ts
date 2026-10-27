@@ -91,6 +91,12 @@ export interface SelectionApi {
    * current page and adds them to whatever was already selected.
    */
   toggleAll: (selected: boolean) => void
+  /**
+   * Tick or untick these rows together, leaving every other row as it was —
+   * what the `"page"` header box does for a page, for rows a host or a view
+   * puts together itself (the cards that scroll on: every page drawn).
+   */
+  toggleRows: (rowIds: readonly string[], selected: boolean) => void
   clear: () => void
   /**
    * The header checkbox is ticked: everything with nothing taken back out, or
@@ -274,6 +280,10 @@ export function useSelection({
     (rowId: string, selected: boolean) => setModel((prev) => withRow(prev, rowId, selected)),
     [],
   )
+  const toggleRows = useCallback(
+    (rowIds: readonly string[], selected: boolean) => setModel((prev) => withPageRows(prev, rowIds, selected)),
+    [],
+  )
   const toggleAll = useCallback(
     (selected: boolean) =>
       setModel((prev) =>
@@ -376,6 +386,7 @@ export function useSelection({
       isRowSelected: (rowId: string) => isRowSelected(current, rowId),
       toggleRow,
       toggleAll,
+      toggleRows,
       clear,
       headerChecked,
       /*
@@ -389,5 +400,5 @@ export function useSelection({
     }
     // `pageKey` stands for `pageIds` here for the reason `toggleAll` gives.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- pageKey stands for pageIds
-  }, [enabled, current, count, rowCount, toggleRow, toggleAll, clear, summary, headerScope, pageKey])
+  }, [enabled, current, count, rowCount, toggleRow, toggleAll, toggleRows, clear, summary, headerScope, pageKey])
 }

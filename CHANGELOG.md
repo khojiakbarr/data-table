@@ -3,6 +3,32 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.20.4
+
+### Changed
+
+- **The Columns tab is back over cards.** A card draws the columns shown, so a column hidden in the table could not
+  come back on a phone. The rail keeps the tab over cards while hiding is on (pinning alone does not bring it — a card
+  pins nothing); the columns' order is the fields' order. On a phone, beside the cards' sort and the count, the tabs
+  keep their glyphs and drop their words, which a screen reader still reads.
+
+### Fixed
+
+- **The next page of cards loads under skeleton cards, not a dimmed list.** A host hears of the next page in an
+  effect, so its `loading` came a render late and the page before's rows were kept as the new page: no skeletons, and
+  the whole list dimmed while it loaded. Rows identical to the page before's are not kept, and the cards drawn stay
+  undimmed while more load.
+- **A page-scoped select-all over cards ticks every card drawn**, not only the last page's. `selection.toggleRows`
+  ticks or unticks a set of rows together.
+- **A card's checkbox and branch toggle take a finger.** Both get a 40px target on a coarse pointer, through an
+  invisible layer, so nothing drawn moves.
+- **A detail panel stays on screen in a table wider than its viewport** — a timeline's, or one of many columns. It
+  sticks to the start edge at the visible width (`--dt-viewport-width`).
+- **Timeline:** a tick at `at: "start"` stands inside its day, not 2px into the day before; a page's «continued» group
+  header has the pane's own cell, so the grid and markers run through it; and `scrollTo` no longer throws away the
+  person's scroll when the pinned columns start or stop scrolling with the pane (a phone turned).
+- **The rail's count is grouped** like the pager's: «1 200/25 000».
+
 ## 0.20.3
 
 ### Fixed

@@ -135,6 +135,15 @@
    */
   --dt-row-strong-bg: color-mix(in srgb, var(--dt-accent) 18%, var(--dt-bg));
   --dt-row-soft-bg: color-mix(in srgb, var(--dt-accent) 5%, var(--dt-bg));
+  /*
+   * Secondary text on a toned band — row numbers, a card's code, subtitle and
+   * field labels. --dt-muted-fg is tuned for the plain surface and falls to
+   * 3.93:1 on the strong band (18% accent), under WCAG AA's 4.5:1 for text;
+   * pulled 30% of the way to --dt-fg it clears AA on both bands in both
+   * themes. Derived, not a literal, so the dark theme, muiTokens and a host's
+   * own --dt-muted-fg / --dt-fg move it along with them.
+   */
+  --dt-tone-muted-fg: color-mix(in srgb, var(--dt-muted-fg) 70%, var(--dt-fg));
 
   /* footer */
   /*
@@ -2851,6 +2860,14 @@
 
 .dt-tr[data-dt-tone]:hover .dt-td {
   background: var(--dt-row-hover);
+}
+
+/* Secondary text on a band reads at AA — see --dt-tone-muted-fg. */
+.dt-tr[data-dt-tone] .dt-row-number,
+.dt-card[data-dt-tone] .dt-card-code,
+.dt-card[data-dt-tone] .dt-card-subtitle,
+.dt-card[data-dt-tone] .dt-card-field dt {
+  color: var(--dt-tone-muted-fg);
 }
 
 /* ---------- timeline ---------- *

@@ -52,6 +52,7 @@ const INHERITED_TOKENS = [
   "--dt-card-skeleton-avatar-size",
   "--dt-edge-size",
   "--dt-edge-color",
+  "--dt-tone-muted-fg",
 ]
 
 /** A preset with its comments removed, so prose cannot pass for a mapping. */
@@ -122,6 +123,25 @@ const resolvedTokenValue = (token: string, theme: "light" | "dark"): string => {
 }
 
 /**
+ * Evaluates a `color-mix(in srgb, var(--a) P%, var(--b))` token to a hex, the
+ * way the browser mixes in sRGB: channel by channel, P% of the first colour.
+ * Anything else is returned as it is. Only the shape the tone tokens use is
+ * understood — a token written another way fails the hex parse loudly rather
+ * than passing on a guess.
+ */
+const resolveMix = (value: string, theme: "light" | "dark"): string => {
+  const mix = value.match(/^color-mix\(in srgb,\s*var\((--dt-[a-z0-9-]+)\)\s+([\d.]+)%,\s*var\((--dt-[a-z0-9-]+)\)\s*\)$/)
+  if (!mix) return value
+  const [, first = "", share = "0", second = ""] = mix
+  const a = resolveMix(resolvedTokenValue(first, theme), theme)
+  const b = resolveMix(resolvedTokenValue(second, theme), theme)
+  const weight = Number(share) / 100
+  const channel = (hex: string, at: number) => Number.parseInt(hex.slice(1 + at * 2, 3 + at * 2), 16)
+  const mixed = [0, 1, 2].map((at) => Math.round(channel(a, at) * weight + channel(b, at) * (1 - weight)))
+  return `#${mixed.map((c) => c.toString(16).padStart(2, "0")).join("")}`
+}
+
+/**
  * Approximates CSS specificity for the simple selectors these theme files
  * use (classes and attribute selectors only — no ids or type selectors), by
  * counting `.class` and `[attr=value]` components, including ones nested
@@ -164,7 +184,7 @@ describe("base stylesheet token extraction", () => {
   // preset tests below passing vacuously with an empty token list.
   it("finds the base tokens", () => {
     expect(baseTokens.length).toBeGreaterThan(0)
-    expect(new Set(baseTokens).size).toBe(54)
+    expect(new Set(baseTokens).size).toBe(55)
   })
 
   it("matches digit-suffixed token names", () => {
@@ -581,6 +601,19 @@ describe("base palette", () => {
       const fg = resolvedTokenValue("--dt-muted-fg", theme)
       expect(contrastRatio(fg, resolvedTokenValue("--dt-bg", theme))).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(fg, resolvedTokenValue("--dt-row-stripe", theme))).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it("prints secondary text on a toned band at WCAG AA in both themes", () => {
+    // A strong band is 18% accent over the surface; --dt-muted-fg on it was
+    // 3.93:1 in the light theme. Row numbers and a card's code, subtitle and
+    // field labels sit on that band, and they are TEXT, so the floor is 4.5:1.
+    for (const theme of ["light", "dark"] as const) {
+      const fg = resolveMix(resolvedTokenValue("--dt-tone-muted-fg", theme), theme)
+      for (const band of ["--dt-row-strong-bg", "--dt-row-soft-bg"]) {
+        const bg = resolveMix(resolvedTokenValue(band, theme), theme)
+        expect({ theme, band, ratio: contrastRatio(fg, bg) >= 4.5 }).toEqual({ theme, band, ratio: true })
+      }
     }
   })
 

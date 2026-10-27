@@ -1,6 +1,7 @@
 import type { DocSection } from "../model"
 import { accessibility } from "./accessibility"
 import { apiReference } from "./apiReference"
+import { cardTopics } from "./featureCards"
 import { columnTopics } from "./featureColumns"
 import { interactionTopics } from "./featureInteractions"
 import { rowTopics } from "./featureRows"
@@ -12,8 +13,8 @@ import { styling } from "./styling"
 const features: DocSection = {
   id: "features",
   title: "Features",
-  summary: "Columns people can rearrange, rows they can select, number, total, edit and expand.",
-  topics: [...columnTopics, ...rowTopics, ...interactionTopics],
+  summary: "Columns people can rearrange, rows they can select, number, total, edit and expand — as cards on a phone.",
+  topics: [...columnTopics, ...rowTopics, ...interactionTopics, ...cardTopics],
 }
 
 /**

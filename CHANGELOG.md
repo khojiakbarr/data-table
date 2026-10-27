@@ -3,6 +3,45 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.20.3
+
+### Fixed
+
+- **`fitColumnsOnLoad` no longer marks the layout customised.** The fitted widths are the table's default, kept apart
+  from the person's in a new optional layout key, `fittedSizing`: the Reset link stays dark on a table nobody
+  arranged, on every visit. A width the person drags still counts and wins over the fit; *Reset width* and Reset
+  return a column to its fitted width, and the fit is stored again after a Reset. Turning the option off drops a
+  stored fit.
+- **A width dragged to exactly a column's declared `size` is kept** — it was dropped and re-fitted on the next load.
+- **The fit measures what is drawn, and only that.** The row-number column is no longer fitted (its width follows
+  the row count) and *Fit all columns* leaves it there too; a header's screen-reader-only text no longer widens it;
+  the totals row is measured; a group label widens the columns under it, as *Fit all* does; and the fit waits, a
+  second at most, for web fonts still loading.
+- **Secondary text on a toned row reads at WCAG AA.** Row numbers and a card's code, subtitle and field labels on a
+  `"strong"` band were 3.93:1 in the light theme; a derived `--dt-tone-muted-fg` colours them there.
+- **Cards with no `height` ask for one page at a time.** The mark after the last card was watched in the table's
+  viewport, which grows with its cards when the table has no `height`: the mark was always in view, so a list of
+  25 000 rows asked for every page at once and drew every card. It is watched against the page now, and in the
+  viewport only while that scrolls.
+- **Cards draw earlier pages as they are now.** A table that pages its own rows cuts every page from its rows on
+  each render, so an edit, an open branch or an open group on an earlier page shows at once instead of the copy
+  kept when the page was first drawn. A server table keeps each page's top-level rows and opens their branches as
+  the expansion says now, so a tree opened on an earlier page shows its children and no other row goes missing.
+- **An open group starts a server list over.** It is part of the query a server answers with other rows, so the
+  pages kept no longer hold rows under the wrong group; a server list that does not reach back to the first page
+  — cards switched on at page 3 — asks for the first.
+- **A server table without `getRowId` draws every page in cards.** Its ids are places on a page, so every page's
+  rows were taken for the first page's and dropped; rows are told apart by page now.
+
+### Notes
+
+- A layout saved by 0.20.0–0.20.2 with the fit on holds its fitted widths as the person's own, so that table keeps
+  offering Reset until it is pressed once: the two cannot be told apart.
+- A custom `LayoutStorage` now sees `fittedSizing` in `save()`. The instance gains `fittedSizing`,
+  `setFittedSizing` and `hasRowId`.
+- A server table's earlier pages in cards hold the data the server sent then: show a write to one by changing the
+  query or going back to the first page.
+
 ## 0.20.2
 
 ### Fixed

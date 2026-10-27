@@ -1316,6 +1316,14 @@ read.
 ## Timeline (Gantt)
 
 ```tsx
+import { toIsoDay, type IsoDay } from "@hojiakbar_dev/data-table"
+
+// The user's own calendar day. Not toISOString().slice(0, 10): that is UTC's day,
+// still yesterday in Tashkent until 05:00. toIsoDay is null only for a year outside 0–9999.
+const today = toIsoDay(new Date()) ?? "1970-01-01"
+const deadline = "2026-11-30"
+const short = (day: IsoDay) => `${day.slice(8)}.${day.slice(5, 7)}` // «27.10»
+
 const table = useDataTable({
   id: "stages",
   data: departments,
@@ -1362,7 +1370,7 @@ items, and it is read on every render, so it may be an inline function:
 | `{ kind: "bar", variant: "actual", progress, tone }` | A track filled to `progress` while `tone` is `"primary"` (the default); a solid bar once `"success"`. |
 | `{ kind: "bar", variant: "overrun" }` | Red stripes: the days past the plan. Drawn over the actual bar whatever order you list them in. |
 | `size: "thick"` | A taller bar, for a row that sums the rows under it. |
-| `{ kind: "point", shape: "dot", date }` | A dot in the middle of its day — a payment. |
+| `{ kind: "point", shape: "dot", date }` | A dot in the middle of its day — a payment. `at: "start"` stands it where a bar starting that day begins. |
 | `{ kind: "point", shape: "tick", date }` | A capped line at the end of its day — a due day. |
 
 Dates are `YYYY-MM-DD` calendar days and both ends of a bar are **inclusive**:
@@ -1373,7 +1381,8 @@ dropped; a point outside the range is not drawn.
 
 **Markers** draw a line down every row and a chip in the header: `at: "middle"`
 (the default) for a moment such as today, `"end"` for a limit such as a
-deadline, which lasts the whole day; `dashed` for the latter. The header prints
+deadline, which lasts the whole day, `"start"` for a day's beginning, where a
+bar starting that day begins; `dashed` for a limit. The header prints
 the months across the top — each month's name sticks at the edge of the
 visible pane while its month scrolls under your pinned columns — and the days
 (`"day"`) or the Mondays (`"week"`) below; weekends are shaded at `"day"`.
@@ -1492,8 +1501,9 @@ selection's checkbox leads the card, and a select-all box heads the list;
 of the list; skeleton cards while the first page loads — in the cards' own
 shape, a bar in each place a column fills, so nothing jumps when the rows
 arrive — dimmed cards while a refetch runs; group headings of a grouped table, whose grouped column the cards
-under them do not repeat; the toolbar, the status bar and the pager; the side
-bar, whose panel opens over the cards; and the sort (below). What it leaves to
+under them do not repeat; the toolbar and the status bar — and the pager only
+with `infiniteCards={false}`, since cards scroll on; the side bar, whose panel
+opens over the cards; and the sort (above). What it leaves to
 the table: the column menu, cell editing, `onRowContextMenu` (a phone has no
 right click), the timeline. A card is not a Tab stop of its own — the keyboard
 reaches a record through a link a cell draws, as in the table. Every card of a

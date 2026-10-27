@@ -135,13 +135,19 @@ type TimelineItem =
       tone?: "primary" | "success" | "danger" | "neutral";  // actual: under way, or done
       progress?: number;                                    // 0–100, fills an actual bar
       size?: "regular" | "thick"; title?: string }
-  | { kind: "point"; date: IsoDay; shape: "dot" | "tick"; tone?: …; title?: string }`}
+  | { kind: "point"; date: IsoDay; shape: "dot" | "tick"; tone?: …; title?: string;
+      at?: "start" | "middle" | "end" }                     // dot: middle, tick: end`}
       />
       <p>
         <code>zoom</code> is <code>"day"</code> (30px a day, weekends shaded), <code>"week"</code> (14px, Mondays
         labelled) or <code>"month"</code> (5px); <code>dayWidth</code> changes any of them. A bar crossing the range is
         cut at the edge, never dropped. <code>scrollTo</code> brings a day into view when the pane appears and when
         the zoom or the range changes — never on an ordinary render.
+      </p>
+      <p>
+        A marker's <code>at</code> places its line in the day the same way: <code>"middle"</code> (the default) for a
+        moment such as today, <code>"end"</code> for a limit such as a deadline, <code>"start"</code> for a day's
+        beginning, where a bar starting that day begins.
       </p>
       <p>
         Give rows that head others a band with <code>{"<DataTable getRowTone>"}</code> — <code>"strong"</code> or{" "}

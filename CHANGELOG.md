@@ -21,6 +21,16 @@ releases are summarised in one line rather than reconstructed.
   margin, a flex row's gap, and an icon or an image by its drawn width; hidden and absolutely placed elements count
   for nothing.
 
+## 0.20.0
+
+### Added
+
+- **Fit on load.** `<DataTable fitColumnsOnLoad />` fits the columns to the first rows drawn, once: every column
+  nobody has sized — no drag, no fit, nothing in the stored layout — takes the width of its widest drawn cell or its
+  header, at most twice its declared `size` (`fitColumnsOnLoad={{ maxGrowth: 3 }}` for more; `maxSize` still wins).
+  The widths are kept, so the columns hold still through a page, a search or a filter. Cards are not fitted. Off by
+  default; `FitColumnsOnLoad` names the options.
+
 ## 0.19.0
 
 ### Added

@@ -17,6 +17,7 @@ import type { SelectionSummary } from "../core/useSelection"
 import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
 import { useFitOnLoad, type FitColumnsOnLoad } from "../core/useFitOnLoad"
+import { useViewportWidth } from "../core/useViewportWidth"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
 import { useCardLayout } from "../core/useCardLayout"
@@ -616,6 +617,8 @@ export function DataTable<TData extends RowData>({
   const startPinned = isCards ? 0 : table.getStartTotalSize()
   const endPinned = isCards ? 0 : table.getEndTotalSize()
   const pinsScroll = usePinsScroll(viewportRef, startPinned + endPinned, !isCards)
+  // A detail panel fits what is on screen, not the whole width of a wide table.
+  useViewportWidth(viewportRef, renderDetail !== undefined && !isCards)
   // The fades say which edge has more to scroll to — a phone draws no scrollbar (0.16).
   const edgesRef = useRef<HTMLDivElement>(null)
   useIsomorphicLayoutEffect(() => {
@@ -1052,7 +1055,8 @@ export function DataTable<TData extends RowData>({
         />
 
         <div
-          className={classNames("dt-viewport", showProgress && "dt-loading")}
+          // Cards asking for their next page show skeleton cards where it will stand; the ones drawn stay as they are.
+          className={classNames("dt-viewport", showProgress && !(infiniteOn && infinite.isLoadingMore) && "dt-loading")}
           data-dt-unbounded={unbounded && resolvedHeight === undefined ? "" : undefined}
           ref={viewportRef}
           /*

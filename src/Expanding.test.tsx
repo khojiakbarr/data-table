@@ -1,7 +1,7 @@
 import { createColumnHelper } from "@tanstack/react-table"
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DataTable } from "./components/DataTable"
 import { useDataTable, type DataTableFeatures } from "./useDataTable"
 
@@ -219,5 +219,25 @@ describe("expandable rows", () => {
     // Reading position is not an arrangement worth restoring.
     render(<WithDetail />)
     expect(screen.queryByTestId("detail")).toBeNull()
+  })
+})
+
+describe("a detail panel on a table wider than its viewport", () => {
+  it("is told the viewport's visible width, to fit what is on screen rather than every column", () => {
+    const width = vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(function (this: Element) {
+      return this.classList.contains("dt-viewport") ? 480 : 0
+    })
+    function Wide() {
+      const instance = useDataTable<{ id: string; name: string }>({
+        id: "detail-width",
+        columns: [createColumnHelper<DataTableFeatures, { id: string; name: string }>().accessor("name", { header: "Name" })],
+        data: [{ id: "a", name: "A" }],
+        getRowId: (row) => row.id,
+      })
+      return <DataTable instance={instance} renderDetail={() => <div />} virtualize={false} />
+    }
+    render(<Wide />)
+    expect(document.querySelector<HTMLElement>(".dt-viewport")?.style.getPropertyValue("--dt-viewport-width")).toBe("480px")
+    width.mockRestore()
   })
 })

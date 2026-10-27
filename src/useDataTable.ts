@@ -2200,6 +2200,12 @@ export function useDataTable<TData extends RowData>({
     setFittedSizing,
     expanded,
     mode,
+    /*
+     * The host keys its rows (`getRowId`). Without it a row's id is its place
+     * on its page, so two pages share ids — what lets the cards that scroll on
+     * tell a row met twice from two rows that only share a position.
+     */
+    hasRowId: getRowId !== undefined,
     query,
     pagination: paginationApi,
     filtering: filteringApi,

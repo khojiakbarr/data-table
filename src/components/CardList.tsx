@@ -20,6 +20,11 @@ export interface CardListProps<TData extends RowData> {
   instance: DataTableInstance<TData>
   /** The rows to draw — the table's row model, one page of it with pagination on. */
   rows: readonly Row<DataTableFeatures, TData>[]
+  /**
+   * A key per row, unique across the pages drawn (`useInfiniteRows`): without a host `getRowId` every page has a
+   * row "0". Absent, a row's id is its key.
+   */
+  rowKeys?: readonly string[] | undefined
   /** Rows already on earlier pages, so a card's number counts from the table. */
   rowIndexOffset: number
   labels: DataTableLabels
@@ -58,6 +63,7 @@ export interface CardListProps<TData extends RowData> {
 export function CardList<TData extends RowData>({
   instance,
   rows,
+  rowKeys,
   rowIndexOffset,
   labels,
   skeleton,
@@ -102,6 +108,7 @@ export function CardList<TData extends RowData>({
       <div role="list" className="dt-cards-list">
         {rows.map((row, position) => {
           const original = row.original
+          const key = rowKeys?.[position] ?? row.id
           if (isGroupRow(original)) {
             const depth = Math.max(0, original.path.length - 1)
             const valueColumn = row.getAllCells().find((cell) => cell.column.id === grouping.columns[depth])?.column
@@ -109,7 +116,7 @@ export function CardList<TData extends RowData>({
             const expanded = grouping.isExpanded(original.path)
             return (
               <div
-                key={row.id}
+                key={key}
                 role="listitem"
                 className="dt-card-group"
                 style={depth > 0 ? { paddingInlineStart: `calc(var(--dt-indent) * ${String(depth)})` } : undefined}
@@ -127,7 +134,7 @@ export function CardList<TData extends RowData>({
           }
           return (
             <CardRow
-              key={row.id}
+              key={key}
               row={row}
               places={places}
               number={rowNumberAt(position, rowIndexOffset)}
@@ -170,12 +177,23 @@ export function CardList<TData extends RowData>({
   )
 }
 
+/**
+ * The box the list scrolls in: the table's viewport while it scrolls (a `height`), else the page (null). A viewport
+ * with no height of its own grows with its cards, so in its own box the mark is always in view and every page would
+ * be asked for at once; watched against the page, it is in view only once the list is scrolled to its end, and an
+ * app's own scrolling area still clips it. Read afresh each time more cards are drawn.
+ */
+function scrollingBox(mark: HTMLElement): HTMLElement | null {
+  const viewport = mark.closest<HTMLElement>(".dt-viewport")
+  return viewport !== null && viewport.scrollHeight > viewport.clientHeight ? viewport : null
+}
+
 /** The columns a card draws by itself (the selection) or not at all (row numbers, the timeline). */
 const isChrome = (id: string): boolean => isSelectionColumn(id) || isRowNumberColumn(id) || isTimelineColumn(id)
 
 /**
- * The mark after the last card: in view — or within a screen of it, in the list's own scrolling box — it asks for
- * the next page. Watched afresh each time more cards are drawn, so a mark still in view after a short page asks
+ * The mark after the last card: in view — or within 300px of it, while the list scrolls in a box of its own (see
+ * {@link scrollingBox}) — it asks for the next page. Watched afresh each time more cards are drawn, so a mark still in view after a short page asks
  * again rather than waiting for a scroll that will never come.
  */
 function MoreRowsMark({ onVisible, drawn }: { onVisible: () => void; drawn: number }) {
@@ -192,7 +210,7 @@ function MoreRowsMark({ onVisible, drawn }: { onVisible: () => void; drawn: numb
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) ask.current()
       },
-      { root: mark.closest(".dt-viewport"), rootMargin: "0px 0px 300px 0px" },
+      { root: scrollingBox(mark), rootMargin: "0px 0px 300px 0px" },
     )
     observer.observe(mark)
     return () => observer.disconnect()

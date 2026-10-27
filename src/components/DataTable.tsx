@@ -411,14 +411,15 @@ export interface DataTableProps<TData extends RowData> {
   /** Render only the visible window of rows; `false` renders every row (printing, very small tables). Default true. */
   virtualize?: boolean
   /**
-   * Fit the columns to the first rows drawn, once: every column the person
-   * has not sized — no drag, no fit, nothing stored — takes the width of its
-   * widest drawn cell or its header, at most `maxGrowth` (default 2) times
-   * its declared `size`. The widths are stored with the layout, so the
-   * columns hold still afterwards; the header menu's fit and reset stay.
+   * Fit the columns to the first rows drawn, once: every column not fitted
+   * yet takes the width of its widest drawn cell, its header or its total, at
+   * most `maxGrowth` (default 2) times its declared `size`. The fitted widths
+   * are the table's default, stored with the layout apart from the person's
+   * (`fittedSizing`): they never make the layout customised, a width the
+   * person sets wins over them, and Reset width returns a column to them.
    * Cards are not fitted. Default false.
    */
-  fitColumnsOnLoad?: boolean | FitColumnsOnLoad
+  fitColumnsOnLoad?: boolean | FitColumnsOnLoad | undefined
   /**
    * Rows are on their way. With no rows yet, skeleton rows show; with rows,
    * a progress bar and dimmed rows.
@@ -685,15 +686,25 @@ export function DataTable<TData extends RowData>({
   const rows = table.getRowModel().rows
   // Cards scroll on: the pages seen are kept, one after another (`infiniteCards`).
   const infiniteOn = isCards && infiniteCards && instance.pagination.enabled
-  const { sorting: querySorting, filters: queryFilters, search: querySearch, grouping: queryGrouping } = instance.query
+  const {
+    sorting: querySorting,
+    filters: queryFilters,
+    search: querySearch,
+    grouping: queryGrouping,
+    expanded: queryExpanded,
+  } = instance.query
   const infinite = useInfiniteRows({
     enabled: infiniteOn,
     rows,
+    // A table that pages its own rows holds them all: the pages scrolled through are cut from them as they are now.
+    allRows: infiniteOn && !table.options.manualPagination ? table.getPrePaginatedRowModel().rows : undefined,
+    hasRowId: instance.hasRowId,
     pageIndex: instance.pagination.pageIndex,
     pageSize: instance.pagination.pageSize,
     rowCount: instance.pagination.rowCount,
     loading,
-    queryKey: JSON.stringify([querySorting, queryFilters, querySearch, queryGrouping, instance.pagination.pageSize]),
+    // An open group is part of the query: a server answers it with other rows, which move every page after it.
+    queryKey: JSON.stringify([querySorting, queryFilters, querySearch, queryGrouping, queryExpanded, instance.pagination.pageSize]),
     setPageIndex: instance.pagination.setPageIndex,
   })
   const leafColumns = renderedLeafColumns(table)
@@ -1077,6 +1088,7 @@ export function DataTable<TData extends RowData>({
             <CardList
               instance={instance}
               rows={infinite.rows}
+              rowKeys={infiniteOn ? infinite.keys : undefined}
               rowIndexOffset={infiniteOn ? infinite.firstPageIndex * instance.pagination.pageSize : rowIndexOffset}
               labels={labels}
               skeleton={showSkeleton ? Math.min(instance.pagination.pageSize, 6) : undefined}

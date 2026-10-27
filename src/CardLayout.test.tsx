@@ -185,37 +185,39 @@ describe("cards that scroll on", () => {
   interface Item {
     id: string
     name: string
+    children?: Item[]
   }
   const itemHelper = createColumnHelper<DataTableFeatures, Item>()
   const itemColumns = [itemHelper.accessor("name", { header: "Name", meta: { card: "title" } })]
   const ALL: Item[] = Array.from({ length: 5 }, (_, index) => ({ id: `r${index}`, name: `Row ${index}` }))
 
   /** A server host that answers each page asked for, as a list screen does — with no `loading` of its own. */
-  function ServerCards() {
+  function ServerCards({ keyed = true, rows = ALL, layout = "cards" }: { keyed?: boolean; rows?: Item[]; layout?: RowsLayout }) {
     const [page, setPage] = useState(0)
     const instance = useDataTable<Item>({
       id: "infinite",
       columns: itemColumns,
-      data: ALL.slice(page * 2, page * 2 + 2),
+      data: rows.slice(page * 2, page * 2 + 2),
       mode: "server",
-      rowCount: ALL.length,
-      getRowId: (row) => row.id,
+      rowCount: rows.length,
+      ...(keyed ? { getRowId: (row: Item) => row.id } : {}),
+      getSubRows: (row) => row.children,
       pagination: { pageSize: 2 },
       onQueryChange: (query) => setPage(query.pagination.pageIndex),
     })
-    return <DataTable instance={instance} layout="cards" virtualize={false} />
+    return <DataTable instance={instance} layout={layout} virtualize={false} />
   }
 
   // jsdom has no IntersectionObserver: this one is told by the test when the mark after the last card is in view.
-  let watchers: { callback: IntersectionObserverCallback; target: Element | null }[] = []
+  let watchers: { callback: IntersectionObserverCallback; target: Element | null; root: Element | Document | null | undefined }[] = []
   beforeEach(() => {
     watchers = []
     vi.stubGlobal(
       "IntersectionObserver",
       class {
-        private readonly watcher: { callback: IntersectionObserverCallback; target: Element | null }
-        constructor(callback: IntersectionObserverCallback) {
-          this.watcher = { callback, target: null }
+        private readonly watcher: (typeof watchers)[number]
+        constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+          this.watcher = { callback, target: null, root: options?.root }
           watchers.push(this.watcher)
         }
         observe(target: Element) {
@@ -264,6 +266,70 @@ describe("cards that scroll on", () => {
     render(<ServerCards />)
     expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull()
     expect(screen.queryByRole("tab", { name: /Columns/ })).toBeNull()
+  })
+
+  it("watches the mark against the page while the list grows with its cards, and in the viewport once it scrolls", () => {
+    const { unmount } = render(<ServerCards />)
+    // A viewport with no height of its own: in its own box the mark is always in view, and every page would be asked for.
+    expect(watchers.map((watcher) => watcher.root)).toEqual([null])
+    unmount()
+    const scrolls = vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(900)
+    render(<ServerCards />)
+    expect(watchers.map((watcher) => watcher.root)).toEqual([document.querySelector(".dt-viewport")])
+    scrolls.mockRestore()
+  })
+
+  it("draws every page of a host that keys rows by position, not only the first", () => {
+    render(<ServerCards keyed={false} />)
+    reachTheEnd()
+    reachTheEnd()
+    expect(titles()).toEqual(["Row 0", "Row 1", "Row 2", "Row 3", "Row 4"])
+  })
+
+  it("opens a branch on an earlier page under its row", async () => {
+    const user = userEvent.setup()
+    const tree = ALL.map((item, index) => (index === 0 ? { ...item, children: [{ id: "r0-a", name: "Row 0 child" }] } : item))
+    render(<ServerCards rows={tree} />)
+    reachTheEnd()
+    expect(titles()).toEqual(["Row 0", "Row 1", "Row 2", "Row 3"])
+    await user.click(screen.getByRole("button", { name: "Expand row: 1" }))
+    expect(titles()).toEqual(["Row 0", "Row 0 child", "Row 1", "Row 2", "Row 3"])
+  })
+
+  it("starts from the first page when cards open on a later one", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<ServerCards layout="table" />)
+    await user.click(screen.getByRole("button", { name: "Next page" }))
+    await user.click(screen.getByRole("button", { name: "Next page" }))
+    expect(screen.getByText("Row 4")).toBeInTheDocument()
+    rerender(<ServerCards layout="cards" />)
+    await vi.waitFor(() => expect(titles()).toEqual(["Row 0", "Row 1"]))
+  })
+
+  it("draws an edit on an earlier page of a table that pages its own rows", () => {
+    function ClientCards() {
+      const [rows, setRows] = useState(ALL)
+      const instance = useDataTable<Item>({
+        id: "infinite-client",
+        columns: itemColumns,
+        data: rows,
+        getRowId: (row) => row.id,
+        pagination: { pageSize: 2 },
+      })
+      return (
+        <>
+          <button type="button" onClick={() => setRows((all) => all.map((item, index) => (index === 0 ? { ...item, name: "Row 0 edited" } : item)))}>
+            edit
+          </button>
+          <DataTable instance={instance} layout="cards" virtualize={false} />
+        </>
+      )
+    }
+    render(<ClientCards />)
+    reachTheEnd()
+    expect(titles()).toEqual(["Row 0", "Row 1", "Row 2", "Row 3"])
+    fireEvent.click(screen.getByRole("button", { name: "edit" }))
+    expect(titles()).toEqual(["Row 0 edited", "Row 1", "Row 2", "Row 3"])
   })
 
   it("starts over from the first page when the search changes", async () => {

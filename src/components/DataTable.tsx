@@ -952,8 +952,12 @@ export function DataTable<TData extends RowData>({
    * in since the toolbar's Columns button was dropped.
    */
   const sideBarTabs: PanelTab[] = []
-  // Cards are laid out by their places, not by the columns shown: no Columns tab over them.
-  if ((flags.hiding || flags.pinning) && !isCards) sideBarTabs.push("columns")
+  /*
+   * Over cards the tab is how a column hidden in the table comes back — a card
+   * draws only the columns shown — and its order is the fields' order. Pinning
+   * alone is no reason for it there: a card pins nothing.
+   */
+  if (isCards ? flags.hiding : flags.hiding || flags.pinning) sideBarTabs.push("columns")
   /*
    * Independent of Columns: the header menu's "Filter in panel…" always
    * offers this tab when a column can be filtered, whether or not hiding or

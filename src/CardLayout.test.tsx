@@ -272,10 +272,25 @@ describe("cards that scroll on", () => {
     expect(document.querySelector(".dt-cards-more")).toBeNull()
   })
 
-  it("draws no pager and offers no Columns tab over cards", () => {
-    render(<ServerCards />)
+  it("draws no pager, and offers the Columns tab, where a column hidden in the table comes back to the cards", async () => {
+    const user = userEvent.setup()
+    function Hidden() {
+      const instance = useDataTable<Doc>({
+        id: "cards-hidden",
+        columns,
+        data: DOCS,
+        getRowId: (row) => row.id,
+        pagination: { pageSize: 2 },
+        initialLayout: { columnVisibility: { code: false } },
+      })
+      return <DataTable instance={instance} layout="cards" virtualize={false} />
+    }
+    render(<Hidden />)
     expect(screen.queryByRole("navigation", { name: "Pagination" })).toBeNull()
-    expect(screen.queryByRole("tab", { name: /Columns/ })).toBeNull()
+    expect(document.querySelector(".dt-card-code")).toBeNull()
+    await user.click(screen.getByRole("tab", { name: /Columns/ }))
+    await user.click(screen.getByRole("checkbox", { name: /Code/ }))
+    expect(document.querySelector(".dt-card-code")).not.toBeNull()
   })
 
   it("watches the mark against the page while the list grows with its cards, and in the viewport once it scrolls", () => {

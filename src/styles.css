@@ -1471,6 +1471,26 @@
   .dt-sidebar > .dt-sidebar-head > .dt-card-sort:first-child {
     margin-inline: 4px auto;
   }
+
+  /*
+   * Beside the cards' sort and the count, a phone's row has no room for two
+   * tabs' words as well (0.20.4, the Columns tab back over cards): the tabs
+   * keep their glyphs and the Filters count, and their words stay for a
+   * screen reader, which names each tab by them.
+   */
+  .dt-sidebar > .dt-sidebar-head:has(> .dt-card-sort) .dt-sidebar-tab {
+    padding-inline: 8px;
+  }
+
+  .dt-sidebar > .dt-sidebar-head:has(> .dt-card-sort) .dt-sidebar-tab-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .dt-panel-head {

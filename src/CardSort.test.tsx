@@ -43,16 +43,17 @@ interface HarnessProps {
   onQueryChange?: (query: TableQuery) => void
   russian?: boolean
   filtering?: boolean
+  hiding?: boolean
 }
 
-function Harness({ layout = "cards", sorting = true, columns = COLUMNS, onQueryChange, russian = false, filtering = true }: HarnessProps) {
+function Harness({ layout = "cards", sorting = true, columns = COLUMNS, onQueryChange, russian = false, filtering = true, hiding = true }: HarnessProps) {
   const instance = useDataTable<Lot>({
     id: "lots",
     columns,
     data: LOTS,
     mode: onQueryChange ? "server" : "client",
     ...(onQueryChange ? { onQueryChange, rowCount: LOTS.length } : {}),
-    features: { sorting },
+    features: { sorting, hiding },
     filtering,
     getRowId: (row) => row.id,
   })
@@ -78,12 +79,13 @@ describe("the cards' sort control", () => {
     expect(button.closest("[role='tablist']")).toBeNull()
   })
 
-  it("stands beside the Filters tab, and alone in the rail when there is no tab", () => {
+  it("stands beside the rail's tabs, and alone in the rail when there is no tab", () => {
     const { unmount } = render(<Harness />)
     expect(screen.getByRole("tab", { name: /Filters/ })).toBeInTheDocument()
     expect(sortButton()).toBeInTheDocument()
     unmount()
-    render(<Harness filtering={false} />)
+    // No filters and no hiding: over cards neither tab has anything to offer.
+    render(<Harness filtering={false} hiding={false} />)
     expect(screen.queryByRole("tablist")).toBeNull()
     expect(sortButton()?.closest(".dt-sidebar")).not.toBeNull()
   })

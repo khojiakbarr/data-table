@@ -474,6 +474,51 @@ describe("scrollTo", () => {
     expect(viewport.scrollLeft).toBe(50)
   })
 
+  it("leaves a pane the person scrolled where it is when the pinned columns stop scrolling with it", () => {
+    let width = 240
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(function (this: Element) {
+      return this.classList.contains("dt-viewport") ? width : 0
+    })
+    const rect = Element.prototype.getBoundingClientRect
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      if (!this.classList.contains("dt-timeline-scale")) return rect.call(this)
+      return new DOMRect(-(this.closest(".dt-viewport")?.scrollLeft ?? 0), 0, 0, 0)
+    })
+    // A ResizeObserver the test drives: the viewport widened, as a phone turned on its side.
+    const observers: { callback: ResizeObserverCallback; targets: Element[] }[] = []
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        private readonly entry: { callback: ResizeObserverCallback; targets: Element[] }
+        constructor(callback: ResizeObserverCallback) {
+          this.entry = { callback, targets: [] }
+          observers.push(this.entry)
+        }
+        observe(target: Element) {
+          this.entry.targets.push(target)
+        }
+        unobserve() {}
+        disconnect() {
+          this.entry.targets = []
+        }
+      },
+    )
+    render(<Harness pinStage scrollTo="2026-09-29" />)
+    const viewport = document.querySelector<HTMLElement>(".dt-viewport")
+    if (!viewport) throw new Error("no viewport")
+    expect(viewport).toHaveAttribute("data-dt-pins-scroll")
+    viewport.scrollLeft = 5
+    width = 1000
+    act(() => {
+      for (const { callback, targets } of observers) {
+        if (targets.includes(viewport)) callback([{ target: viewport, contentRect: new DOMRect(0, 0, width, 600) } as unknown as ResizeObserverEntry], {} as ResizeObserver)
+      }
+    })
+    expect(viewport).not.toHaveAttribute("data-dt-pins-scroll")
+    expect(viewport.scrollLeft).toBe(5)
+    vi.unstubAllGlobals()
+  })
+
   it("brings the day a third into a phone's viewport, past pinned columns that scroll there rather than hide it (0.16)", () => {
     vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(function (this: Element) {
       return this.classList.contains("dt-viewport") ? 240 : 0
@@ -523,7 +568,35 @@ function GroupedHarness({ getItems }: { getItems: (row: Leaf) => readonly Timeli
   return <DataTable instance={instance} virtualize={false} />
 }
 
+/** A server page that opens mid-group: its header is the client's «continued» row. */
+function ContinuedHarness() {
+  const instance = useDataTable<Leaf>({
+    id: "timeline-continued",
+    columns: leafColumns,
+    data: [leafOf(0), leafOf(1)],
+    mode: "server",
+    rowCount: 2,
+    getRowId: (row) => row.id,
+    startPath: ["open"],
+    initialLayout: { grouping: ["status"], expanded: [["open"]] },
+    timeline: { start: "2026-08-31", end: "2026-12-07", zoom: "week", getItems: () => [], markers: MARKERS },
+  })
+  return <DataTable instance={instance} virtualize={false} />
+}
+
 describe("a server-grouped page on the timeline", () => {
+  it("gives a page's «continued» header a timeline cell, so the markers run through it", () => {
+    render(<ContinuedHarness />)
+    const continued = document.querySelector<HTMLElement>(".dt-group-continued")
+    const cell = continued?.querySelector(`td[data-column-id="${TIMELINE_COLUMN_ID}"]`)
+    expect(cell?.querySelectorAll(".dt-timeline-marker")).toHaveLength(2)
+    // The group's own cell stops before the pane rather than running across it.
+    const cells = [...(continued?.children ?? [])].reduce((sum, td) => sum + ((td as HTMLTableCellElement).colSpan || 1), 0)
+    const firstRow = document.querySelector("tbody tr.dt-tr:not(.dt-group-continued)")
+    const rowCells = [...(firstRow?.children ?? [])].reduce((sum, td) => sum + ((td as HTMLTableCellElement).colSpan || 1), 0)
+    expect(cells).toBe(rowCells)
+  })
+
   it("keeps the grid and the markers across a group's header, and asks for items only for records", () => {
     const getItems = vi.fn((row: Leaf): readonly TimelineItem[] => [plan("2026-09-01", "2026-09-05"), { ...plan("2026-09-07", "2026-09-07"), title: row.name }])
     render(<GroupedHarness getItems={getItems} />)

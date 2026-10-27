@@ -1,7 +1,8 @@
 import { useContext, useMemo, useRef, useState, type RefObject } from "react"
 import { classNames } from "../core/classNames"
+import type { IsoDay } from "../core/filters"
 import { PinsScrollContext } from "../core/pinsScroll"
-import { coveredMarks, cutMonths, dayMarks, monthSpans, pointX, type MonthSpan, type TimelineMarker, type TimelineState } from "../core/timeline"
+import { coveredMarks, cutMonths, dayMarks, monthSpans, pointX, type MonthSpan, type TimelineMarker, type TimelineScale, type TimelineState } from "../core/timeline"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import type { DataTableLabels } from "../types"
 
@@ -54,17 +55,28 @@ export function TimelineHeader<TData>({ timeline, labels, pinnedStartWidth }: Ti
    * phone's Gantt opened on its first day, not on today, without it.
    */
   const pinsScroll = useContext(PinsScrollContext)
+  /*
+   * Where the last scroll put the pane, and for which day and scale. A run
+   * for the pins alone — a phone turned, a window narrowed past the pinned
+   * width — is the first scroll's correction only while the pane is still
+   * where that scroll left it: once the person has scrolled it, it stays.
+   */
+  const lastScrollRef = useRef<{ scrollTo: IsoDay; scale: TimelineScale; left: number } | null>(null)
   useIsomorphicLayoutEffect(() => {
     if (scrollTo === undefined) return
     const x = pointX(scale, scrollTo, "middle")
     const element = scaleRef.current
     const viewport = element?.closest(".dt-viewport")
     if (x === null || !element || !(viewport instanceof HTMLElement)) return
+    const last = lastScrollRef.current
+    const isPinsOnly = last !== null && last.scrollTo === scrollTo && last.scale === scale
+    if (isPinsOnly && Math.abs(viewport.scrollLeft - last.left) > 1) return
     const scroll = (): void => {
       const start = paneStart(element, viewport)
       const visible = Math.max(0, viewport.clientWidth - pinnedStartWidth)
       // A third of the way into the visible pane: the day, and some of what came before it.
       viewport.scrollLeft = Math.max(0, start + x - pinnedStartWidth - visible / 3)
+      lastScrollRef.current = { scrollTo, scale, left: viewport.scrollLeft }
     }
     /*
      * A viewport with no width yet — a table mounted before its stylesheet

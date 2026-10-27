@@ -612,3 +612,21 @@ describe("the docked side bar takes width rather than covering", () => {
     root.remove()
   })
 })
+
+describe("a timeline point at a day's start", () => {
+  it("stands a tick inside its day, as a dot, rather than 2px into the day before", () => {
+    const style = document.createElement("style")
+    style.textContent = baseStylesheet
+    document.head.appendChild(style)
+    const tick = document.createElement("span")
+    tick.className = "dt-timeline-item dt-timeline-point dt-timeline-tick dt-timeline-at-start"
+    const endTick = document.createElement("span")
+    endTick.className = "dt-timeline-item dt-timeline-point dt-timeline-tick"
+    document.body.append(tick, endTick)
+    expect(getComputedStyle(tick).getPropertyValue("margin-inline-start")).toBe("0px")
+    expect(getComputedStyle(endTick).getPropertyValue("margin-inline-start")).toBe("-2px")
+    tick.remove()
+    endTick.remove()
+    style.remove()
+  })
+})

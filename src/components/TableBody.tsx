@@ -2,13 +2,16 @@ import type { Row, RowData } from "@tanstack/react-table"
 import { useCallback, useEffect, useMemo, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react"
 import { groupValueLabel, isGroupRow } from "../core/grouping"
 import type { CellEditing } from "../core/useCellEditing"
+import { renderedLeafColumns } from "../core/pinning"
 import { rowNumberAt } from "../core/rowNumbers"
+import { isTimelineColumn } from "../core/timeline"
 import { useRowVirtualizer } from "../core/useRowVirtualizer"
 import { displayItemKey } from "../core/virtualRows"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels, RowTone } from "../types"
 import { BodyRow } from "./BodyRow"
 import { GroupBodyRow } from "./GroupBodyRow"
+import { TimelineBodyCell } from "./TimelineCell"
 
 interface TableBodyProps<TData extends RowData> {
   instance: DataTableInstance<TData>
@@ -178,6 +181,21 @@ export function TableBody<TData extends RowData>({
     ...(instance.flags.rowNumbers ? ["dt-row-number"] : []),
   ]
 
+  /*
+   * Where the group cell stops: before the timeline, when there is one, so the
+   * timeline keeps a cell of its own; the filler and end-pinned columns after
+   * it share one empty cell.
+   */
+  const timelineAt = renderedLeafColumns(instance.table).findIndex((column) => isTimelineColumn(column.id))
+  const continuedSpan =
+    timelineAt < 0
+      ? { lead: columnCount - leadingChromeCells.length, timelineId: undefined, rest: 0 }
+      : {
+          lead: timelineAt - leadingChromeCells.length,
+          timelineId: renderedLeafColumns(instance.table)[timelineAt]?.id,
+          rest: columnCount - timelineAt - 1,
+        }
+
   return (
     <tbody>
       {continuation ? (
@@ -195,11 +213,16 @@ export function TableBody<TData extends RowData>({
           {leadingChromeCells.map((chromeClass) => (
             <td key={chromeClass} className={`dt-td ${chromeClass}`} />
           ))}
-          <td className="dt-td dt-group-cell" colSpan={columnCount - leadingChromeCells.length}>
+          <td className="dt-td dt-group-cell" colSpan={continuedSpan.lead}>
             <div className="dt-lead">
               <span className="dt-group-value">{labels.groupContinued(continuation)}</span>
             </div>
           </td>
+          {/* The timeline's own cell, so its grid, weekends and markers run through this row as through the rest. */}
+          {continuedSpan.timelineId === undefined ? null : (
+            <TimelineBodyCell columnId={continuedSpan.timelineId} timeline={instance.timeline} />
+          )}
+          {continuedSpan.rest > 0 ? <td className="dt-td" colSpan={continuedSpan.rest} /> : null}
         </tr>
       ) : null}
       {top > 0 ? <SpacerRow height={top} span={columnCount} /> : null}

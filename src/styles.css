@@ -1910,6 +1910,16 @@
 }
 
 .dt-detail {
+  /*
+   * A table wider than its viewport — a timeline, many columns — spreads its
+   * detail cell across all of it, most of it off screen. The panel stays at
+   * the start edge as the row scrolls and is as wide as what is visible
+   * (`--dt-viewport-width`, written by `useViewportWidth`).
+   */
+  position: sticky;
+  inset-inline-start: 0;
+  box-sizing: border-box;
+  max-inline-size: var(--dt-viewport-width, 100%);
   padding: 12px 14px;
 }
 
@@ -2801,7 +2811,35 @@
  * A finger's target is at least 40 by 40 CSS pixels, through a layer nobody
  * sees: the button is drawn as small as the tabs beside it, and nothing moves.
  */
+/* A card's own checkbox: a label around it, so a target larger than the box can tick it. */
+.dt-card-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 @media (pointer: coarse) {
+  /*
+   * A card's checkbox and branch toggle are 16 and 18px: a finger needs 40.
+   * An invisible layer gives it that, centred on the control, so nothing
+   * drawn moves.
+   */
+  .dt-card-check::after,
+  :is(.dt-card, .dt-card-group) .dt-expand::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 40px);
+    height: max(100%, 40px);
+    transform: translate(-50%, -50%);
+  }
+
+  :is(.dt-card, .dt-card-group) .dt-expand {
+    position: relative;
+  }
+
   .dt-card-sort::after {
     content: "";
     position: absolute;
@@ -3052,6 +3090,11 @@
   margin-inline-start: -2px;
   border: 0;
   background: var(--_dt-timeline-color);
+}
+
+/* A tick at a day's start stands inside its day, on its left edge, not 2px into the day before. */
+.dt-timeline-point.dt-timeline-tick.dt-timeline-at-start {
+  margin-inline-start: 0;
 }
 
 .dt-timeline-point.dt-timeline-tick::before {

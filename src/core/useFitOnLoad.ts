@@ -3,6 +3,7 @@ import { useRef, type RefObject } from "react"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import { renderedLeafColumns } from "./pinning"
 import { isRowNumberColumn } from "./rowNumbers"
+import { afterFontsLoad } from "./afterFontsLoad"
 import { columnBounds, type ColumnBounds } from "./sizing"
 import { fitColumnWidth, widenGroupsToFitLabels } from "./useAutosize"
 import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
@@ -29,11 +30,6 @@ const TANSTACK_DEFAULT_SIZE = 150
 const DEFAULT_MAX_GROWTH = 2
 /** Frames to wait for the first rows to reach the DOM — a virtualised body draws them a frame late. */
 const MAX_WAIT_FRAMES = 3
-/**
- * The longest a fit waits for web fonts. A font that never arrives must not
- * leave the table unfitted; past this the fit measures with what is there.
- */
-const MAX_FONT_WAIT_MS = 1000
 
 /**
  * The bounds a column is fitted within on load: its own, with the ceiling
@@ -67,40 +63,6 @@ export function columnsToFit<TData extends RowData>(
 /** Whether the table's body holds a drawn data row to measure. */
 function hasDrawnRow(element: HTMLTableElement): boolean {
   return element.querySelector(":scope > tbody > tr:not(.dt-detail-row) > td[data-column-id]") !== null
-}
-
-/**
- * Run `measure` once the web fonts the table draws with have loaded — or
- * straight away when nothing is loading, as with fonts already cached.
- *
- * A canvas measures a font that has not arrived with the fallback family, and
- * the width that came out of it was the one stored. The layout read first is
- * there because a font starts loading when laid-out text first needs it: in
- * the first layout effect no layout has run yet, and `status` could still
- * read "loaded" for a font the new rows are about to ask for.
- *
- * @returns A cancel for a wait still pending.
- */
-function afterFontsLoad(element: HTMLElement, measure: () => void): () => void {
-  const fonts: FontFaceSet | undefined = element.ownerDocument.fonts
-  if (fonts !== undefined) void element.offsetWidth
-  if (fonts === undefined || fonts.status === "loaded") {
-    measure()
-    return () => undefined
-  }
-  let isSettled = false
-  const settle = () => {
-    if (isSettled) return
-    isSettled = true
-    clearTimeout(timer)
-    measure()
-  }
-  const timer = setTimeout(settle, MAX_FONT_WAIT_MS)
-  fonts.ready.then(settle, settle)
-  return () => {
-    isSettled = true
-    clearTimeout(timer)
-  }
 }
 
 /**

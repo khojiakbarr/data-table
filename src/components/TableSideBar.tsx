@@ -1,5 +1,6 @@
 import type { RowData } from "@tanstack/react-table"
 import { useRef, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react"
+import { formatCount } from "../core/formatCount"
 import type { DropSide } from "../core/reorder"
 import type { DataTableInstance } from "../useDataTable"
 import type { DataTableLabels } from "../types"
@@ -209,7 +210,7 @@ export function TableSideBar<TData extends RowData>({
       {shown ? (
         <span className="dt-sidebar-shown">
           {/* Drawn for the eye, spoken as words: «20/200» read aloud is a fraction. */}
-          <span aria-hidden="true">{`${shown.count}/${shown.total}`}</span>
+          <span aria-hidden="true">{`${formatCount(shown.count)}/${formatCount(shown.total)}`}</span>
           <span className="dt-sr-only">{labels.shownOfTotal(shown.count, shown.total)}</span>
         </span>
       ) : null}

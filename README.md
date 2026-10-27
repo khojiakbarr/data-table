@@ -1475,9 +1475,16 @@ table the pages scrolled through are drawn one after another, the next asked
 for as the last card comes into view, with skeleton cards where it will stand
 — and no pager. The mark after the last card is watched in the table's
 viewport while that scrolls (a `height`), and against the page otherwise, so a
-list that grows with its cards asks for one page at a time. The rail drops its
-Columns tab over cards and says, at its end on a phone, how many rows are drawn
-of how many: «20/200». `infiniteCards={false}` keeps the pager.
+list that grows with its cards asks for one page at a time. The rail says, at
+its end on a phone, how many rows are drawn of how many: «1 200/25 000».
+`infiniteCards={false}` keeps the pager.
+
+A card draws the columns shown, so the rail keeps its **Columns** tab over
+cards (0.20.4) while hiding is on: a column hidden in the table comes back
+there, and the columns' order is the fields' order. Pinning alone does not
+bring the tab — a card pins nothing. On a phone, beside the sort and the count,
+the tabs keep their glyphs and drop their words, which a screen reader still
+reads.
 
 A table that pages its own rows holds them all, so the pages are cut from them
 on every render: an edit, an open branch or an open group on an earlier page
@@ -1512,7 +1519,9 @@ an invisible layer, so nothing drawn moves; its text is a share of
 
 What a card keeps: a click opens the row (`onRowClick`), except on a control
 inside it, inside its open detail, or in something a cell drew in a portal; the
-selection's checkbox leads the card, and a select-all box heads the list;
+selection's checkbox leads the card — a 40px target on a touch screen — and a
+select-all box heads the list, which with `selection: { scope: "page" }` ticks
+every card drawn;
 `renderDetail` opens inside the card; `totals` are a card that stays at the foot
 of the list; skeleton cards while the first page loads — in the cards' own
 shape, a bar in each place a column fills, so nothing jumps when the rows

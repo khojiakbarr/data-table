@@ -68,6 +68,11 @@ function Resizing() {
         <li>
           Fitting measures the rows currently rendered — on a virtualised table, the current viewport.
         </li>
+        <li>
+          <code>{"<DataTable fitColumnsOnLoad />"}</code> fits every column once, to the first rows drawn, at most
+          twice its <code>size</code> (<code>{"{ maxGrowth: 3 }"}</code> for more). Those widths are the table's
+          default: stored with the layout, never shown as a change to reset, and under any width a person drags.
+        </li>
       </ul>
       <ReadMore anchor="column-widths">Column widths</ReadMore>
     </>

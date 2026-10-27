@@ -177,10 +177,15 @@ readable by widening the group's children when they come up short.
 
 **Fit on load.** `<DataTable fitColumnsOnLoad />` fits the columns to the first rows drawn,
 once: every column nobody has sized — no drag, no fit, nothing in the stored layout — takes
-the width of its widest drawn cell or its header, at most twice its declared `size`
-(`fitColumnsOnLoad={{ maxGrowth: 3 }}` for more; `maxSize` still wins). The widths go into
-the layout, so a stored layout keeps them and the columns hold still through a page, a
-search or a filter — the menu's fit and *Reset width* stay for later. Cards are not fitted.
+the width of its widest drawn cell, its header or its total, at most twice its declared `size`
+(`fitColumnsOnLoad={{ maxGrowth: 3 }}` for more; `maxSize` still wins). The fitted widths are
+the table's own default, not the person's choice: they are stored with the layout
+(`fittedSizing`) so the columns hold still through a page, a search, a filter and a reload,
+but they never light the Reset link, a width the person drags still wins over them, and
+*Reset width* returns a column to its fitted width rather than its declared one. The row-number
+column is left alone, a group's label widens the columns under it, and the measuring waits
+(a second at most) for web fonts still loading. Turned off, the stored fit is dropped. Cards
+are not fitted.
 
 **Keyboard.** With a resize handle focused, ← and → change the width by 10px,
 Shift-← and Shift-→ by 50px, Enter fits the column.
@@ -1466,15 +1471,26 @@ renders through the column's own `cell`, exactly as in the table. A blank value
 menu, a badge with no accessor) always draws its cell.
 
 **Cards scroll on** (0.15.0, `infiniteCards`, on by default): on a paged
-table the pages scrolled through are kept and drawn one after another, the
-next asked for as the last card comes into view (a mark after it, watched in
-the list's own scrolling box), with skeleton cards where it will stand — and
-no pager. The rail drops its Columns tab over cards and says, at its end on a
-phone, how many rows are drawn of how many: «20/200». A change of the query
-apart from its page — sorting, filters, search, the page size — or a step
-back to an earlier page starts over. A server host passes `loading` while a
-page is on its way, so the rows still on hand are not kept as the new page's;
-a row met on two pages is drawn once. `infiniteCards={false}` keeps the pager.
+table the pages scrolled through are drawn one after another, the next asked
+for as the last card comes into view, with skeleton cards where it will stand
+— and no pager. The mark after the last card is watched in the table's
+viewport while that scrolls (a `height`), and against the page otherwise, so a
+list that grows with its cards asks for one page at a time. The rail drops its
+Columns tab over cards and says, at its end on a phone, how many rows are drawn
+of how many: «20/200». `infiniteCards={false}` keeps the pager.
+
+A table that pages its own rows holds them all, so the pages are cut from them
+on every render: an edit, an open branch or an open group on an earlier page
+shows at once. A server table is handed one page at a time, so each is kept as
+it arrives — pass `loading` while a page is on its way, so the rows still on
+hand are not kept as the new page's. A kept page opens its rows' branches as
+the table's expansion says now, but its data is what the server sent then: to
+show a write to a row on an earlier page, change the query or go back to the
+first page. A server list always runs from the first page — a change of the
+query apart from its page (sorting, filters, search, grouping, an open group,
+the page size), a step back, or cards switched on at a later page starts over
+there. With `getRowId` a row met on two pages is drawn once; without it an id
+is a place on a page, and every row is drawn.
 
 **The sort on cards** (0.17.0): cards draw no header, so the rail offers the
 sort instead — while sorting is on (`features.sorting`) and a column shown can
@@ -2220,6 +2236,7 @@ Returns `{ table, id, flags, bounds, reorderColumn, resetLayout, isCustomised, e
 | `instance` | `DataTableInstance` | — | **Required.** From `useDataTable`. |
 | `layout` | `"table" \| "cards" \| "auto"` | `"table"` | Rows as a table, as cards, or as cards while the table is narrower than `cardBreakpoint`. See [Cards on a narrow screen](#cards-on-a-narrow-screen). |
 | `cardBreakpoint` | `number` | `640` | The width, px, below which `layout="auto"` draws cards. |
+| `fitColumnsOnLoad` | `boolean \| { maxGrowth?: number }` | `false` | Fit the columns to the first rows drawn, once, at most `maxGrowth` (2) times their `size`. The table's default widths, never a change to reset. See [Column widths](#column-widths). |
 | `striped` | `boolean` | `false` | |
 | `height` | `number \| string` | auto | Fixed height for the whole table, toolbar included; header and pinned columns stay put while the rows scroll. Virtualisation needs this, or a height on an ancestor — see [Large data](#large-data). |
 | `toolbar` | `boolean` | `true` | |

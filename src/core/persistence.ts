@@ -138,11 +138,15 @@ export function pruneLayout(
    * sees. A width that is not a finite positive number still goes: it ends up
    * as `width: NaN` on a <col> and on the table itself.
    */
-  if (stored.columnSizing && typeof stored.columnSizing === "object") {
-    pruned.columnSizing = Object.fromEntries(
-      Object.entries(stored.columnSizing).filter(([, width]) => Number.isFinite(width) && width > 0),
-    )
-  }
+  const sizing = usableWidths(stored.columnSizing)
+  if (sizing) pruned.columnSizing = sizing
+  /*
+   * The widths `fitColumnsOnLoad` measured, by the same rule and for the same
+   * reason: a data-built column is fitted too. An ADDITIVE key — see `height`
+   * below for why `FORMAT_VERSION` does not move for one.
+   */
+  const fitted = usableWidths(stored.fittedSizing)
+  if (fitted) pruned.fittedSizing = fitted
 
   if (stored.columnPinning) {
     // `start`/`end` are read defensively too: a malformed entry like
@@ -224,6 +228,25 @@ export function pruneLayout(
   }
 
   return pruned
+}
+
+/**
+ * A stored width map with every width that could not be drawn taken out.
+ *
+ * Untrusted JSON: anything that is not an object yields nothing, and a width
+ * that is not a finite positive number goes — it would end up as `width: NaN`
+ * on a `<col>` and on the table itself.
+ *
+ * @param stored - A `columnSizing`-shaped value from storage.
+ * @returns The usable widths, or undefined when there was no map at all.
+ */
+function usableWidths(stored: unknown): Record<string, number> | undefined {
+  if (typeof stored !== "object" || stored === null) return undefined
+  return Object.fromEntries(
+    Object.entries(stored).filter(
+      (entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]) && entry[1] > 0,
+    ),
+  )
 }
 
 /**

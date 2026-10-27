@@ -24,8 +24,14 @@ export const EMPTY_LAYOUT: TableLayout = {
 /** A layout slice that holds filter state rather than column arrangement. */
 type FilterSlice = "filters" | "search"
 
+/**
+ * A layout slice the TABLE wrote for itself rather than the user: persisted
+ * like the rest, never an arrangement. See {@link TableLayout.fittedSizing}.
+ */
+type DefaultSlice = "fittedSizing"
+
 /** Every other layout slice: the arrangement proper. */
-type ArrangementSlice = Exclude<keyof TableLayout, FilterSlice>
+type ArrangementSlice = Exclude<keyof TableLayout, FilterSlice | DefaultSlice>
 
 /**
  * The slices that hold filter state rather than column arrangement.
@@ -292,7 +298,23 @@ export function useArrangement({
   const resetLayout = useCallback(() => {
     store.clear(id)
     const seeded = seedLayout(initialRef.current, columnIds, filterKinds, filteringEnabled)
-    setArrangement({ layout: seeded, isCustomised: false, hasUnsavedChanges: false, natural: seeded })
+    setArrangement((previous) => {
+      /*
+       * The fitted widths survive a reset: they are the table's default, and
+       * a reset returns every column TO them, not past them to the declared
+       * `size`. Written back after the clear, or the next visit would find no
+       * fit, measure different rows and draw different widths than the reset
+       * just showed.
+       */
+      const fitted = previous.layout.fittedSizing
+      const keepsFit = fitted !== undefined && Object.keys(fitted).length > 0
+      return {
+        layout: keepsFit ? { ...seeded, fittedSizing: fitted } : seeded,
+        isCustomised: false,
+        hasUnsavedChanges: keepsFit,
+        natural: seeded,
+      }
+    })
   }, [store, id, columnIds, filterKinds, filteringEnabled])
 
   return {

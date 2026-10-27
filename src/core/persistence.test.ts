@@ -104,6 +104,17 @@ describe("pruneLayout", () => {
     expect(pruned.columnSizing).toEqual({ d: 120 })
   })
 
+  it("keeps the fitted widths, by the same rule as the person's", () => {
+    // A whitelist: a key it does not copy never comes back, and the next visit fitted every column again.
+    const stored = { fittedSizing: { a: 140, warehouse_7: 90, b: Number.NaN, c: 0 } }
+    expect(pruneLayout(stored, ["a", "b", "c"]).fittedSizing).toEqual({ a: 140, warehouse_7: 90 })
+  })
+
+  it("leaves the fitted widths absent when storage held none, or held something else", () => {
+    expect("fittedSizing" in pruneLayout({ columnSizing: { a: 120 } }, ["a"])).toBe(false)
+    expect("fittedSizing" in pruneLayout({ fittedSizing: "oops" as never }, ["a"])).toBe(false)
+  })
+
   it("drops sorting on a removed column", () => {
     const pruned = pruneLayout(layout, ["a", "c"])
     expect(pruned.sorting).toEqual([])

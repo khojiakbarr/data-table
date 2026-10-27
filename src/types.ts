@@ -57,6 +57,20 @@ export interface TableLayout {
    * drops it so the prop is back.
    */
   height?: number
+  /**
+   * The widths `fitColumnsOnLoad` measured, by column id: the TABLE's default
+   * widths, not an arrangement the user chose.
+   *
+   * Kept apart from `columnSizing` because the two answer different
+   * questions. `columnSizing` is what the person set — a drag, a fit from the
+   * menu — and it wins wherever both name a column; this is what a column
+   * falls back to without one. So a fit never makes the layout customised
+   * (it would light the Reset link on a table nobody touched), Reset width
+   * and `resetLayout` return a column HERE rather than to its declared
+   * `size`, and storing it is what lets the next visit draw the same widths
+   * instead of measuring different rows. Absent until a fit has run.
+   */
+  fittedSizing?: ColumnSizingState
 }
 
 /**

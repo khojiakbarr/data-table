@@ -1,9 +1,10 @@
-import type { Column, RowData } from "@tanstack/react-table"
+import type { Column, ColumnSizingState, RowData } from "@tanstack/react-table"
 import { useRef, type RefObject } from "react"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
-import { measureColumnWidth } from "./autosize"
 import { renderedLeafColumns } from "./pinning"
+import { isRowNumberColumn } from "./rowNumbers"
 import { columnBounds, type ColumnBounds } from "./sizing"
+import { fitColumnWidth, widenGroupsToFitLabels } from "./useAutosize"
 import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 
 type AnyColumn<TData extends RowData> = Column<DataTableFeatures, TData, unknown>
@@ -12,17 +13,27 @@ type AnyColumn<TData extends RowData> = Column<DataTableFeatures, TData, unknown
 export interface FitColumnsOnLoad {
   /**
    * The widest a fitted column may grow, as a multiple of its declared `size`
-   * (TanStack's 150 when it declares none). Default 2: one long name must not
-   * push every other column off the screen. `maxSize` still wins when lower.
+   * — or of the table's `defaultColumnWidth` (160 unless set) for a column
+   * that declares none. Default 2: one long name must not push every other
+   * column off the screen. `maxSize` still wins when lower.
    */
-  maxGrowth?: number
+  maxGrowth?: number | undefined
 }
 
-/** TanStack's width for a column that declares none. */
+/**
+ * TanStack's own width for a definition no size reached at all. Under
+ * `useDataTable` there is none: it merges `defaultColumnWidth` into every
+ * column, so a column that declares no `size` reads that instead.
+ */
 const TANSTACK_DEFAULT_SIZE = 150
 const DEFAULT_MAX_GROWTH = 2
 /** Frames to wait for the first rows to reach the DOM — a virtualised body draws them a frame late. */
 const MAX_WAIT_FRAMES = 3
+/**
+ * The longest a fit waits for web fonts. A font that never arrives must not
+ * leave the table unfitted; past this the fit measures with what is there.
+ */
+const MAX_FONT_WAIT_MS = 1000
 
 /**
  * The bounds a column is fitted within on load: its own, with the ceiling
@@ -37,15 +48,20 @@ export function fitBounds(bounds: ColumnBounds, declaredSize: number | undefined
 }
 
 /**
- * The columns a load may fit: drawn, resizable and with no width of their own
- * yet — a width in the state is the person's (a drag, a fit, a stored layout),
- * and a load never undoes it.
+ * The columns a load fits: drawn, resizable and not fitted yet.
+ *
+ * A column the person sized IS fitted all the same — their width still wins
+ * on screen, and the fit is what Reset width returns the column to. The
+ * row-number column never is: its width follows the row count, which the
+ * first rows on screen do not show.
  */
 export function columnsToFit<TData extends RowData>(
   columns: readonly AnyColumn<TData>[],
-  sizing: Readonly<Record<string, number>>,
+  fitted: Readonly<ColumnSizingState>,
 ): AnyColumn<TData>[] {
-  return columns.filter((column) => column.getCanResize() && sizing[column.id] === undefined)
+  return columns.filter(
+    (column) => column.getCanResize() && !isRowNumberColumn(column.id) && fitted[column.id] === undefined,
+  )
 }
 
 /** Whether the table's body holds a drawn data row to measure. */
@@ -54,11 +70,52 @@ function hasDrawnRow(element: HTMLTableElement): boolean {
 }
 
 /**
- * Fit every column the person has not sized to the first rows the table
- * draws — once per mounted table. Its widths go into `columnSizing`, so a
- * stored layout keeps them and the next visit draws them as they were: the
- * columns follow the data on the first look and then hold still, through a
- * page, a search and a filter.
+ * Run `measure` once the web fonts the table draws with have loaded — or
+ * straight away when nothing is loading, as with fonts already cached.
+ *
+ * A canvas measures a font that has not arrived with the fallback family, and
+ * the width that came out of it was the one stored. The layout read first is
+ * there because a font starts loading when laid-out text first needs it: in
+ * the first layout effect no layout has run yet, and `status` could still
+ * read "loaded" for a font the new rows are about to ask for.
+ *
+ * @returns A cancel for a wait still pending.
+ */
+function afterFontsLoad(element: HTMLElement, measure: () => void): () => void {
+  const fonts: FontFaceSet | undefined = element.ownerDocument.fonts
+  if (fonts !== undefined) void element.offsetWidth
+  if (fonts === undefined || fonts.status === "loaded") {
+    measure()
+    return () => undefined
+  }
+  let isSettled = false
+  const settle = () => {
+    if (isSettled) return
+    isSettled = true
+    clearTimeout(timer)
+    measure()
+  }
+  const timer = setTimeout(settle, MAX_FONT_WAIT_MS)
+  fonts.ready.then(settle, settle)
+  return () => {
+    isSettled = true
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Fit every column the table has not fitted yet to the first rows it draws —
+ * once per mounted table.
+ *
+ * The widths are the TABLE's default, written through
+ * `instance.setFittedSizing` rather than `columnSizing`: they never make the
+ * layout customised, a width the person sets still wins over them, and Reset
+ * width and `resetLayout` return a column to them. They are stored with the
+ * layout, so the next visit draws them as they were and fits only a column it
+ * has not seen: the columns follow the data on the first look and then hold
+ * still, through a page, a search, a filter and a reload.
+ *
+ * Turned off, the stored fit is dropped, so the declared widths are back.
  *
  * @param instance - From {@link useDataTable}.
  * @param tableRef - The rendered `<table>`.
@@ -71,37 +128,67 @@ export function useFitOnLoad<TData extends RowData>(
   options: boolean | FitColumnsOnLoad,
   ready: boolean,
 ): void {
-  const { table } = instance
+  const { table, fittedSizing, setFittedSizing } = instance
   const isDoneRef = useRef(false)
+  // Read through a ref: the fit's own write must not re-run the effect that made it.
+  const fittedRef = useRef(fittedSizing)
+  fittedRef.current = fittedSizing
   const enabled = options !== false
   const maxGrowth = typeof options === "object" ? (options.maxGrowth ?? DEFAULT_MAX_GROWTH) : DEFAULT_MAX_GROWTH
 
   useIsomorphicLayoutEffect(() => {
-    if (!enabled || !ready || isDoneRef.current) return
+    if (enabled || Object.keys(fittedRef.current).length === 0) return
+    // A fit nothing will refresh, and Reset would keep: off means the declared widths again.
+    setFittedSizing({})
+    isDoneRef.current = false
+  }, [enabled, setFittedSizing])
+
+  useIsomorphicLayoutEffect(() => {
+    const element = tableRef.current
+    if (!enabled || !ready || isDoneRef.current || !element) return
     let frame = 0
     let handle = 0
 
     const fit = () => {
-      const element = tableRef.current
-      if (!element) return
+      const current = tableRef.current
+      if (!current) return
       // A virtualised body may draw its first rows a frame after the data: wait for them, a few frames at most.
-      if (!hasDrawnRow(element)) {
+      if (!hasDrawnRow(current)) {
         if (frame++ < MAX_WAIT_FRAMES) handle = requestAnimationFrame(fit)
         return
       }
       isDoneRef.current = true
-      const sizes: Record<string, number> = {}
-      for (const column of columnsToFit(renderedLeafColumns(table), table.state.columnSizing)) {
-        const bounds = fitBounds(columnBounds(column), column.columnDef.size, maxGrowth)
-        const width = measureColumnWidth(element, column.id, bounds)
-        if (width !== null) sizes[column.id] = width
-      }
-      if (Object.keys(sizes).length === 0) return
-      // What is in the state already stays: a width set while this waited is the person's.
-      table.setColumnSizing((previous) => ({ ...sizes, ...previous }))
+      const sizes = measureUnfitted(table, current, fittedRef.current, maxGrowth)
+      if (sizes !== null) setFittedSizing((previous) => ({ ...previous, ...sizes }))
     }
 
-    fit()
-    return () => cancelAnimationFrame(handle)
-  }, [enabled, ready, maxGrowth, table, tableRef])
+    const cancelWait = afterFontsLoad(element, fit)
+    return () => {
+      cancelWait()
+      cancelAnimationFrame(handle)
+    }
+  }, [enabled, ready, maxGrowth, table, tableRef, setFittedSizing])
+}
+
+/**
+ * The fitted widths for every column not fitted yet, with the leaves under a
+ * group label widened until it fits — or null when there is nothing to fit.
+ *
+ * Widening runs over the TABLE's widths (fitted and new), not the person's,
+ * so a dragged column does not count toward the room a label has.
+ */
+function measureUnfitted<TData extends RowData>(
+  table: DataTableInstance<TData>["table"],
+  element: HTMLTableElement,
+  fitted: Readonly<ColumnSizingState>,
+  maxGrowth: number,
+): ColumnSizingState | null {
+  const boundsOf = (column: AnyColumn<TData>) => fitBounds(columnBounds(column), column.columnDef.size, maxGrowth)
+  const measured: ColumnSizingState = {}
+  for (const column of columnsToFit(renderedLeafColumns(table), fitted)) {
+    const width = fitColumnWidth(element, column, boundsOf(column))
+    if (width !== null) measured[column.id] = width
+  }
+  if (Object.keys(measured).length === 0) return null
+  return widenGroupsToFitLabels(table.getAllColumns(), element, { ...fitted, ...measured }, boundsOf)
 }

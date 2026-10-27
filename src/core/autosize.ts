@@ -17,8 +17,15 @@
  * its drawn width. Nothing is written, so the one layout this may read is the
  * one the browser owes the frame anyway.
  *
- * Only the rows currently in the DOM are measured. Measuring the whole dataset
- * would mean rendering it, which defeats the point of not rendering it.
+ * Only the rows currently in the DOM are measured, and the totals footer with
+ * them — a total is often the widest figure a column holds, and one the rows
+ * never show. Measuring the whole dataset would mean rendering it, which
+ * defeats the point of not rendering it.
+ *
+ * What takes no room on screen is not measured: an element lifted out of the
+ * flow, and a screen-reader-only label above all. The row-number header names
+ * itself to a screen reader with an off-screen "Row number", and read as text
+ * those two words widened a header that shows nothing.
  *
  * Cells are found by column id, never by position. With grouped headers a
  * leaf that spans several header rows is not in the last row at all, so
@@ -47,9 +54,48 @@ function measureText(text: string, font: string): number {
   return context.measureText(text).width
 }
 
-/** Rendered text of an element; `innerText` is absent in jsdom. */
-function textOf(element: HTMLElement): string {
-  return (element.innerText ?? element.textContent ?? "").trim()
+/** The library's own visually hidden class (see `.dt-sr-only` in styles.css). */
+const SCREEN_READER_ONLY = ".dt-sr-only"
+
+/**
+ * Whether an element takes no room in its parent's line: not drawn, or lifted
+ * out of the flow — which is how every visually hidden label is built. The
+ * class is checked as well as the style, so the rule holds before a
+ * stylesheet applies, and in a test environment where none ever does.
+ */
+function takesNoRoom(element: Element, style: CSSStyleDeclaration): boolean {
+  return (
+    element.matches(SCREEN_READER_ONLY) ||
+    style.display === "none" ||
+    style.position === "absolute" ||
+    style.position === "fixed"
+  )
+}
+
+/** Text as `text-transform` draws it: an upper-cased header is wider than its source. */
+function transformText(text: string, transform: string): string {
+  if (transform === "uppercase") return text.toUpperCase()
+  if (transform === "lowercase") return text.toLowerCase()
+  if (transform === "capitalize") {
+    return text.replace(/(^|\s)(\S)/g, (_, space: string, letter: string) => space + letter.toUpperCase())
+  }
+  return text
+}
+
+/**
+ * The text an element shows, as one line: what `innerText` gives, minus
+ * everything that takes no room. `innerText` itself cannot be used — it keeps
+ * a screen-reader-only label, whose clip hides it from the eye and not from
+ * the text — and it is absent in jsdom besides.
+ */
+function visibleTextOf(element: Element): string {
+  const transform = getComputedStyle(element).textTransform
+  let text = ""
+  for (const child of element.childNodes) {
+    if (child.nodeType === Node.TEXT_NODE) text += transformText(child.textContent ?? "", transform)
+    else if (child instanceof Element && !takesNoRoom(child, getComputedStyle(child))) text += visibleTextOf(child)
+  }
+  return text
 }
 
 /** The shorthand `font` value an element is rendered with. */
@@ -120,7 +166,7 @@ function childrenWidth(element: Element, style: CSSStyleDeclaration): number {
     }
     if (!(child instanceof Element) || child.matches(LEAD_PARTS)) continue
     const childStyle = getComputedStyle(child)
-    if (childStyle.display === "none" || childStyle.position === "absolute" || childStyle.position === "fixed") continue
+    if (takesNoRoom(child, childStyle)) continue
     const width = boxWidth(child, childStyle)
     widths.push(width)
     if (isBlockLevel(childStyle)) blocks.push(width)
@@ -198,11 +244,13 @@ export function measureHeaderWidth(table: HTMLTableElement, columnId: string): n
     `:scope > thead > tr > th[data-column-id=${quoteAttribute(columnId)}]`,
   )
   if (!header) return null
-  return measureText(textOf(header), fontOf(header)) + HEADER_CHROME_PX
+  const text = visibleTextOf(header).replace(/\s+/g, " ").trim()
+  return measureText(text, fontOf(header)) + HEADER_CHROME_PX
 }
 
 /**
- * Width that fits a column's visible content.
+ * Width that fits a column's visible content: its header, the rows in the
+ * DOM, and the totals footer when there is one.
  *
  * @param table - The table element the column is rendered in.
  * @param columnId - The leaf column's id.
@@ -218,14 +266,19 @@ export function measureColumnWidth(
   columnId: string,
   bounds: AutosizeBounds,
 ): number | null {
-  const bodyCells = table.querySelectorAll<HTMLElement>(
-    `:scope > tbody > tr:not(.dt-detail-row) > td[data-column-id=${quoteAttribute(columnId)}]`,
+  const id = quoteAttribute(columnId)
+  // The rows on screen and the totals footer: a total wider than every row was cut under the width the rows gave.
+  const cells = table.querySelectorAll<HTMLElement>(
+    [
+      `:scope > tbody > tr:not(.dt-detail-row) > td[data-column-id=${id}]`,
+      `:scope > tfoot > tr > td[data-column-id=${id}]`,
+    ].join(", "),
   )
   const headerWidth = measureHeaderWidth(table, columnId)
-  if (bodyCells.length === 0 && headerWidth === null) return null
+  if (cells.length === 0 && headerWidth === null) return null
 
   let widest = headerWidth ?? 0
-  for (const cell of bodyCells) {
+  for (const cell of cells) {
     const width = childrenWidth(cell, getComputedStyle(cell)) + cellChrome(cell)
     if (width > widest) widest = width
   }

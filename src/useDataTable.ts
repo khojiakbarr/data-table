@@ -155,6 +155,8 @@ const NO_GROUPING: string[] = []
 const NO_EXPANDED: FilterValue[][] = []
 /** The top level: what a row sits inside when it sits inside nothing. */
 const NO_PATH: FilterValue[] = []
+/** No fitted widths: a table that has not fitted, or does not fit. */
+const NO_FITTED_SIZING: ColumnSizingState = {}
 
 /** Rows per page before the user has chosen one. */
 const DEFAULT_PAGE_SIZE = 50
@@ -1135,9 +1137,9 @@ export function useDataTable<TData extends RowData>({
    *   where the user has expressed nothing, so a drag narrower than the floor
    *   sticks. The floor is also what a drag STARTS from, since TanStack reads
    *   `getSize()` at pointer-down and that reads this. The one seam is a drag
-   *   that lands on EXACTLY the declared width: `normaliseSizing` drops such an
-   *   entry as carrying no information, which is what makes "Reset width" work,
-   *   and the floor then applies again.
+   *   that lands on EXACTLY the table's own width (the fitted one, else the
+   *   declared one): `normaliseSizing` drops such an entry as carrying no
+   *   information, and the floor then applies again.
    * - It does not fight the `<colgroup>` either, because it is not a second
    *   width: it goes in through the same `columnSizing` state every other
    *   width does, so the colgroup, the header, the body and the resize handle
@@ -1148,24 +1150,49 @@ export function useDataTable<TData extends RowData>({
     [columns, groupColumnId],
   )
 
+  const fittedSizing = layout.fittedSizing ?? NO_FITTED_SIZING
+
+  /*
+   * The fitted widths go UNDER the user's: a column the person sized keeps
+   * that width, and every other column falls back to the fit before its
+   * declared `size`. Merged here, in the state handed to TanStack, rather
+   * than written into `layout.columnSizing`, for the reason the floor below is
+   * not either: every setter applies its updater to the user's slice alone,
+   * so nothing the fit wrote can leak into what the person arranged.
+   */
   const columnSizing = useMemo(() => {
-    if (groupColumnId === undefined) return layout.columnSizing
+    const merged =
+      fittedSizing === NO_FITTED_SIZING ? layout.columnSizing : { ...fittedSizing, ...layout.columnSizing }
+    if (groupColumnId === undefined) return merged
     // A width the user set is the user's. Only an untouched column gets a floor.
-    if (layout.columnSizing[groupColumnId] !== undefined) return layout.columnSizing
-    const declared = groupColumnDeclaredWidth ?? defaultColumnWidth
+    if (layout.columnSizing[groupColumnId] !== undefined) return merged
+    // The table's own width for the slot — fitted, else declared — is what the floor is weighed against.
+    const declared = fittedSizing[groupColumnId] ?? groupColumnDeclaredWidth ?? defaultColumnWidth
     // Never past the table's own ceiling: a floor above `maxColumnWidth` would
     // be a width the resizer could not reach back to.
     const floor = Math.min(maxColumnWidth, groupColumnMinWidth(grouping.length))
-    if (declared >= floor) return layout.columnSizing
-    return { ...layout.columnSizing, [groupColumnId]: floor }
+    if (declared >= floor) return merged
+    return { ...merged, [groupColumnId]: floor }
   }, [
     groupColumnId,
     groupColumnDeclaredWidth,
     grouping.length,
     layout.columnSizing,
+    fittedSizing,
     defaultColumnWidth,
     maxColumnWidth,
   ])
+
+  /**
+   * Record the widths the table fitted for itself — `fitColumnsOnLoad`'s
+   * writer. A slice of its own, so the write persists like any other but
+   * never makes the layout customised: see {@link TableLayout.fittedSizing}.
+   */
+  const setFittedSizing = useCallback(
+    (updater: Updater<ColumnSizingState>) =>
+      updateSlice("fittedSizing", (current) => apply(updater, current ?? NO_FITTED_SIZING)),
+    [updateSlice],
+  )
 
   /*
    * Which rows are open is deliberately NOT part of the layout: it is a
@@ -1669,7 +1696,7 @@ export function useDataTable<TData extends RowData>({
     onColumnVisibilityChange: (updater) => updateSlice("columnVisibility", updater, hiddenColumnsOnly),
     onColumnPinningChange: (updater) => updateSlice("columnPinning", updater),
     onColumnSizingChange: (updater) =>
-      updateSlice("columnSizing", updater, (sizing) => normaliseSizing(sizing, table)),
+      updateSlice("columnSizing", updater, (sizing) => normaliseSizing(sizing, table, fittedSizing)),
     onSortingChange: updateSorting,
     onColumnFiltersChange: updateFiltersFromTanStack,
     /*
@@ -2164,6 +2191,13 @@ export function useDataTable<TData extends RowData>({
     reorderColumn,
     resetLayout,
     isCustomised,
+    /*
+     * The widths `fitColumnsOnLoad` measured, and their writer: the table's
+     * default widths, under any the person set. For `useFitOnLoad`, which
+     * must write them without touching `isCustomised`.
+     */
+    fittedSizing,
+    setFittedSizing,
     expanded,
     mode,
     query,
@@ -2192,9 +2226,17 @@ export type DataTableInstance<TData extends RowData> = ReturnType<
  *
  * TanStack stores whatever a drag produced and clamps only when the width is
  * read, so a pull past the minimum would persist as 0. Clamp on the way in.
- * Entries that merely restate the declared width are dropped: they carry no
- * information, and without them a press-and-release on a handle — which
+ * Entries that merely restate the table's own width are dropped: they carry
+ * no information, and without them a press-and-release on a handle — which
  * commits the current width — changes nothing.
+ *
+ * The table's own width is the FITTED one where `fitColumnsOnLoad` measured
+ * the column, and the declared `size` only where it did not. Measured against
+ * the declared size alone, a width dragged to exactly that size was dropped —
+ * so storage held nothing for the column, the next load read it as unsized
+ * and fitted it again, and the drag was undone. Against the fitted width, that
+ * drag is a choice like any other, and the one entry dropped is the one equal
+ * to what the column shows without it.
  *
  * Group ids are dropped too. TanStack's group resize snapshots
  * `header.getLeafHeaders()`, which includes the group header itself, and a
@@ -2209,6 +2251,7 @@ export type DataTableInstance<TData extends RowData> = ReturnType<
 function normaliseSizing(
   sizing: ColumnSizingState,
   table: { getColumn: (id: string) => (SizedColumn & { columns: unknown[] }) | undefined },
+  fitted: Readonly<ColumnSizingState>,
 ): ColumnSizingState {
   const next: ColumnSizingState = {}
   for (const [columnId, width] of Object.entries(sizing)) {
@@ -2220,7 +2263,7 @@ function normaliseSizing(
     }
     if (column.columns.length > 0) continue
     const clamped = clampColumnWidth(column, width)
-    if (clamped === column.columnDef.size) continue
+    if (clamped === (fitted[columnId] ?? column.columnDef.size)) continue
     next[columnId] = clamped
   }
   return next

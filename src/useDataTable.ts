@@ -1203,6 +1203,18 @@ export function useDataTable<TData extends RowData>({
    */
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
+  /*
+   * Another id is another table (`useArrangement` reads its layout afresh):
+   * the page and the open branches were the last table's, so it starts on
+   * its first page with every branch closed, as a mount would.
+   */
+  const shownIdRef = useRef(id)
+  if (shownIdRef.current !== id) {
+    shownIdRef.current = id
+    resetPage()
+    setExpanded({})
+  }
+
   /**
    * `getRowId`, with the one row the host cannot answer for handled here.
    *

@@ -212,7 +212,8 @@ export function useSelection({
    * which `useTableQuery` changes exactly when the request would — so the
    * stringify runs once per real query change rather than once per render.
    */
-  const scope = useMemo(() => selectionScopeOf(query), [query])
+  // Another table — the same component kept mounted under a new `id` — is another scope: its rows are not these.
+  const scope = useMemo(() => `${id}\u001f${selectionScopeOf(query)}`, [id, query])
   const scopeRef = useRef(scope)
   if (scopeRef.current !== scope) {
     scopeRef.current = scope

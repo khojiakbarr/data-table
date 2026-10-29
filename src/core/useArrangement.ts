@@ -95,6 +95,8 @@ interface Arrangement {
    * column and showing it again left a Reset link offering to undo nothing.
    */
   natural: TableLayout
+  /** The table id this was read for: another id is another table, read afresh. */
+  loadedFor: string
 }
 
 /** What {@link useArrangement} needs to load, prune and persist a layout. */
@@ -157,55 +159,23 @@ export function useArrangement({
   // "natural order" when empty, and seeding it is how grouped tables break:
   // the ordering feature matches leaf ids, so a seeded list containing group
   // ids silently reorders every column that is not in it.
-  const [arrangement, setArrangement] = useState<Arrangement>(() => {
-    const stored = store.load(id)
-    const seeded = seedLayout(initialLayout, columnIds, filterKinds, filteringEnabled)
-    const storedOrEmpty = stored ?? {}
-    const storedPruned = pruneLayout(storedOrEmpty, columnIds, filterKinds)
-    if (!keepFilters) {
-      /*
-       * The read half of the opt-out. Enforcing it on the write side alone
-       * left a table that already had filter state in storage restoring it on
-       * every mount and never able to shed it: nothing rewrites that entry
-       * unless a *column* also changes, so `persist: false` added in a later
-       * release — or wired to a user preference — did nothing at all for every
-       * returning user.
-       */
-      delete storedPruned.filters
-      delete storedPruned.search
-    }
-    const layout = { ...seeded, ...storedPruned }
-    /*
-     * The "nothing arranged" baseline to compare each slice against — not
-     * `seeded` itself, because `pruneLayout` does more than filter to known
-     * ids: an untouched `columnOrder: []` round-trips through storage as the
-     * *explicit* natural order (every known id, in declaration order), since
-     * a save persists the whole layout object, not only the slice that
-     * changed. Comparing `layout.columnOrder` to bare `seeded.columnOrder`
-     * would then read a search-only save as customised on the very next load
-     * — the same bug this is fixing, one key over.
-     *
-     * So a slice is compared against its *own* natural value pushed through
-     * that same normalisation, and only when storage actually held that key —
-     * otherwise `layout` left it at `seeded`'s raw value too, and the two
-     * would only coincidentally differ.
-     */
-    const naturalStored: Partial<TableLayout> = {}
-    for (const key of ARRANGEMENT_SLICES) {
-      if (key in storedOrEmpty) copySlice(naturalStored, seeded, key)
-    }
-    const naturalLayout = { ...seeded, ...pruneLayout(naturalStored, columnIds, filterKinds) }
-    return {
-      layout,
-      // A saved search or filter must not make the Columns tab offer a Reset
-      // on the next visit either — only the arrangement slices count, which
-      // is what `ARRANGEMENT_SLICES` is.
-      isCustomised: isArranged(layout, naturalLayout),
-      hasUnsavedChanges: false,
-      natural: naturalLayout,
-    }
-  })
+  const load = (): Arrangement =>
+    loadArrangement({ id, store, initialLayout, columnIds, filterKinds, filteringEnabled, keepFilters })
+  const [loaded, setArrangement] = useState<Arrangement>(load)
   const initialRef = useRef(initialLayout)
+  /*
+   * Another id is another table: a host that keeps the component mounted and
+   * changes `id` for the next record — `stock-${warehouseId}` — gets that
+   * table's stored layout, as a mount would, and never the last one's. Read
+   * during the render, as React allows for state derived from props, so no
+   * frame draws one table's columns under the other's id.
+   */
+  let arrangement = loaded
+  if (loaded.loadedFor !== id) {
+    arrangement = load()
+    initialRef.current = initialLayout
+    setArrangement(arrangement)
+  }
 
   // Read through a ref so `updateSlice` below stays stable across renders.
   const keepFiltersRef = useRef(keepFilters)
@@ -275,6 +245,7 @@ export function useArrangement({
         isCustomised: isArranged(layout, previous.natural),
         hasUnsavedChanges,
         natural: previous.natural,
+        loadedFor: previous.loadedFor,
       }
     })
   }, [])
@@ -313,6 +284,7 @@ export function useArrangement({
         isCustomised: false,
         hasUnsavedChanges: keepsFit,
         natural: seeded,
+        loadedFor: previous.loadedFor,
       }
     })
   }, [store, id, columnIds, filterKinds, filteringEnabled])
@@ -462,6 +434,85 @@ export function layoutSliceEqual(a: unknown, b: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+
+/** What {@link loadArrangement} reads a table's layout from. */
+interface LoadArrangementOptions {
+  id: string
+  store: LayoutStorage
+  initialLayout: Partial<TableLayout> | undefined
+  columnIds: readonly string[]
+  filterKinds: ReadonlyMap<string, FilterKind | false> | undefined
+  filteringEnabled: boolean
+  keepFilters: boolean
+}
+
+/**
+ * A table's arrangement as a visit starts it: the declared layout with the
+ * stored one over it, pruned to the live columns, and the baseline that
+ * `isCustomised` is measured against.
+ *
+ * @param options - The table's id, its storage and what the stored layout is pruned to.
+ * @returns The arrangement, read for `options.id`.
+ */
+function loadArrangement({
+  id,
+  store,
+  initialLayout,
+  columnIds,
+  filterKinds,
+  filteringEnabled,
+  keepFilters,
+}: LoadArrangementOptions): Arrangement {
+  const stored = store.load(id)
+
+  const seeded = seedLayout(initialLayout, columnIds, filterKinds, filteringEnabled)
+  const storedOrEmpty = stored ?? {}
+  const storedPruned = pruneLayout(storedOrEmpty, columnIds, filterKinds)
+  if (!keepFilters) {
+    /*
+     * The read half of the opt-out. Enforcing it on the write side alone
+     * left a table that already had filter state in storage restoring it on
+     * every mount and never able to shed it: nothing rewrites that entry
+     * unless a *column* also changes, so `persist: false` added in a later
+     * release — or wired to a user preference — did nothing at all for every
+     * returning user.
+     */
+    delete storedPruned.filters
+    delete storedPruned.search
+  }
+  const layout = { ...seeded, ...storedPruned }
+  /*
+   * The "nothing arranged" baseline to compare each slice against — not
+   * `seeded` itself, because `pruneLayout` does more than filter to known
+   * ids: an untouched `columnOrder: []` round-trips through storage as the
+   * *explicit* natural order (every known id, in declaration order), since
+   * a save persists the whole layout object, not only the slice that
+   * changed. Comparing `layout.columnOrder` to bare `seeded.columnOrder`
+   * would then read a search-only save as customised on the very next load
+   * — the same bug this is fixing, one key over.
+   *
+   * So a slice is compared against its *own* natural value pushed through
+   * that same normalisation, and only when storage actually held that key —
+   * otherwise `layout` left it at `seeded`'s raw value too, and the two
+   * would only coincidentally differ.
+   */
+  const naturalStored: Partial<TableLayout> = {}
+  for (const key of ARRANGEMENT_SLICES) {
+    if (key in storedOrEmpty) copySlice(naturalStored, seeded, key)
+  }
+  const naturalLayout = { ...seeded, ...pruneLayout(naturalStored, columnIds, filterKinds) }
+  return {
+    layout,
+    // A saved search or filter must not make the Columns tab offer a Reset
+    // on the next visit either — only the arrangement slices count, which
+    // is what `ARRANGEMENT_SLICES` is.
+    isCustomised: isArranged(layout, naturalLayout),
+    hasUnsavedChanges: false,
+    natural: naturalLayout,
+    loadedFor: id,
+  }
 }
 
 /**

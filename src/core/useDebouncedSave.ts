@@ -25,7 +25,9 @@ const SAVE_DELAY_MS = 350
  * layout each time.
  *
  * @param storage - Where to write.
- * @param id - The table's id.
+ * @param id - The table's id. A change still waiting when it changes — a host
+ *   that keeps the table mounted for the next record — is written under the
+ *   id it was made for, at once, never under the new one.
  * @param layout - The current layout.
  * @param enabled - Whether `layout` holds a change the user made since mount.
  *   While false nothing is queued, so mounting does not re-save what was just
@@ -37,22 +39,24 @@ export function useDebouncedSave(
   layout: TableLayout,
   enabled: boolean,
 ): void {
-  const pending = useRef<TableLayout | null>(null)
-  const latest = useRef({ storage, id })
-  latest.current = { storage, id }
+  const pending = useRef<{ id: string; layout: TableLayout } | null>(null)
+  const latest = useRef(storage)
+  latest.current = storage
 
   const flush = useCallback(() => {
     if (!pending.current) return
-    latest.current.storage.save(latest.current.id, pending.current)
+    latest.current.save(pending.current.id, pending.current.layout)
     pending.current = null
   }, [])
 
   useEffect(() => {
+    // The table before this one still had a change on its way: it is that table's, so it is written now, under its id.
+    if (pending.current !== null && pending.current.id !== id) flush()
     if (!enabled) {
       pending.current = null
       return
     }
-    pending.current = layout
+    pending.current = { id, layout }
     const timer = setTimeout(flush, SAVE_DELAY_MS)
     return () => clearTimeout(timer)
   }, [id, layout, enabled, flush])

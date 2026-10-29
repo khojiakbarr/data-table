@@ -16,7 +16,9 @@ import { useCellEditing } from "../core/useCellEditing"
 import type { SelectionSummary } from "../core/useSelection"
 import { useDropSlot } from "../core/useDropSlot"
 import { useAutosize } from "../core/useAutosize"
+import { maxGrowthOf } from "../core/fitBounds"
 import { useFitOnLoad, type FitColumnsOnLoad } from "../core/useFitOnLoad"
+import { totalsKey, useFitTotals } from "../core/useFitTotals"
 import { useViewportWidth } from "../core/useViewportWidth"
 import { useIsomorphicLayoutEffect } from "../core/useIsomorphicLayoutEffect"
 import { useAwaitingFirstPage } from "../core/useAwaitingFirstPage"
@@ -707,7 +709,7 @@ export function DataTable<TData extends RowData>({
     rowCount: instance.pagination.rowCount,
     loading,
     // An open group is part of the query: a server answers it with other rows, which move every page after it.
-    queryKey: JSON.stringify([querySorting, queryFilters, querySearch, queryGrouping, queryExpanded, instance.pagination.pageSize]),
+    queryKey: JSON.stringify([instance.id, querySorting, queryFilters, querySearch, queryGrouping, queryExpanded, instance.pagination.pageSize]),
     setPageIndex: instance.pagination.setPageIndex,
   })
   const leafColumns = renderedLeafColumns(table)
@@ -880,6 +882,8 @@ export function DataTable<TData extends RowData>({
   const showSkeleton = (loading || awaitingFirstPage) && rows.length === 0 && !hasError
   const showEmpty = !loading && !awaitingFirstPage && !hasError && rows.length === 0
   useFitOnLoad(instance, tableRef, fitColumnsOnLoad, !isCards && !loading && !awaitingFirstPage && !hasError && rows.length > 0)
+  // A total that answers later than the page widens its fitted column, rather than being cut under it.
+  useFitTotals(instance, tableRef, maxGrowthOf(fitColumnsOnLoad), fitColumnsOnLoad !== false && !isCards ? totalsKey(totals) : "")
   /*
    * The skeleton already communicates "loading" on its own; a progress bar
    * and dimmed rows on top of it would be a second, redundant signal (and

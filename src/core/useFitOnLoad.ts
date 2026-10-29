@@ -4,44 +4,17 @@ import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import { renderedLeafColumns } from "./pinning"
 import { isRowNumberColumn } from "./rowNumbers"
 import { afterFontsLoad } from "./afterFontsLoad"
-import { columnBounds, type ColumnBounds } from "./sizing"
+import { fitBounds, maxGrowthOf, type FitColumnsOnLoad } from "./fitBounds"
+import { columnBounds } from "./sizing"
 import { fitColumnWidth, widenGroupsToFitLabels } from "./useAutosize"
 import { useIsomorphicLayoutEffect } from "./useIsomorphicLayoutEffect"
 
 type AnyColumn<TData extends RowData> = Column<DataTableFeatures, TData, unknown>
 
-/** How a table fits its columns to the first rows it draws. */
-export interface FitColumnsOnLoad {
-  /**
-   * The widest a fitted column may grow, as a multiple of its declared `size`
-   * — or of the table's `defaultColumnWidth` (160 unless set) for a column
-   * that declares none. Default 2: one long name must not push every other
-   * column off the screen. `maxSize` still wins when lower.
-   */
-  maxGrowth?: number | undefined
-}
-
-/**
- * TanStack's own width for a definition no size reached at all. Under
- * `useDataTable` there is none: it merges `defaultColumnWidth` into every
- * column, so a column that declares no `size` reads that instead.
- */
-const TANSTACK_DEFAULT_SIZE = 150
-const DEFAULT_MAX_GROWTH = 2
 /** Frames to wait for the first rows to reach the DOM — a virtualised body draws them a frame late. */
 const MAX_WAIT_FRAMES = 3
 
-/**
- * The bounds a column is fitted within on load: its own, with the ceiling
- * lowered to `maxGrowth` times its declared size.
- *
- * @example
- * fitBounds({ min: 60, max: 800 }, 120, 2) // { min: 60, max: 240 }
- */
-export function fitBounds(bounds: ColumnBounds, declaredSize: number | undefined, maxGrowth: number): ColumnBounds {
-  const ceiling = Math.round((declaredSize ?? TANSTACK_DEFAULT_SIZE) * maxGrowth)
-  return { min: bounds.min, max: Math.max(bounds.min, Math.min(bounds.max, ceiling)) }
-}
+export { fitBounds, type FitColumnsOnLoad } from "./fitBounds"
 
 /**
  * The columns a load fits: drawn, resizable and not fitted yet.
@@ -92,11 +65,17 @@ export function useFitOnLoad<TData extends RowData>(
 ): void {
   const { table, fittedSizing, setFittedSizing } = instance
   const isDoneRef = useRef(false)
+  // Another id is another table, with columns of its own to fit.
+  const fittedForRef = useRef(instance.id)
+  if (fittedForRef.current !== instance.id) {
+    fittedForRef.current = instance.id
+    isDoneRef.current = false
+  }
   // Read through a ref: the fit's own write must not re-run the effect that made it.
   const fittedRef = useRef(fittedSizing)
   fittedRef.current = fittedSizing
   const enabled = options !== false
-  const maxGrowth = typeof options === "object" ? (options.maxGrowth ?? DEFAULT_MAX_GROWTH) : DEFAULT_MAX_GROWTH
+  const maxGrowth = maxGrowthOf(options)
 
   useIsomorphicLayoutEffect(() => {
     if (enabled || Object.keys(fittedRef.current).length === 0) return

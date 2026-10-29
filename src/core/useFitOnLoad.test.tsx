@@ -328,6 +328,20 @@ describe("fitColumnsOnLoad — what is measured", () => {
     await waitFor(() => expect(widthOf("name")).toBe(total.length * CHAR_PX + 28))
   })
 
+  it("widens a fitted column for a total that answers after the fit, and never narrows it", async () => {
+    const total = "12 345 678 901 234.56 UZS"
+    const { rerender } = render(<Harness totals={{}} />)
+    await waitFor(() => expect(sizing()).toEqual(FITTED))
+    // The host's totals query answers later than its page.
+    rerender(<Harness totals={{ name: total }} />)
+    await waitFor(() => expect(widthOf("name")).toBe(total.length * CHAR_PX + 28))
+    expect(latest?.isCustomised).toBe(false)
+    // A shorter total later leaves the column where it is: the columns hold still.
+    rerender(<Harness totals={{ name: "1 UZS" }} />)
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    expect(widthOf("name")).toBe(total.length * CHAR_PX + 28)
+  })
+
   it("widens the leaves under a group label the fit would cut", async () => {
     const grouped: Column[] = [
       helper.group({ id: "doc", header: "Delivery note, partner and amount", columns: helper.columns([...columns]) }),

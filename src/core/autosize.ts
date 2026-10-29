@@ -276,12 +276,40 @@ export function measureColumnWidth(
   )
   const headerWidth = measureHeaderWidth(table, columnId)
   if (cells.length === 0 && headerWidth === null) return null
+  return clampWidth(Math.max(headerWidth ?? 0, widestCell(cells)), bounds)
+}
 
-  let widest = headerWidth ?? 0
+/**
+ * The width a column's total needs, alone: its cell in the totals footer.
+ *
+ * For a total that arrives after the columns were fitted — a host's totals
+ * query answering later than its page — so a fitted column can grow to hold
+ * it without being measured against rows it was not fitted to.
+ *
+ * @param table - The table element the column is rendered in.
+ * @param columnId - The leaf column's id.
+ * @param bounds - Clamp applied to the result.
+ * @returns A width in pixels, or null when the column has no total drawn.
+ *
+ * @example
+ * const width = measureTotalWidth(tableEl, "amount", columnBounds(column))
+ */
+export function measureTotalWidth(table: HTMLTableElement, columnId: string, bounds: AutosizeBounds): number | null {
+  const cells = table.querySelectorAll<HTMLElement>(`:scope > tfoot > tr > td[data-column-id=${quoteAttribute(columnId)}]`)
+  return cells.length === 0 ? null : clampWidth(widestCell(cells), bounds)
+}
+
+/** The widest of these cells' content, each with its own padding and border. */
+function widestCell(cells: Iterable<HTMLElement>): number {
+  let widest = 0
   for (const cell of cells) {
     const width = childrenWidth(cell, getComputedStyle(cell)) + cellChrome(cell)
     if (width > widest) widest = width
   }
+  return widest
+}
 
-  return Math.round(Math.min(bounds.max, Math.max(bounds.min, widest)))
+/** A measured width, whole and within the column's bounds. */
+function clampWidth(width: number, bounds: AutosizeBounds): number {
+  return Math.round(Math.min(bounds.max, Math.max(bounds.min, width)))
 }

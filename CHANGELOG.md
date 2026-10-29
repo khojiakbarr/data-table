@@ -3,6 +3,25 @@
 Notable changes to `@hojiakbar_dev/data-table`. This file starts at 0.5.0; earlier
 releases are summarised in one line rather than reconstructed.
 
+## 0.20.5
+
+### Fixed
+
+- **A table kept mounted under a new `id` is a new table.** One screen reused for the next record —
+  ``id: `stock-${warehouseId}` `` under a route param — kept the last record's layout, page, selection and open
+  branches, and its debounced save then wrote the last record's layout under the new id. The new id now reads its
+  own stored layout, starts on its first page with nothing selected and every branch closed (cards that scroll on
+  start over too, and the fit runs for it), and a change still waiting is saved under the id it was made for.
+- **A total that answers after the fit widens its column.** `fitColumnsOnLoad` measured the totals row once, so a
+  total from a query of its own arrived into a footer fitted without it and was cut. A fitted column now grows to
+  hold its total when one appears or its text changes — within the fit's bounds, never narrower, measuring the
+  footer alone.
+
+### Internal
+
+- Files split by job: `fitBounds`, `infinitePages`, `MoreRowsMark`, `CardGroupHeading` and `CardsSelectAll` leave
+  `useFitOnLoad`, `useInfiniteRows` and `CardList`. `measureTotalWidth` measures a column's total alone.
+
 ## 0.20.4
 
 ### Changed

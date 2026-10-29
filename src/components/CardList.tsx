@@ -1,20 +1,20 @@
 import type { Row, RowData } from "@tanstack/react-table"
-import { useEffect, useRef, type ReactNode } from "react"
+import type { ReactNode } from "react"
 import { CardContext } from "../core/cardContext"
 import { cardPlaces } from "../core/cardLayout"
 import { columnLabel } from "../core/columnLabel"
-import { groupValueLabel, isGroupRow } from "../core/grouping"
+import { isGroupRow } from "../core/grouping"
 import { renderedLeafColumns } from "../core/pinning"
-import { selectAllLabel } from "../core/selectAllLabel"
 import { isRowNumberColumn, rowNumberAt } from "../core/rowNumbers"
-import { isSelectionColumn, pageHeaderState } from "../core/selection"
+import { isSelectionColumn } from "../core/selection"
 import { isTimelineColumn } from "../core/timeline"
 import type { DataTableFeatures, DataTableInstance } from "../useDataTable"
 import type { DataTableLabels, RowTone } from "../types"
 import { CardRow } from "./CardRow"
 import { CardSkeleton } from "./CardSkeleton"
-import { ExpandToggle } from "./ExpandToggle"
-import { SelectionCheckbox } from "./SelectionCheckbox"
+import { CardsSelectAll } from "./CardsSelectAll"
+import { CardGroupHeading } from "./CardGroupHeading"
+import { MoreRowsMark } from "./MoreRowsMark"
 
 export interface CardListProps<TData extends RowData> {
   instance: DataTableInstance<TData>
@@ -80,16 +80,7 @@ export function CardList<TData extends RowData>({
   // A loop over a dozen columns: cheaper than the memo that would guard it.
   const places = cardPlaces(contentColumns.map((column) => ({ id: column.id, card: column.columnDef.meta?.card })))
   const selection = instance.selection.enabled && columns.some((column) => isSelectionColumn(column.id)) ? instance.selection : undefined
-  /*
-   * A page-scoped box over cards that scroll on stands for every card drawn, not
-   * the table's current page alone: the person sees one list, and a box that
-   * ticked only its last page would leave the cards above it as they were.
-   */
-  const drawnIds =
-    selection?.headerScope === "page" && infinite !== undefined
-      ? rows.filter((row) => !isGroupRow(row.original)).map((row) => row.id)
-      : undefined
-  const head = drawnIds === undefined || selection === undefined ? undefined : pageHeaderState(selection.model, drawnIds)
+
 
   if (skeleton !== undefined) {
     return (
@@ -105,44 +96,14 @@ export function CardList<TData extends RowData>({
     <CardContext.Provider value={true}>
     <div className="dt-cards">
       {selection === undefined ? null : (
-        <div className="dt-cards-head">
-          <label className="dt-card-check">
-            <SelectionCheckbox
-              checked={head?.checked ?? selection.headerChecked}
-              indeterminate={head?.indeterminate ?? selection.headerIndeterminate}
-              label={selectAllLabel(selection, labels)}
-              onChange={(selected) => (drawnIds === undefined ? selection.toggleAll(selected) : selection.toggleRows(drawnIds, selected))}
-            />
-            <span aria-hidden="true">{selectAllLabel(selection, labels)}</span>
-          </label>
-        </div>
+        <CardsSelectAll selection={selection} rows={rows} isInfinite={infinite !== undefined} labels={labels} />
       )}
       <div role="list" className="dt-cards-list">
         {rows.map((row, position) => {
           const original = row.original
           const key = rowKeys?.[position] ?? row.id
           if (isGroupRow(original)) {
-            const depth = Math.max(0, original.path.length - 1)
-            const valueColumn = row.getAllCells().find((cell) => cell.column.id === grouping.columns[depth])?.column
-            const value = groupValueLabel(original.path[original.path.length - 1], valueColumn?.columnDef.meta?.groupLabel, labels.blanks)
-            const expanded = grouping.isExpanded(original.path)
-            return (
-              <div
-                key={key}
-                role="listitem"
-                className="dt-card-group"
-                style={depth > 0 ? { paddingInlineStart: `calc(var(--dt-indent) * ${String(depth)})` } : undefined}
-              >
-                <ExpandToggle
-                  expanded={expanded}
-                  depth={0}
-                  label={`${expanded ? labels.collapseRow : labels.expandRow}: ${labels.groupRow(value, original.count)}`}
-                  onToggle={() => grouping.toggle(original.path)}
-                />
-                <span className="dt-card-group-value">{value}</span>
-                <span className="dt-group-count">{labels.groupCount(original.count)}</span>
-              </div>
-            )
+            return <CardGroupHeading key={key} row={row} group={original} grouping={grouping} labels={labels} />
           }
           return (
             <CardRow
@@ -189,43 +150,5 @@ export function CardList<TData extends RowData>({
   )
 }
 
-/**
- * The box the list scrolls in: the table's viewport while it scrolls (a `height`), else the page (null). A viewport
- * with no height of its own grows with its cards, so in its own box the mark is always in view and every page would
- * be asked for at once; watched against the page, it is in view only once the list is scrolled to its end, and an
- * app's own scrolling area still clips it. Read afresh each time more cards are drawn.
- */
-function scrollingBox(mark: HTMLElement): HTMLElement | null {
-  const viewport = mark.closest<HTMLElement>(".dt-viewport")
-  return viewport !== null && viewport.scrollHeight > viewport.clientHeight ? viewport : null
-}
-
 /** The columns a card draws by itself (the selection) or not at all (row numbers, the timeline). */
 const isChrome = (id: string): boolean => isSelectionColumn(id) || isRowNumberColumn(id) || isTimelineColumn(id)
-
-/**
- * The mark after the last card: in view — or within 300px of it, while the list scrolls in a box of its own (see
- * {@link scrollingBox}) — it asks for the next page. Watched afresh each time more cards are drawn, so a mark still in view after a short page asks
- * again rather than waiting for a scroll that will never come.
- */
-function MoreRowsMark({ onVisible, drawn }: { onVisible: () => void; drawn: number }) {
-  const ref = useRef<HTMLDivElement>(null)
-  // The latest ask, without watching afresh when only the function changed.
-  const ask = useRef(onVisible)
-  useEffect(() => {
-    ask.current = onVisible
-  })
-  useEffect(() => {
-    const mark = ref.current
-    if (mark === null || typeof IntersectionObserver === "undefined") return undefined
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) ask.current()
-      },
-      { root: scrollingBox(mark), rootMargin: "0px 0px 300px 0px" },
-    )
-    observer.observe(mark)
-    return () => observer.disconnect()
-  }, [drawn])
-  return <div ref={ref} className="dt-cards-more" aria-hidden="true" />
-}

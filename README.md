@@ -184,7 +184,8 @@ the table's own default, not the person's choice: they are stored with the layou
 but they never light the Reset link, a width the person drags still wins over them, and
 *Reset width* returns a column to its fitted width rather than its declared one. The row-number
 column is left alone, a group's label widens the columns under it, and the measuring waits
-(a second at most) for web fonts still loading. Turned off, the stored fit is dropped. Cards
+(a second at most) for web fonts still loading. A total that answers later than the page —
+a totals query of its own — widens its fitted column when it arrives, and never narrows it. Turned off, the stored fit is dropped. Cards
 are not fitted.
 
 **Keyboard.** With a resize handle focused, ← and → change the width by 10px,
@@ -1632,6 +1633,12 @@ const products = useDataTable({ id: "products", /* … */ })
 ```
 
 Give every table in your application a distinct `id` and the problem cannot occur.
+
+An `id` may change while the table stays mounted — one screen for the next record,
+``useDataTable({ id: `stock-${warehouseId}` })`` under a route param (0.20.5). The new id is
+another table: it reads its own stored layout, starts on its first page with nothing
+selected and every branch closed, and a change still waiting to be saved for the last
+record is written under the last record's id, never the new one's.
 
 ---
 
